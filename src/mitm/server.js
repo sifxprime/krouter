@@ -417,6 +417,11 @@ try {
   process.exit(1);
 }
 
+// Disable the 5-minute default requestTimeout so long agentic streams
+// (Kiro analysis tasks, extended thinking) don't get cut mid-frame.
+server.requestTimeout = 0;
+server.headersTimeout = 0;
+
 server.listen(LOCAL_PORT, () => log(`🚀 Server ready on :${LOCAL_PORT}`));
 
 server.on("error", (e) => {

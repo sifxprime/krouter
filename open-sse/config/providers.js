@@ -65,7 +65,8 @@ export const PROVIDERS = {
     baseUrl: "https://cloudcode-pa.googleapis.com/v1internal",
     format: "gemini-cli",
     clientId: "681255809395-oo8ft2oprdrnp9e3aqf6av3hmdib135j.apps.googleusercontent.com",
-    clientSecret: "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"
+    clientSecret: "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",
+    stallTimeoutMs: 180000,
   },
   codex: {
     baseUrl: "https://chatgpt.com/backend-api/codex/responses",
@@ -75,7 +76,8 @@ export const PROVIDERS = {
       "User-Agent": "codex_cli_rs/0.136.0"
     },
     clientId: "app_EMoamEEZ73f0CkXaXp7hrann",
-    tokenUrl: "https://auth.openai.com/oauth/token"
+    tokenUrl: "https://auth.openai.com/oauth/token",
+    stallTimeoutMs: 180000,
   },
   qwen: {
     baseUrl: "https://portal.qwen.ai/v1/chat/completions",
@@ -113,7 +115,9 @@ export const PROVIDERS = {
     format: "antigravity",
     headers: { "User-Agent": `antigravity/1.107.0 ${platform()}/${arch()}` },
     clientId: "1071006060591-tmhssin2h21lcre235vtolojh4g403ep.apps.googleusercontent.com",
-    clientSecret: "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"
+    clientSecret: "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",
+    // Agent/reasoning models (gemini-pro-agent, etc.) think silently for >60s before streaming resumes
+    stallTimeoutMs: 180000,
   },
   openrouter: {
     baseUrl: "https://openrouter.ai/api/v1/chat/completions",
@@ -193,7 +197,8 @@ export const PROVIDERS = {
       "Accept": "application/json",
       "Content-Type": "application/json"
     },
-    clientId: "Iv1.b507a08c87ecfe98"
+    clientId: "Iv1.b507a08c87ecfe98",
+    stallTimeoutMs: 180000,
   },
   kiro: {
     // All three hosts resolve to the same regional CodeWhisperer streaming service
@@ -221,7 +226,9 @@ export const PROVIDERS = {
       "X-Amz-User-Agent": "aws-sdk-js/3.0.0 kiro-ide/1.0.0"
     },
     tokenUrl: "https://prod.us-east-1.auth.desktop.kiro.dev/refreshToken",
-    authUrl: "https://prod.us-east-1.auth.desktop.kiro.dev"
+    authUrl: "https://prod.us-east-1.auth.desktop.kiro.dev",
+    // Claude extended thinking + large tool-call context can go silent for >60s mid-stream
+    stallTimeoutMs: 180000,
   },
   cursor: {
     baseUrl: "https://api2.cursor.sh",
@@ -233,7 +240,8 @@ export const PROVIDERS = {
       "Content-Type": "application/connect+proto",
       "User-Agent": "connect-es/1.6.1"
     },
-    clientVersion: "3.1.0"
+    clientVersion: "3.1.0",
+    stallTimeoutMs: 180000,
   },
   "kimi-coding": {
     baseUrl: KIMI_CODING_BASE_URL,

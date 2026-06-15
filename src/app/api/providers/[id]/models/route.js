@@ -14,6 +14,34 @@ const parseOpenAIStyleModels = (data) => {
   return data?.data || data?.models || data?.results || [];
 };
 
+// Ollama /api/tags returns {models: [{name: "llama3:latest", ...}]} — map name→id
+const parseOllamaModels = (data) => {
+  const raw = Array.isArray(data) ? data : (data?.models || data?.data || []);
+  return raw
+    .map(m => {
+      const id = m.id || m.name || m.model;
+      if (!id) return null;
+      return { id, name: m.displayName || m.name || id };
+    })
+    .filter(Boolean);
+};
+
+// Universal normalization — every provider model MUST have a string id.
+// Different providers use different field names: id, name, model, slug, etc.
+const normalizeModels = (models) =>
+  (Array.isArray(models) ? models : [])
+    .map(m => {
+      if (!m || typeof m !== "object") return null;
+      const id = m.id || m.name || m.model || m.slug || m.modelId;
+      if (!id || typeof id !== "string") return null;
+      return {
+        ...m,
+        id,
+        name: m.name || m.displayName || m.display_name || m.title || id,
+      };
+    })
+    .filter(Boolean);
+
 const parseGeminiCliModels = (data) => {
   if (Array.isArray(data?.models)) {
     return data.models
@@ -234,7 +262,14 @@ const PROVIDER_MODELS_CONFIG = {
   nebius: createOpenAIModelsConfig("https://api.studio.nebius.ai/v1/models"),
   siliconflow: createOpenAIModelsConfig("https://api.siliconflow.com/v1/models"),
   hyperbolic: createOpenAIModelsConfig("https://api.hyperbolic.xyz/v1/models"),
-  ollama: createOpenAIModelsConfig("https://ollama.com/api/tags"),
+  ollama: {
+    url: "https://ollama.com/api/tags",
+    method: "GET",
+    headers: { "Content-Type": "application/json" },
+    authHeader: "Authorization",
+    authPrefix: "Bearer ",
+    parseResponse: parseOllamaModels,
+  },
   // ollama-local: url resolved dynamically below via providerSpecificData.baseUrl
   nanobanana: createOpenAIModelsConfig("https://api.nanobananaapi.ai/v1/models"),
   chutes: createOpenAIModelsConfig("https://llm.chutes.ai/v1/models"),
@@ -356,7 +391,7 @@ const PROVIDER_MODELS_CONFIG = {
         return { error: `Failed to fetch models: ${response.status}`, status: response.status };
       }
       const data = await response.json();
-      return { models: parseOpenAIStyleModels(data) };
+      return { models: parseOllamaModels(data) };
     }
   }
 };
@@ -397,7 +432,7 @@ export async function GET(request, { params }) {
       }
 
       const data = await response.json();
-      const models = data.data || data.models || [];
+      const models = normalizeModels(data.data || data.models || data.results || data || []);
 
       return NextResponse.json({
         provider: connection.provider,
@@ -438,7 +473,7 @@ export async function GET(request, { params }) {
       }
 
       const data = await response.json();
-      const models = data.data || data.models || [];
+      const models = normalizeModels(data.data || data.models || data.results || data || []);
 
       return NextResponse.json({
         provider: connection.provider,
@@ -464,7 +499,7 @@ export async function GET(request, { params }) {
       return NextResponse.json({
         provider: connection.provider,
         connectionId: connection.id,
-        models: result.models,
+        models: normalizeModels(result.models),
         ...(result.warning ? { warning: result.warning } : {})
       });
     }
@@ -512,7 +547,7 @@ export async function GET(request, { params }) {
     }
 
     const data = await response.json();
-    const models = config.parseResponse(data);
+    const models = normalizeModels(config.parseResponse(data));
 
     return NextResponse.json({
       provider: connection.provider,

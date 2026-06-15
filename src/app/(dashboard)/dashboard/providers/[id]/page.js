@@ -46,7 +46,8 @@ export default function ProviderDetailPage() {
   const [headerImgError, setHeaderImgError] = useState(false);
   const [modelTestResults, setModelTestResults] = useState({});
   const [modelsTestError, setModelsTestError] = useState("");
-  const [testingModelId, setTestingModelId] = useState(null);
+  const [testingModelIds, setTestingModelIds] = useState(new Set());
+  const [testAllRunning, setTestAllRunning] = useState(false);
   const [showAddCustomModel, setShowAddCustomModel] = useState(false);
   const [selectedConnectionIds, setSelectedConnectionIds] = useState([]);
   const [bulkProxyPoolId, setBulkProxyPoolId] = useState("__none__");
@@ -56,6 +57,9 @@ export default function ProviderDetailPage() {
   const [thinkingMode, setThinkingMode] = useState("auto");
   const [suggestedModels, setSuggestedModels] = useState([]);
   const [liveModels, setLiveModels] = useState([]);
+  const [liveModelsLoading, setLiveModelsLoading] = useState(false);
+  const [liveModelsSearch, setLiveModelsSearch] = useState("");
+  const [liveModelsExpanded, setLiveModelsExpanded] = useState(new Set());
   const [kiloFreeModels, setKiloFreeModels] = useState([]);
   const [disabledModelIds, setDisabledModelIds] = useState([]);
   const [confirmState, setConfirmState] = useState(null);
@@ -382,17 +386,30 @@ export default function ProviderDetailPage() {
     fetchSuggestedModels(fetcher).then(setSuggestedModels);
   }, [providerId]);
 
-  // Fetch live models from provider's authenticated API (using first available connection)
-  useEffect(() => {
-    const hasFetcher = !!(OAUTH_PROVIDERS[providerId] || APIKEY_PROVIDERS[providerId] || FREE_PROVIDERS[providerId] || FREE_TIER_PROVIDERS[providerId])?.modelsFetcher;
-    if (hasFetcher || connections.length === 0) return;
-    const conn = connections.find(c => c.apiKey || c.accessToken);
+  const fetchLiveModels = useCallback(async () => {
+    if (connections.length === 0) return;
+    const conn = connections.find(c => c.isActive !== false) || connections[0];
     if (!conn) return;
-    fetch(`/api/providers/${conn.id}/models`)
-      .then(r => r.ok ? r.json() : null)
-      .then(data => { if (data?.models?.length) setLiveModels(data.models); })
-      .catch(() => {});
+    setLiveModelsLoading(true);
+    try {
+      const r = await fetch(`/api/providers/${conn.id}/models`);
+      const data = r.ok ? await r.json() : null;
+      if (data?.models?.length) {
+        setLiveModels(data.models);
+        // Auto-expand first group on initial load
+        setLiveModelsExpanded(prev => {
+          if (prev.size > 0) return prev;
+          const firstId = data.models[0]?.id || "";
+          const firstNs = firstId.includes("/") ? firstId.split("/")[0] : "other";
+          return new Set([firstNs]);
+        });
+      }
+    } catch { /* silent */ } finally {
+      setLiveModelsLoading(false);
+    }
   }, [providerId, connections]);
+
+  useEffect(() => { fetchLiveModels(); }, [fetchLiveModels]);
 
   const handleSetAlias = async (modelId, alias, providerAliasOverride = providerAlias) => {
     const fullModel = `${providerAliasOverride}/${modelId}`;
@@ -887,8 +904,8 @@ export default function ProviderDetailPage() {
   );
 
   const handleTestModel = async (modelId) => {
-    if (testingModelId) return;
-    setTestingModelId(modelId);
+    if (testingModelIds.has(modelId)) return;
+    setTestingModelIds(prev => new Set([...prev, modelId]));
     try {
       const res = await fetch("/api/models/test", {
         method: "POST",
@@ -896,13 +913,51 @@ export default function ProviderDetailPage() {
         body: JSON.stringify({ model: `${providerStorageAlias}/${modelId}` }),
       });
       const data = await res.json();
-      setModelTestResults((prev) => ({ ...prev, [modelId]: data.ok ? "ok" : "error" }));
-      setModelsTestError(data.ok ? "" : (data.error || "Model not reachable"));
+      setModelTestResults(prev => ({ ...prev, [modelId]: data.ok ? "ok" : "error" }));
+      if (!data.ok) setModelsTestError(data.error || "Model not reachable");
     } catch {
-      setModelTestResults((prev) => ({ ...prev, [modelId]: "error" }));
-      setModelsTestError("Network error");
+      setModelTestResults(prev => ({ ...prev, [modelId]: "error" }));
     } finally {
-      setTestingModelId(null);
+      setTestingModelIds(prev => { const next = new Set(prev); next.delete(modelId); return next; });
+    }
+  };
+
+  const handleTestAll = async (modelsToTest) => {
+    if (testAllRunning) return;
+    setTestAllRunning(true);
+    const BATCH = 5;
+    const passed = [];
+    try {
+      for (let i = 0; i < modelsToTest.length; i += BATCH) {
+        const batch = modelsToTest.slice(i, i + BATCH);
+        await Promise.all(batch.map(async (m) => {
+          setTestingModelIds(prev => new Set([...prev, m.id]));
+          try {
+            const res = await fetch("/api/models/test", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ model: `${providerStorageAlias}/${m.id}` }),
+            });
+            const data = await res.json();
+            const status = data.ok ? "ok" : "error";
+            setModelTestResults(prev => ({ ...prev, [m.id]: status }));
+            if (data.ok) passed.push(m);
+          } catch {
+            setModelTestResults(prev => ({ ...prev, [m.id]: "error" }));
+          } finally {
+            setTestingModelIds(prev => { const next = new Set(prev); next.delete(m.id); return next; });
+          }
+        }));
+      }
+      // Auto-add all passing models
+      for (const m of passed) {
+        await handleSetAlias(m.id, m.id, providerStorageAlias);
+      }
+      if (passed.length > 0) {
+        document.getElementById("available-models-section")?.scrollIntoView({ behavior: "smooth" });
+      }
+    } finally {
+      setTestAllRunning(false);
     }
   };
 
@@ -963,7 +1018,7 @@ export default function ProviderDetailPage() {
             onDeleteAlias={() => handleDeleteAlias(model.alias)}
             testStatus={modelTestResults[model.id]}
             onTest={connections.length > 0 || isFreeNoAuth ? () => handleTestModel(model.id) : undefined}
-            isTesting={testingModelId === model.id}
+            isTesting={testingModelIds.has(model.id)}
             isCustom
             isFree={false}
           />
@@ -987,7 +1042,7 @@ export default function ProviderDetailPage() {
               onDeleteAlias={() => handleDeleteAlias(existingAlias)}
               testStatus={modelTestResults[model.id]}
               onTest={connections.length > 0 || isFreeNoAuth ? () => handleTestModel(model.id) : undefined}
-              isTesting={testingModelId === model.id}
+              isTesting={testingModelIds.has(model.id)}
               isFree={model.isFree}
               onDisable={() => handleDisableModel(model.id)}
             />
@@ -1017,87 +1072,213 @@ export default function ProviderDetailPage() {
           </button>
         )}
 
-        {/* Suggested models from provider API — show only models not yet added */}
-        {suggestedModels.length > 0 && (() => {
-          const addedFullModels = new Set(Object.values(modelAliases));
-          const hardcodedIds = new Set(models.map((m) => m.id));
-          const notAdded = suggestedModels.filter(
-            (m) => !addedFullModels.has(`${providerStorageAlias}/${m.id}`) && !hardcodedIds.has(m.id)
-          );
-          if (notAdded.length === 0) return null;
-          return (
-            <div className="w-full mt-2">
-              <p className="text-xs text-text-muted mb-2">Suggested models ({notAdded.length}):</p>
-              <div className="flex flex-wrap gap-2">
-                {notAdded.map((m) => (
-                  <button
-                    key={m.id}
-                    onClick={async () => {
-                      const alias = m.id.split("/").pop();
-                      await handleSetAlias(m.id, alias, providerStorageAlias);
-                    }}
-                    className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-black/10 dark:border-white/10 text-xs text-text-muted hover:text-primary hover:border-primary/40 hover:bg-primary/5 transition-colors"
-                    title={`${m.name} · ${(m.contextLength / 1000).toFixed(0)}k ctx`}
-                  >
-                    <span className="material-symbols-outlined text-[13px]">add</span>
-                    {m.id.split("/").pop()}
-                  </button>
-                ))}
-              </div>
-            </div>
-          );
-        })()}
+        {/* Unified model browser — live API first, suggested as fallback + Recently Dropped */}
+        {(() => {
+          // Build a set of all model IDs already visible in Available Models section
+          // (active hardcoded, active kilo-free, and custom API-added models)
+          const activeIds = new Set([
+            ...displayModels.map(m => m.id),
+            ...customModels.map(m => m.id),
+          ]);
 
-        {/* Live models fetched from provider's authenticated API */}
-        {liveModels.length > 0 && (() => {
-          const addedFullModels = new Set(Object.values(modelAliases));
-          const hardcodedIds = new Set(models.map((m) => m.id));
-          const notAdded = liveModels.filter(
-            (m) => !addedFullModels.has(`${providerStorageAlias}/${m.id}`) && !hardcodedIds.has(m.id)
-          );
-          if (notAdded.length === 0) return null;
-          return (
-            <div className="w-full mt-2">
-              <p className="text-xs text-text-muted mb-2">Available models from API ({notAdded.length}):</p>
-              <div className="flex flex-wrap gap-2">
-                {notAdded.map((m) => (
-                  <button
-                    key={m.id}
-                    onClick={async () => {
-                      const alias = (m.id || "").split("/").pop();
-                      await handleSetAlias(m.id, alias, providerStorageAlias);
-                    }}
-                    className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-black/10 dark:border-white/10 text-xs text-text-muted hover:text-primary hover:border-primary/40 hover:bg-primary/5 transition-colors"
-                    title={m.name || m.id}
-                  >
-                    <span className="material-symbols-outlined text-[13px]">add</span>
-                    {(m.id || "").split("/").pop()}
-                  </button>
-                ))}
-              </div>
-            </div>
-          );
-        })()}
+          // Source: live API models preferred, fall back to suggested
+          const sourceModels = liveModels.length > 0 ? liveModels : suggestedModels;
+          const isLive = liveModels.length > 0;
+          const notAdded = sourceModels.filter(m => m.id && !activeIds.has(m.id));
 
-        {/* Disabled models — restorable */}
-        {disabledDisplayModels.length > 0 && (
-          <div className="w-full mt-2">
-            <p className="text-xs text-text-muted mb-2">Disabled models ({disabledDisplayModels.length}):</p>
-            <div className="flex flex-wrap gap-2">
-              {disabledDisplayModels.map((m) => (
+          // Recently Dropped = hardcoded/kilo models disabled via X button
+          // If a dropped model re-appears in liveModels, treat it as normal (addable)
+          const liveModelIds = new Set(liveModels.map(m => m.id).filter(Boolean));
+          const droppedModels = disabledDisplayModels
+            .filter(m => m.id && !liveModelIds.has(m.id))
+            .map(m => ({ ...m, dropped: true }));
+
+          const droppedIdSet = new Set(droppedModels.map(m => m.id));
+
+          // All browsable = unadded models + recently dropped (no overlap since dropped are hardcoded, notAdded are from API/suggested)
+          const allBrowsable = [...notAdded.filter(m => !droppedIdSet.has(m.id)), ...droppedModels];
+
+          if (!liveModelsLoading && allBrowsable.length === 0 && sourceModels.length === 0) return null;
+
+          // Filter by search
+          const q = liveModelsSearch.trim().toLowerCase();
+          const filtered = q
+            ? allBrowsable.filter(m => m.id.toLowerCase().includes(q) || (m.name && m.name.toLowerCase().includes(q)))
+            : allBrowsable;
+
+          // Group by namespace prefix
+          const groups = {};
+          filtered.forEach(m => {
+            if (!m.id) return;
+            const ns = m.id.includes("/") ? m.id.split("/")[0] : "models";
+            if (!groups[ns]) groups[ns] = [];
+            groups[ns].push(m);
+          });
+          const groupEntries = Object.entries(groups).sort((a, b) => b[1].length - a[1].length);
+
+          // Only test non-dropped models
+          const testableModels = filtered.filter(m => !m.dropped).slice(0, 50);
+
+          return (
+            <div className="w-full mt-4 space-y-2">
+              {/* Header bar */}
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-medium text-text-muted shrink-0">
+                  {liveModelsLoading
+                    ? "Loading..."
+                    : `${isLive ? "From API" : "Suggested"} (${notAdded.length})${droppedModels.length > 0 ? ` · ${droppedModels.length} dropped` : ""}`}
+                </span>
+
+                {/* Search */}
+                <div className="relative flex-1 min-w-0">
+                  <span className="material-symbols-outlined absolute left-2.5 top-1/2 -translate-y-1/2 text-[13px] text-text-muted/60 pointer-events-none select-none">search</span>
+                  <input
+                    type="text"
+                    value={liveModelsSearch}
+                    onChange={e => setLiveModelsSearch(e.target.value)}
+                    placeholder="Search models..."
+                    className="w-full h-7 pl-7 pr-7 text-xs rounded-lg bg-bg border border-border-subtle text-text-main placeholder:text-text-muted/50 focus:outline-none focus:ring-1 focus:ring-primary/30 focus:border-primary/40 transition-colors"
+                  />
+                  {liveModelsSearch && (
+                    <button onClick={() => setLiveModelsSearch("")} className="absolute right-2 top-1/2 -translate-y-1/2 text-text-muted/50 hover:text-text-muted transition-colors">
+                      <span className="material-symbols-outlined text-[13px]">close</span>
+                    </button>
+                  )}
+                </div>
+
+                {/* Refresh */}
                 <button
-                  key={m.id}
-                  onClick={() => handleEnableModel(m.id)}
-                  className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-dashed border-black/10 dark:border-white/10 text-xs text-text-muted hover:text-primary hover:border-primary/40 hover:bg-primary/5 transition-colors"
-                  title="Restore model"
+                  onClick={fetchLiveModels}
+                  disabled={liveModelsLoading}
+                  title="Refresh"
+                  className="shrink-0 h-7 w-7 flex items-center justify-center rounded-lg border border-border-subtle text-text-muted hover:text-primary hover:border-primary/40 hover:bg-primary/5 transition-colors disabled:opacity-40"
                 >
-                  <span className="material-symbols-outlined text-[13px]">add</span>
-                  {m.id}
+                  <span className={`material-symbols-outlined text-[14px] ${liveModelsLoading ? "animate-spin" : ""}`}>refresh</span>
                 </button>
-              ))}
+
+                {/* Test All (only non-dropped models) */}
+                {!liveModelsLoading && testableModels.length > 0 && (
+                  <button
+                    onClick={() => handleTestAll(testableModels)}
+                    disabled={testAllRunning}
+                    title={`Test up to ${testableModels.length} models and auto-add passing ones`}
+                    className="shrink-0 h-7 flex items-center gap-1 px-2.5 rounded-lg border border-border-subtle text-xs text-text-muted hover:text-green-600 hover:border-green-500/40 hover:bg-green-500/5 transition-colors disabled:opacity-40"
+                  >
+                    <span className={`material-symbols-outlined text-[13px] ${testAllRunning ? "animate-spin" : ""}`}>
+                      {testAllRunning ? "progress_activity" : "play_circle"}
+                    </span>
+                    {testAllRunning ? "Testing..." : "Test All"}
+                  </button>
+                )}
+              </div>
+
+              {/* Result count when filtering */}
+              {q && <p className="text-xs text-text-muted">{filtered.length} result{filtered.length !== 1 ? "s" : ""}</p>}
+
+              {/* Loading state */}
+              {liveModelsLoading ? (
+                <div className="flex items-center gap-2 py-4 text-xs text-text-muted">
+                  <span className="material-symbols-outlined text-[15px] animate-spin">progress_activity</span>
+                  Fetching models from provider API...
+                </div>
+              ) : groupEntries.length === 0 ? (
+                q ? <p className="text-xs text-text-muted py-2">No models match "{liveModelsSearch}"</p> : null
+              ) : (
+                <div className="space-y-1">
+                  {groupEntries.map(([ns, groupModels]) => {
+                    const isExpanded = liveModelsExpanded.has(ns);
+                    const passCount = groupModels.filter(m => !m.dropped && modelTestResults[m.id] === "ok").length;
+                    const failCount = groupModels.filter(m => !m.dropped && modelTestResults[m.id] === "error").length;
+                    const droppedCount = groupModels.filter(m => m.dropped).length;
+                    return (
+                      <div key={ns} className="rounded-xl border border-border-subtle overflow-hidden">
+                        <button
+                          onClick={() => setLiveModelsExpanded(prev => {
+                            const next = new Set(prev);
+                            next.has(ns) ? next.delete(ns) : next.add(ns);
+                            return next;
+                          })}
+                          className="w-full flex items-center gap-2 px-3 py-2 text-xs bg-bg hover:bg-surface-2/60 transition-colors text-left"
+                        >
+                          <span className="font-semibold text-text-main flex-1">{ns}</span>
+                          {passCount > 0 && <span className="text-green-600 dark:text-green-400 font-medium">{passCount} ✓</span>}
+                          {failCount > 0 && <span className="text-red-500 font-medium">{failCount} ✗</span>}
+                          {droppedCount > 0 && (
+                            <span className="px-1.5 py-0.5 rounded-md bg-amber-500/10 text-amber-600 dark:text-amber-400 text-[10px] font-medium">
+                              {droppedCount} dropped
+                            </span>
+                          )}
+                          <span className="px-1.5 py-0.5 rounded-md bg-black/[0.06] dark:bg-white/[0.06] text-text-muted tabular-nums font-medium">{groupModels.length}</span>
+                          <span className="material-symbols-outlined text-[15px] text-text-muted/60">{isExpanded ? "expand_less" : "expand_more"}</span>
+                        </button>
+                        {isExpanded && (
+                          <div className="px-3 pt-2 pb-3 flex flex-wrap gap-1.5 border-t border-border-subtle bg-surface/50">
+                            {groupModels.map(m => {
+                              const label = m.id.includes("/") ? m.id.split("/").slice(1).join("/") : m.id;
+                              const status = modelTestResults[m.id];
+                              const testing = testingModelIds.has(m.id);
+
+                              if (m.dropped) {
+                                // Recently Dropped — restore on click
+                                return (
+                                  <button
+                                    key={m.id}
+                                    onClick={async () => {
+                                      await handleEnableModel(m.id);
+                                      document.getElementById("available-models-section")?.scrollIntoView({ behavior: "smooth" });
+                                    }}
+                                    title={`Recently Dropped — click to restore: ${m.id}`}
+                                    className="group flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-amber-400/40 bg-amber-500/5 text-amber-700 dark:text-amber-400 text-xs hover:bg-amber-500/10 hover:border-amber-400/60 transition-colors"
+                                  >
+                                    <span className="material-symbols-outlined text-[12px]">history</span>
+                                    <span>{label}</span>
+                                    {m.contextLength > 0 && <span className="opacity-50 text-[10px] ml-0.5">{(m.contextLength / 1000).toFixed(0)}k</span>}
+                                  </button>
+                                );
+                              }
+
+                              // Normal addable model
+                              return (
+                                <button
+                                  key={m.id}
+                                  onClick={async () => {
+                                    await handleSetAlias(m.id, m.id, providerStorageAlias);
+                                    document.getElementById("available-models-section")?.scrollIntoView({ behavior: "smooth" });
+                                  }}
+                                  title={`Add: ${m.name || m.id}`}
+                                  className={[
+                                    "group flex items-center gap-1 px-2.5 py-1.5 rounded-lg border text-xs transition-colors",
+                                    status === "ok"
+                                      ? "border-green-500/30 bg-green-500/5 text-green-700 dark:text-green-400 hover:bg-green-500/10"
+                                      : status === "error"
+                                      ? "border-red-400/30 bg-red-500/5 text-red-600 dark:text-red-400 hover:bg-red-500/10"
+                                      : "border-border-subtle text-text-muted hover:text-primary hover:border-primary/40 hover:bg-primary/5"
+                                  ].join(" ")}
+                                >
+                                  {testing ? (
+                                    <span className="material-symbols-outlined text-[12px] animate-spin">progress_activity</span>
+                                  ) : status === "ok" ? (
+                                    <span className="material-symbols-outlined text-[12px]">check</span>
+                                  ) : status === "error" ? (
+                                    <span className="material-symbols-outlined text-[12px]">close</span>
+                                  ) : (
+                                    <span className="material-symbols-outlined text-[12px] opacity-50 group-hover:opacity-100">add</span>
+                                  )}
+                                  <span>{label}</span>
+                                  {m.contextLength > 0 && <span className="opacity-40 text-[10px] ml-0.5">{(m.contextLength / 1000).toFixed(0)}k</span>}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
-          </div>
-        )}
+          );
+        })()}
       </div>
     );
   };
@@ -1484,7 +1665,7 @@ export default function ProviderDetailPage() {
       )}
 
       {/* Models */}
-      <Card>
+      <Card id="available-models-section">
         <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <h2 className="text-lg font-semibold">
             {"Available Models"}
