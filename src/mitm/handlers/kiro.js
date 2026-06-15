@@ -103,13 +103,32 @@ function extractThinking(text, state) {
 }
 
 // ─── AWS EventStream frame builder ────────────────────────────────────────────
+
+// Wire-format limits. Defined by the AWS EventStream binary protocol:
+//   header name length:  uint8  → max 255 bytes
+//   header value length: uint16 → max 65535 bytes
+//   frame total length:  uint32, but Smithy decoders cap at 16 MiB
+const HEADER_NAME_MAX_BYTES = 255;
+const HEADER_VALUE_MAX_BYTES = 65535;
+const FRAME_MAX_BYTES = 16 * 1024 * 1024;
+
 /**
  * Encode a single string header into the AWS EventStream binary format.
  * Header wire format: [nameLen 1B][name][type=7 1B][valueLen 2B][value]
+ *
+ * Throws on length overflow rather than silently truncating via uint8/uint16
+ * wrap-around, which would corrupt the frame and trigger Kiro's
+ * "Truncated event message received" with no clue where the bytes went.
  */
 function encodeHeader(name, value) {
   const nameBuf = Buffer.from(name, "utf8");
   const valueBuf = Buffer.from(value, "utf8");
+  if (nameBuf.length > HEADER_NAME_MAX_BYTES) {
+    throw new Error(`EventStream header name too long (${nameBuf.length} > ${HEADER_NAME_MAX_BYTES}): ${name.slice(0, 32)}…`);
+  }
+  if (valueBuf.length > HEADER_VALUE_MAX_BYTES) {
+    throw new Error(`EventStream header value too long (${valueBuf.length} > ${HEADER_VALUE_MAX_BYTES}) for ${name}`);
+  }
   const buf = Buffer.alloc(1 + nameBuf.length + 1 + 2 + valueBuf.length);
   let o = 0;
   buf[o++] = nameBuf.length;
@@ -131,6 +150,11 @@ function encodeHeader(name, value) {
  *   :message-type  = "event"             (or "exception" / "error")
  *   :event-type    = e.g. "assistantResponseEvent"
  *   :content-type  = "application/json"
+ *
+ * Throws if the total frame would exceed 16 MiB — the Smithy decoder rejects
+ * larger frames as malformed, and a partial/truncated write surfaces in Kiro as
+ * "Truncated event message received". Failing loud lets the caller chunk the
+ * payload (or surface a clear error) instead of producing an unreadable stream.
  */
 function buildEventStreamFrame(eventType, payload) {
   const payloadBuf = Buffer.from(
@@ -147,6 +171,9 @@ function buildEventStreamFrame(eventType, payload) {
   const headersLen = headersBuf.length;
 
   const totalLen = 4 + 4 + 4 + headersLen + payloadBuf.length + 4;
+  if (totalLen > FRAME_MAX_BYTES) {
+    throw new Error(`EventStream frame too large (${totalLen} bytes > ${FRAME_MAX_BYTES}) for event ${eventType}`);
+  }
   const frame = Buffer.alloc(totalLen);
 
   frame.writeUInt32BE(totalLen, 0);
