@@ -1,5 +1,69 @@
 const { log, err } = require("../logger");
 
+// ─── AWS EventStream exception-frame builder (self-contained) ─────────────────
+// Used to surface upstream HTTP errors to Kiro as a parseable EventStream frame
+// instead of dropping them silently and triggering "Truncated event message received".
+const CRC32_TABLE = (() => {
+  const t = new Uint32Array(256);
+  for (let i = 0; i < 256; i++) {
+    let c = i;
+    for (let k = 0; k < 8; k++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
+    t[i] = c >>> 0;
+  }
+  return t;
+})();
+function _crc32(buf) {
+  let c = 0xFFFFFFFF;
+  for (let i = 0; i < buf.length; i++) c = CRC32_TABLE[(c ^ buf[i]) & 0xFF] ^ (c >>> 8);
+  return (c ^ 0xFFFFFFFF) >>> 0;
+}
+function _encodeHeader(name, value) {
+  const nameBuf = Buffer.from(name, "utf8");
+  const valueBuf = Buffer.from(value, "utf8");
+  if (nameBuf.length > 255) throw new Error("EventStream header name too long");
+  if (valueBuf.length > 65535) throw new Error("EventStream header value too long");
+  const buf = Buffer.alloc(1 + nameBuf.length + 1 + 2 + valueBuf.length);
+  let o = 0;
+  buf[o++] = nameBuf.length;
+  nameBuf.copy(buf, o); o += nameBuf.length;
+  buf[o++] = 7;
+  buf.writeUInt16BE(valueBuf.length, o); o += 2;
+  valueBuf.copy(buf, o);
+  return buf;
+}
+function buildExceptionFrame(message, exceptionType = "internalServerException") {
+  const payloadBuf = Buffer.from(JSON.stringify({ message: String(message || "Upstream error") }), "utf8");
+  const headersBuf = Buffer.concat([
+    _encodeHeader(":message-type", "exception"),
+    _encodeHeader(":exception-type", exceptionType),
+    _encodeHeader(":content-type", "application/json"),
+  ]);
+  const totalLen = 12 + headersBuf.length + payloadBuf.length + 4;
+  const frame = Buffer.alloc(totalLen);
+  frame.writeUInt32BE(totalLen, 0);
+  frame.writeUInt32BE(headersBuf.length, 4);
+  frame.writeUInt32BE(_crc32(frame.slice(0, 8)), 8);
+  headersBuf.copy(frame, 12);
+  payloadBuf.copy(frame, 12 + headersBuf.length);
+  frame.writeUInt32BE(_crc32(frame.slice(0, totalLen - 4)), totalLen - 4);
+  return frame;
+}
+
+async function _readErrorMessage(routerRes) {
+  try {
+    const text = await routerRes.text();
+    if (!text) return `Upstream ${routerRes.status}`;
+    try {
+      const j = JSON.parse(text);
+      return j?.error?.message || j?.message || j?.error || text.slice(0, 500);
+    } catch {
+      return text.slice(0, 500);
+    }
+  } catch {
+    return `Upstream ${routerRes.status}`;
+  }
+}
+
 const DEFAULT_LOCAL_ROUTER = "http://localhost:20128";
 const ROUTER_BASE = String(process.env.MITM_ROUTER_BASE || DEFAULT_LOCAL_ROUTER)
   .trim()
@@ -160,6 +224,18 @@ async function pipeTransformedEventStream(routerRes, res, transformFn, state) {
     "Cache-Control": "no-cache",
     "Connection": "keep-alive"
   };
+
+  // Upstream error: emit a parseable exception frame so Kiro shows the real
+  // provider error instead of "Truncated event message received".
+  if (!routerRes.ok) {
+    const message = await _readErrorMessage(routerRes);
+    err(`[MITM] upstream ${routerRes.status}: ${message}`);
+    res.writeHead(200, resHeaders);
+    try { res.write(buildExceptionFrame(`[${routerRes.status}] ${message}`)); } catch (e) { err(`[MITM] exception frame write failed: ${e.message}`); }
+    res.end();
+    return;
+  }
+
   res.writeHead(200, resHeaders);
 
   if (!routerRes.body) {
