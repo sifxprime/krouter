@@ -1,10 +1,26 @@
 import { NextResponse } from "next/server";
+import { timingSafeEqual } from "node:crypto";
 import { getSettings, validateApiKey } from "@/lib/localDb";
 import { getConsistentMachineId } from "@/shared/utils/machineId";
 import { verifyDashboardAuthToken } from "@/lib/auth/dashboardSession";
+import { checkApiAuthLock, recordApiAuthFail, recordApiAuthSuccess } from "@/lib/auth/apiAuthLimiter";
+import { getClientIp } from "@/lib/auth/loginLimiter";
 
 const CLI_TOKEN_HEADER = "x-9r-cli-token";
 const CLI_TOKEN_SALT = "9r-cli-auth";
+
+// Constant-time string compare. Length mismatch returns false without leaking
+// per-byte info — we still run a same-length comparison against a dummy to
+// keep the wall-clock timing identical to the equal-length path.
+function safeEqString(a, b) {
+  const ab = Buffer.from(typeof a === "string" ? a : "", "utf8");
+  const bb = Buffer.from(typeof b === "string" ? b : "", "utf8");
+  if (ab.length !== bb.length) {
+    try { timingSafeEqual(ab, Buffer.alloc(ab.length)); } catch { /* ignore */ }
+    return false;
+  }
+  return timingSafeEqual(ab, bb);
+}
 
 let cachedCliToken = null;
 async function getCliToken() {
@@ -15,7 +31,7 @@ async function getCliToken() {
 async function hasValidCliToken(request) {
   const token = request.headers.get(CLI_TOKEN_HEADER);
   if (!token) return false;
-  return token === await getCliToken();
+  return safeEqString(token, await getCliToken());
 }
 
 // Public API paths — no auth required (LLM API has its own key auth inside handler).
@@ -122,6 +138,24 @@ async function canAccessPublicLlmApi(request) {
   return await hasValidApiKey(request);
 }
 
+// Returns true if the caller provided credentials (CLI token header or API key).
+// Used to decide whether a failed auth should count toward rate-limit lockout —
+// purely unauthenticated probes (no creds at all) are not throttled here.
+function callerProvidedCredentials(request) {
+  if (request.headers.get(CLI_TOKEN_HEADER)) return true;
+  if (extractApiKey(request)) return true;
+  return false;
+}
+
+function lockedResponse(retryAfter) {
+  const res = NextResponse.json(
+    { error: "Too many authentication attempts. Try again later.", retryAfter },
+    { status: 429 }
+  );
+  res.headers.set("Retry-After", String(retryAfter));
+  return res;
+}
+
 async function canAccessLocalOnlyRoute(request) {
   if (await hasValidCliToken(request)) return true;
   // Browser on host: loopback Host + Origin (blocks tunnel/CSRF) + auth (JWT or requireLogin=false)
@@ -166,30 +200,61 @@ export const __test__ = {
 export async function proxy(request) {
   const { pathname } = request.nextUrl;
 
+  // Rate-limit gate: any *remote* request that supplied credentials must clear
+  // the per-IP lockout window before validation, so a brute-force attacker
+  // can't probe at line rate. Loopback origins are skipped — local callers
+  // (MITM → router, dev tools) shouldn't share the "unknown" IP bucket and
+  // get collateral-damaged by an unrelated brute force.
+  const hasCreds = callerProvidedCredentials(request);
+  const isLoopback = isLocalRequest(request);
+  const limiterApplies = hasCreds && !isLoopback;
+  const ip = limiterApplies ? getClientIp(request) : null;
+  if (limiterApplies) {
+    const lock = checkApiAuthLock(ip);
+    if (lock.locked) return lockedResponse(lock.retryAfter);
+  }
+  const noteAuthResult = (ok) => {
+    if (!limiterApplies || !ip) return;
+    if (ok) recordApiAuthSuccess(ip);
+    else recordApiAuthFail(ip);
+  };
+
   // Local-only gate for spawn-capable / host-secret routes.
   if (LOCAL_ONLY_PATHS.some((p) => pathname.startsWith(p))) {
     if (!(await canAccessLocalOnlyRoute(request))) {
+      noteAuthResult(false);
       return NextResponse.json({ error: "Local only: CLI token required" }, { status: 403 });
     }
+    noteAuthResult(true);
   }
 
   // Always protected - require valid JWT or local CLI token (machineId-based)
   if (ALWAYS_PROTECTED.some((p) => pathname.startsWith(p))) {
-    if (await hasValidCliToken(request) || await hasValidToken(request))
+    if (await hasValidCliToken(request) || await hasValidToken(request)) {
+      noteAuthResult(true);
       return NextResponse.next();
+    }
+    noteAuthResult(false);
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   if (isPublicLlmApi(pathname)) {
-    if (await canAccessPublicLlmApi(request)) return NextResponse.next();
+    if (await canAccessPublicLlmApi(request)) {
+      noteAuthResult(true);
+      return NextResponse.next();
+    }
+    noteAuthResult(false);
     return NextResponse.json({ error: "API key required for remote API access" }, { status: 401 });
   }
 
   // Deny-by-default for /api/* — public allow-list bypasses, everything else requires auth.
   if (pathname.startsWith("/api/")) {
     if (isPublicApi(pathname)) return NextResponse.next();
-    if (await hasValidCliToken(request) || await isAuthenticated(request))
+    if (await hasValidCliToken(request) || await isAuthenticated(request)) {
+      noteAuthResult(true);
       return NextResponse.next();
+    }
+    noteAuthResult(false);
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
