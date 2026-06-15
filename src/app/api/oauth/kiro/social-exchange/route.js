@@ -1,54 +1,71 @@
 import { NextResponse } from "next/server";
+import { KIRO_CONFIG } from "@/lib/oauth/constants/oauth";
 import { KiroService } from "@/lib/oauth/services/kiro";
 import { createProviderConnection } from "@/models";
 
 /**
  * POST /api/oauth/kiro/social-exchange
- * Exchange authorization code for tokens (Google/GitHub social login)
- * Callback URL will be in format: kiro://kiro.kiroAgent/authenticate-success?code=XXX&state=YYY
+ * Poll the device-code endpoint until the user finishes Google/GitHub login,
+ * then persist the resulting tokens as a Kiro provider connection.
+ *
+ * The frontend calls this on an interval (5s by default) — while the user
+ * hasn't completed login yet, the upstream returns "authorization_pending"
+ * which we mirror as { pending: true } so the client keeps polling.
+ *
+ * Replaces the older PKCE code-exchange. Same response shape on success so
+ * the wrapper component doesn't need to know which flow ran.
  */
 export async function POST(request) {
   try {
-    const { code, codeVerifier, provider } = await request.json();
+    const body = await request.json();
+    const { deviceCode, provider } = body || {};
 
-    if (!code || !codeVerifier) {
-      return NextResponse.json(
-        { error: "Missing required fields" },
-        { status: 400 }
-      );
+    if (!deviceCode) {
+      return NextResponse.json({ error: "Missing deviceCode" }, { status: 400 });
+    }
+    if (!provider || !["google", "github"].includes(provider)) {
+      return NextResponse.json({ error: "Invalid provider" }, { status: 400 });
     }
 
-    if (!provider || !["google", "github"].includes(provider)) {
-      return NextResponse.json(
-        { error: "Invalid provider" },
-        { status: 400 }
-      );
+    const response = await fetch(KIRO_CONFIG.socialDevicePollUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        deviceCode,
+        clientId: KIRO_CONFIG.socialClientId,
+      }),
+    });
+
+    const data = await response.json().catch(() => ({}));
+
+    // User hasn't finished authenticating yet — frontend keeps polling.
+    if (!response.ok || data.error === "authorization_pending" || data.error === "slow_down") {
+      return NextResponse.json({ pending: true, error: data.error || "authorization_pending" });
+    }
+
+    // Edge case: 200 but no tokens — treat as still pending so we don't lose
+    // the polling loop on a malformed intermediate response.
+    if (!data.accessToken && !data.refreshToken) {
+      return NextResponse.json({ pending: true, error: data.error || "no_tokens" });
     }
 
     const kiroService = new KiroService();
+    const email = kiroService.extractEmailFromJWT(data.accessToken);
 
-    // Exchange code for tokens (redirect_uri handled internally)
-    const tokenData = await kiroService.exchangeSocialCode(
-      code,
-      codeVerifier
-    );
+    const providerSpecificData = {
+      authMethod: provider,
+      provider: provider.charAt(0).toUpperCase() + provider.slice(1),
+    };
+    if (data.profileArn) providerSpecificData.profileArn = data.profileArn;
 
-    // Extract email from JWT if available
-    const email = kiroService.extractEmailFromJWT(tokenData.accessToken);
-
-    // Save to database
     const connection = await createProviderConnection({
       provider: "kiro",
       authType: "oauth",
-      accessToken: tokenData.accessToken,
-      refreshToken: tokenData.refreshToken,
-      expiresAt: new Date(Date.now() + tokenData.expiresIn * 1000).toISOString(),
+      accessToken: data.accessToken,
+      refreshToken: data.refreshToken,
+      expiresAt: new Date(Date.now() + (data.expiresIn || 3600) * 1000).toISOString(),
       email: email || null,
-      providerSpecificData: {
-        profileArn: tokenData.profileArn,
-        authMethod: provider, // "google" or "github"
-        provider: provider.charAt(0).toUpperCase() + provider.slice(1),
-      },
+      providerSpecificData,
       testStatus: "active",
     });
 

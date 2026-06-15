@@ -1,16 +1,19 @@
 import { NextResponse } from "next/server";
-import { generatePKCE } from "@/lib/oauth/utils/pkce";
-import { KiroService } from "@/lib/oauth/services/kiro";
+import { KIRO_CONFIG } from "@/lib/oauth/constants/oauth";
 
 /**
  * GET /api/oauth/kiro/social-authorize
- * Generate Google/GitHub social login URL for manual callback flow
- * Uses kiro:// custom protocol as required by AWS Cognito
+ * Initiate Google/GitHub social login via AWS Cognito device-code flow.
+ * Returns a verification URL the user opens in a browser, plus a deviceCode
+ * the frontend polls with social-exchange until authorization completes.
+ *
+ * Replaces the older PKCE manual-callback flow — no more "copy the kiro://
+ * URL out of the browser address bar" UX.
  */
 export async function GET(request) {
   try {
     const { searchParams } = new URL(request.url);
-    const provider = searchParams.get("provider"); // "google" or "github"
+    const provider = searchParams.get("provider");
 
     if (!provider || !["google", "github"].includes(provider)) {
       return NextResponse.json(
@@ -19,21 +22,33 @@ export async function GET(request) {
       );
     }
 
-    // Generate PKCE for social auth
-    const { codeVerifier, codeChallenge, state } = generatePKCE();
+    const loginProvider = provider === "google" ? "Google" : "Github";
 
-    const kiroService = new KiroService();
-    const authUrl = kiroService.buildSocialLoginUrl(
-      provider,
-      codeChallenge,
-      state
-    );
+    const response = await fetch(KIRO_CONFIG.socialDeviceAuthorizeUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        clientId: KIRO_CONFIG.socialClientId,
+        loginProvider,
+      }),
+    });
+
+    if (!response.ok) {
+      const errText = await response.text().catch(() => "");
+      return NextResponse.json(
+        { error: `Device authorization failed: ${errText || response.status}` },
+        { status: 502 }
+      );
+    }
+
+    const data = await response.json();
 
     return NextResponse.json({
-      authUrl,
-      state,
-      codeVerifier,
-      codeChallenge,
+      authUrl: data.verificationUriComplete,
+      deviceCode: data.deviceCode,
+      userCode: data.userCode,
+      expiresIn: Math.floor((data.expiresInMilliseconds || 300_000) / 1000),
+      interval: Math.floor((data.intervalInMilliseconds || 5000) / 1000),
       provider,
     });
   } catch (error) {

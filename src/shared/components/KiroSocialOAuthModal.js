@@ -2,28 +2,32 @@
 
 import { useState, useEffect, useRef } from "react";
 import PropTypes from "prop-types";
-import { Modal, Button, Input } from "@/shared/components";
+import { Modal, Button } from "@/shared/components";
 import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
 
 /**
- * Kiro Social OAuth Modal (Google/GitHub)
- * Handles manual callback URL flow for social login
+ * Kiro Social OAuth Modal (Google / GitHub) — device-code flow.
+ *
+ * Lifecycle:
+ *   1. On open: call /api/oauth/kiro/social-authorize?provider=google|github
+ *      → backend returns { authUrl, deviceCode, userCode, interval }.
+ *   2. Render the authUrl + userCode for the user to open in an Incognito tab.
+ *   3. Poll /api/oauth/kiro/social-exchange every `interval` seconds with the
+ *      deviceCode. Backend returns { pending: true } until the user finishes
+ *      login, then { success: true, connection } once tokens are issued.
+ *   4. On success: stop polling, fire onSuccess, show confirmation.
+ *
+ * Replaces the older PKCE manual-callback flow which required the user to copy
+ * a `kiro://` URL out of the browser address bar.
  */
 export default function KiroSocialOAuthModal({ isOpen, provider, onSuccess, onClose }) {
-  const [step, setStep] = useState("loading"); // loading | input | success | error
-  const [authUrl, setAuthUrl] = useState("");
-  const [authData, setAuthData] = useState(null);
-  const [callbackUrl, setCallbackUrl] = useState("");
+  const [step, setStep] = useState("loading"); // loading | polling | success | error
   const [error, setError] = useState(null);
+  const [userCode, setUserCode] = useState("");
+  const [authUrl, setAuthUrl] = useState("");
+  const pollRef = useRef(null);
   const { copied, copy } = useCopyToClipboard();
-  const openedRef = useRef(false);
 
-  // Reset auto-open guard when modal closes so it can re-open next session.
-  useEffect(() => {
-    if (!isOpen) openedRef.current = false;
-  }, [isOpen]);
-
-  // Initialize auth flow
   useEffect(() => {
     if (!isOpen || !provider) return;
 
@@ -35,19 +39,33 @@ export default function KiroSocialOAuthModal({ isOpen, provider, onSuccess, onCl
         const res = await fetch(`/api/oauth/kiro/social-authorize?provider=${provider}`);
         const data = await res.json();
 
-        if (!res.ok) {
-          throw new Error(data.error);
-        }
+        if (!res.ok) throw new Error(data.error || "Failed to start authorization");
 
-        setAuthData(data);
-        setAuthUrl(data.authUrl);
-        setStep("input");
+        setUserCode(data.userCode || "");
+        setAuthUrl(data.authUrl || "");
+        setStep("polling");
 
-        // Auto-open browser once per modal session.
-        if (!openedRef.current) {
-          openedRef.current = true;
-          window.open(data.authUrl, "_blank");
-        }
+        const interval = (data.interval || 5) * 1000;
+        pollRef.current = setInterval(async () => {
+          try {
+            const pollRes = await fetch("/api/oauth/kiro/social-exchange", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ deviceCode: data.deviceCode, provider }),
+            });
+            const pollData = await pollRes.json();
+
+            if (pollData.success) {
+              if (pollRef.current) clearInterval(pollRef.current);
+              pollRef.current = null;
+              setStep("success");
+              onSuccess?.();
+            }
+            // pending: true → keep polling; do nothing
+          } catch {
+            // Network blip — keep polling; the next tick will retry.
+          }
+        }, interval);
       } catch (err) {
         setError(err.message);
         setStep("error");
@@ -55,61 +73,33 @@ export default function KiroSocialOAuthModal({ isOpen, provider, onSuccess, onCl
     };
 
     initAuth();
-  }, [isOpen, provider]);
 
-  const handleManualSubmit = async () => {
-    try {
-      setError(null);
-      
-      // Parse callback URL - can be either kiro:// or http://localhost format
-      let url;
-      try {
-        url = new URL(callbackUrl);
-      } catch (e) {
-        // If URL parsing fails, might be malformed
-        throw new Error("Invalid callback URL format");
+    return () => {
+      if (pollRef.current) {
+        clearInterval(pollRef.current);
+        pollRef.current = null;
       }
+    };
+  }, [isOpen, provider, onSuccess]);
 
-      const code = url.searchParams.get("code");
-      const state = url.searchParams.get("state");
-      const errorParam = url.searchParams.get("error");
-
-      if (errorParam) {
-        throw new Error(url.searchParams.get("error_description") || errorParam);
-      }
-
-      if (!code) {
-        throw new Error("No authorization code found in URL");
-      }
-
-      // Exchange code for tokens
-      const res = await fetch("/api/oauth/kiro/social-exchange", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          code,
-          codeVerifier: authData.codeVerifier,
-          provider,
-        }),
-      });
-
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
-
-      setStep("success");
-      onSuccess?.();
-    } catch (err) {
-      setError(err.message);
-      setStep("error");
+  const handleClose = () => {
+    if (pollRef.current) {
+      clearInterval(pollRef.current);
+      pollRef.current = null;
     }
+    onClose();
   };
 
   const providerName = provider === "google" ? "Google" : "GitHub";
 
   return (
-    <Modal isOpen={isOpen} title={`Connect Kiro via ${providerName}`} onClose={onClose} size="lg">
+    <Modal
+      isOpen={isOpen}
+      title={`Connect Kiro via ${providerName}`}
+      onClose={handleClose}
+      size="lg"
+    >
       <div className="flex flex-col gap-4">
-        {/* Loading */}
         {step === "loading" && (
           <div className="text-center py-6">
             <div className="size-16 mx-auto mb-4 rounded-full bg-primary/10 flex items-center justify-center">
@@ -118,72 +108,85 @@ export default function KiroSocialOAuthModal({ isOpen, provider, onSuccess, onCl
               </span>
             </div>
             <h3 className="text-lg font-semibold mb-2">Initializing...</h3>
-            <p className="text-sm text-text-muted">
-              Setting up {providerName} authentication
-            </p>
+            <p className="text-sm text-text-muted">Setting up {providerName} authentication</p>
           </div>
         )}
 
-        {/* Manual Input Step */}
-        {step === "input" && (
-          <>
-            <div className="space-y-4">
-              <div>
-                <p className="text-sm font-medium mb-2">Step 1: Open this URL in your browser</p>
-                <div className="flex gap-2">
-                  <Input value={authUrl} readOnly className="flex-1 font-mono text-xs" />
-                  <Button 
-                    variant="secondary" 
-                    icon={copied === "auth_url" ? "check" : "content_copy"} 
-                    onClick={() => copy(authUrl, "auth_url")}
+        {step === "polling" && (
+          <div className="text-center py-6">
+            <div className="size-16 mx-auto mb-4 rounded-full bg-primary/10 flex items-center justify-center">
+              <span className="material-symbols-outlined text-3xl text-primary animate-pulse">
+                open_in_browser
+              </span>
+            </div>
+            <h3 className="text-lg font-semibold mb-2">Open this link in an Incognito window</h3>
+            <p className="text-sm text-text-muted mb-3">
+              Use an Incognito/Private window to avoid session conflicts with existing accounts.
+            </p>
+
+            {authUrl && (
+              <div className="mb-4">
+                <div className="flex items-center gap-2 justify-center">
+                  <a
+                    href={authUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-xs font-mono text-primary underline break-all max-w-md inline-block"
                   >
-                    Copy
-                  </Button>
+                    {authUrl.length > 80 ? authUrl.slice(0, 80) + "..." : authUrl}
+                  </a>
+                  <button
+                    onClick={() => copy(authUrl)}
+                    className="shrink-0 p-1 rounded hover:bg-sidebar"
+                    title={copied ? "Copied!" : "Copy link"}
+                  >
+                    <span className="material-symbols-outlined text-base">
+                      {copied ? "check" : "content_copy"}
+                    </span>
+                  </button>
                 </div>
               </div>
+            )}
 
-              <div>
-                <p className="text-sm font-medium mb-2">Step 2: Paste the callback URL here</p>
-                <p className="text-xs text-text-muted mb-2">
-                  After authorization, copy the full URL from your browser address bar.
-                </p>
-                <Input
-                  value={callbackUrl}
-                  onChange={(e) => setCallbackUrl(e.target.value)}
-                  placeholder="kiro://kiro.kiroAgent/authenticate-success?code=..."
-                  className="font-mono text-xs"
-                />
+            {userCode && (
+              <div className="mb-4">
+                <p className="text-xs text-text-muted mb-1">Verification code</p>
+                <p className="font-mono text-2xl font-bold tracking-widest">{userCode}</p>
               </div>
+            )}
+
+            <div className="flex items-center justify-center gap-2 text-sm text-text-muted">
+              <span className="material-symbols-outlined text-base animate-spin">
+                progress_activity
+              </span>
+              Waiting for authorization...
             </div>
 
-            <div className="flex gap-2">
-              <Button onClick={handleManualSubmit} fullWidth disabled={!callbackUrl}>
-                Connect
-              </Button>
-              <Button onClick={onClose} variant="ghost" fullWidth>
+            <div className="mt-6">
+              <Button onClick={handleClose} variant="ghost" fullWidth>
                 Cancel
               </Button>
             </div>
-          </>
+          </div>
         )}
 
-        {/* Success */}
         {step === "success" && (
           <div className="text-center py-6">
             <div className="size-16 mx-auto mb-4 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center">
-              <span className="material-symbols-outlined text-3xl text-green-600">check_circle</span>
+              <span className="material-symbols-outlined text-3xl text-green-600">
+                check_circle
+              </span>
             </div>
             <h3 className="text-lg font-semibold mb-2">Connected Successfully!</h3>
             <p className="text-sm text-text-muted mb-4">
               Your Kiro account via {providerName} has been connected.
             </p>
-            <Button onClick={onClose} fullWidth>
+            <Button onClick={handleClose} fullWidth>
               Done
             </Button>
           </div>
         )}
 
-        {/* Error */}
         {step === "error" && (
           <div className="text-center py-6">
             <div className="size-16 mx-auto mb-4 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center">
@@ -191,14 +194,9 @@ export default function KiroSocialOAuthModal({ isOpen, provider, onSuccess, onCl
             </div>
             <h3 className="text-lg font-semibold mb-2">Connection Failed</h3>
             <p className="text-sm text-red-600 mb-4">{error}</p>
-            <div className="flex gap-2">
-              <Button onClick={() => setStep("input")} variant="secondary" fullWidth>
-                Try Again
-              </Button>
-              <Button onClick={onClose} variant="ghost" fullWidth>
-                Cancel
-              </Button>
-            </div>
+            <Button onClick={handleClose} variant="ghost" fullWidth>
+              Close
+            </Button>
           </div>
         )}
       </div>
