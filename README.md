@@ -90,52 +90,113 @@ Result: Never stop coding, minimal cost + 20-40% token savings via RTK
 
 ---
 
-## ⚡ Quick Start
+## ⚡ Quick Start (this fork)
 
-**1. Install globally:**
+> The npm package `9router` and the Docker image `decolua/9router` are still the **upstream** project. To get this fork's hardening pass + Kiro Google/GitHub OAuth, install from source as shown below.
 
-```bash
-npm install -g 9router
-9router
-```
-
-🎉 Dashboard opens at `http://localhost:20128`
-
-**2. Connect a FREE provider (no signup needed):**
-
-Dashboard → Providers → Connect **Kiro AI** (free Claude unlimited) or **OpenCode Free** (no auth) → Done!
-
-**3. Use in your CLI tool:**
-
-```
-Claude Code/Codex/OpenClaw/Cursor/Cline Settings:
-  Endpoint: http://localhost:20128/v1
-  API Key: [copy from dashboard]
-  Model: kr/claude-sonnet-4.5
-```
-
-**That's it!** Start coding with FREE AI models.
-
-**Alternative: run from source (this repository):**
-
-This repository package is private (`9router-app`), so source/Docker execution is the expected local development path.
+### TL;DR — paste this into a terminal
 
 ```bash
-cp .env.example .env
+git clone https://github.com/sifxprime/9router.git
+cd 9router
 npm install
-PORT=20128 NEXT_PUBLIC_BASE_URL=http://localhost:20128 npm run dev
+npm run dev
 ```
 
-Production mode:
+Dashboard opens at **http://localhost:20128/dashboard**.
+
+That's the whole install. The rest of this section breaks down what each step needs and the production-style run.
+
+### Prerequisites
+
+| Tool | Minimum | Notes |
+|---|---|---|
+| **Node.js** | ≥ 20 (22 recommended) | `node -v` to check. macOS via Homebrew: `brew install node@22`. Linux: nvm or your distro's Node 22. Windows: nodejs.org installer. |
+| **Git** | any recent | `git --version` |
+| **A package manager** | npm (bundled with Node) | pnpm / yarn / bun also work — the project detects and uses whichever you ran install with. |
+| **Sudo / admin** | only if you enable MITM | Pure router mode (chat completions only) needs **no** privileges. MITM intercept for Kiro / Antigravity / Copilot / Cursor binds `:443` and edits `/etc/hosts`, which does. |
+
+### Step-by-step
+
+**1. Get the code**
 
 ```bash
-npm run build
-PORT=20128 HOSTNAME=0.0.0.0 NEXT_PUBLIC_BASE_URL=http://localhost:20128 npm run start
+git clone https://github.com/sifxprime/9router.git
+cd 9router
 ```
 
-Default URLs:
+**2. Install dependencies** (≈ 1–3 minutes)
+
+```bash
+npm install
+# or: pnpm install   /   yarn install   /   bun install
+```
+
+This pulls Next.js, React, the `better-sqlite3` native binding, and the rest. The SQLite binding compiles on install — on a fresh macOS you may be prompted for Xcode Command Line Tools (one-time `xcode-select --install`).
+
+**3. Start it**
+
+For day-to-day use:
+
+```bash
+npm run dev          # Next.js dev server, hot reload, port 20128
+```
+
+For production-style standalone (smaller memory, no HMR):
+
+```bash
+npm run build:deploy   # one-time build + copy static assets to standalone, ≈ 30s
+npm run start          # standalone server on PORT=20128
+```
+
+> Use `npm run build:deploy`, **not** plain `npm run build` — the standalone bundle that `npm run start` runs needs the static assets copied alongside it. The `:deploy` variant does both steps.
+
+Either way, open: **[http://localhost:20128/dashboard](http://localhost:20128/dashboard)**
+
+On first run the app creates `~/.9router/` (SQLite DB, machine-id, MITM CA) — it's gitignored, per-user, and fully reset by deleting that folder.
+
+### What happens next (no reboot, no extra config)
+
+1. **Dashboard → Providers** → pick any provider tile.
+   - **Free, no signup needed**: MiMo Code Free, OpenCode Free → click [+] on the suggested model.
+   - **Free, login required**: Kiro AI (AWS Builder ID **or** Google **or** GitHub thanks to this fork's device-code OAuth), Gemini CLI, Qoder.
+   - **API key**: OpenRouter, NVIDIA NIM, Anthropic, OpenAI, etc.
+2. **Dashboard → API Keys** → create one local API key (e.g. `sk-9router-XXXX`).
+3. Point any AI tool at 9router:
+
+   ```text
+   Endpoint:  http://localhost:20128/v1
+   API key:   sk-9router-XXXX        (from step 2)
+   Model:     kr/claude-sonnet-4.5   (or whatever provider/model you connected)
+   ```
+
+   Works with Claude Code, Cursor, Antigravity, Copilot, Codex CLI, OpenCode, Cline, OpenClaw, any OpenAI-compatible client.
+
+### Updating to the latest fork commits
+
+```bash
+cd 9router
+git pull origin main
+npm install          # only if package.json changed
+# restart dev/start
+```
+
+### Don't need the hardening pass? Use upstream
+
+If you don't need this fork's audit fixes or Kiro Google/GitHub login, the upstream npm/Docker artifacts still work — they just don't carry this fork's changes:
+
+```bash
+npm install -g 9router && 9router
+# or
+docker run -d -p 20128:20128 -v ~/.9router:/root/.9router decolua/9router:latest
+```
+
+### Default URLs
+
 - Dashboard: `http://localhost:20128/dashboard`
 - OpenAI-compatible API: `http://localhost:20128/v1`
+- Anthropic-compatible API: `http://localhost:20128/v1/messages`
+- Health probe: `http://localhost:20128/api/health`
 
 ---
 
