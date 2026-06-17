@@ -23,7 +23,7 @@
 
 This is a hardened fork of the upstream **[decolua/9router](https://github.com/decolua/9router)**, rebranded as **kRouter** by **Kodelyth AI Infrastructure** and maintained at **[sifxprime/krouter](https://github.com/sifxprime/krouter)**.
 
-It tracks upstream but adds an audited security + stability layer focused on production reliability when 9Router is exposed via tunnel (Cloudflare, Tailscale) or used under concurrent multi-agent load. **Eleven audit findings closed across nine atomic commits**, each with reproducing unit tests and live end-to-end verification before commit.
+It tracks upstream but adds an audited security + stability layer focused on production reliability when kRouter is exposed via tunnel (Cloudflare, Tailscale) or used under concurrent multi-agent load. **Eleven audit findings closed across nine atomic commits**, each with reproducing unit tests and live end-to-end verification before commit.
 
 | Area | Hardening in this fork |
 |---|---|
@@ -39,7 +39,7 @@ Upstream features, providers, docs, and roadmap remain authoritative — credit 
 
 ---
 
-## 🤔 Why 9Router?
+## 🤔 Why kRouter?
 
 **Stop wasting money, tokens and hitting limits:**
 
@@ -49,7 +49,7 @@ Upstream features, providers, docs, and roadmap remain authoritative — credit 
 - ❌ Expensive APIs ($20-50/month per provider)
 - ❌ Manual switching between providers
 
-**9Router solves this:**
+**kRouter solves this:**
 
 - ✅ **RTK Token Saver** - Auto-compress tool_result content, save 20-40% tokens per request
 - ✅ **Maximize subscriptions** - Track quota, use every bit before reset
@@ -69,7 +69,7 @@ Upstream features, providers, docs, and roadmap remain authoritative — credit 
        │ http://localhost:20128/v1
        ↓
 ┌─────────────────────────────────────────────┐
-│           9Router (Smart Router)            │
+│           kRouter (Smart Router)            │
 │  • RTK Token Saver (cut tool_result tokens) │
 │  • Format translation (OpenAI ↔ Claude)     │
 │  • Quota tracking                           │
@@ -224,77 +224,9 @@ If you hit anything OS-specific, [open an issue](https://github.com/sifxprime/kr
 
 ---
 
-## Video Guides
-
-<div align="center">
-
-<table>
-  <tr>
-    <td align="center" width="320">
-      <a href="https://www.youtube.com/watch?v=raEyZPg5xE0">
-        <img src="https://img.youtube.com/vi/raEyZPg5xE0/maxresdefault.jpg" alt="9Router Setup Tutorial" width="300"/>
-      </a><br/>
-      <b>🇺🇸 English</b><br/>
-      <sub>9Router + Claude Code FREE Setup<br/>by <a href="https://www.youtube.com/@BuildAIWithHamid">Build AI With Hamid</a></sub>
-    </td>
-    <td align="center" width="320">
-      <a href="https://www.youtube.com/watch?v=X69n5Lm06Yw">
-        <img src="https://img.youtube.com/vi/X69n5Lm06Yw/maxresdefault.jpg" alt="Tiết kiệm chi phí LLM với 9Router" width="300"/>
-      </a><br/>
-      <b>🇻🇳 Tiếng Việt</b><br/>
-      <sub>Tiết kiệm chi phí LLM cho OpenClaw với 9Router<br/>by <a href="https://www.youtube.com/c/M%C3%ACAIblog">Mì AI</a></sub>
-    </td>
-    <td align="center" width="320">
-      <a href="https://www.youtube.com/watch?v=o3qYCyjrFYg">
-        <img src="https://img.youtube.com/vi/o3qYCyjrFYg/maxresdefault.jpg" alt="Claude Code FREE Forever" width="300"/>
-      </a><br/>
-      <b>🇺🇸 English</b><br/>
-      <sub>Claude Code FREE Forever — Unlimited Models<br/>by <a href="https://www.youtube.com/@BuildAIWithHamid">Build AI With Hamid</a></sub>
-    </td>
-  </tr>
-  <tr>
-    <td align="center" width="320">
-      <a href="https://www.youtube.com/watch?v=Ttpc26m39Dw">
-        <img src="https://img.youtube.com/vi/Ttpc26m39Dw/maxresdefault.jpg" alt="Claude CLI Free Setup" width="300"/>
-      </a><br/>
-      <b>🇺🇸 English</b><br/>
-      <sub>Claude CLI Free Setup with 9Router 🚀<br/>by <a href="https://www.youtube.com/@CodeVerseSoban">CodeVerse Soban</a></sub>
-    </td>
-    <td align="center" width="320">
-      <a href="https://www.youtube.com/watch?v=G-5A_D5Pm6Y">
-        <img src="https://img.youtube.com/vi/G-5A_D5Pm6Y/maxresdefault.jpg" alt="Cài đặt OpenClaw Free A-Z" width="300"/>
-      </a><br/>
-      <b>🇻🇳 Tiếng Việt</b><br/>
-      <sub>Cài Đặt OpenClaw Free Từ A-Z + 9Router<br/>by <a href="https://www.youtube.com/@maigia">Mai Gia</a></sub>
-    </td>
-    <td align="center" width="320">
-      <a href="https://www.youtube.com/watch?v=JXmg8_gccgE">
-        <img src="https://img.youtube.com/vi/JXmg8_gccgE/maxresdefault.jpg" alt="FREE OpenClaw with Claude Opus" width="300"/>
-      </a><br/>
-      <b>🇺🇸 English</b><br/>
-      <sub>FREE OpenClaw + Claude Opus 4.6<br/>by <a href="https://www.youtube.com/@BuildAIWithHamid">Build AI With Hamid</a></sub>
-    </td>
-  </tr>
-   <tr>
-    <td align="center" width="320">
-      <a href="https://www.youtube.com/watch?v=CkVZZUSTXAI">
-        <img src="https://img.youtube.com/vi/CkVZZUSTXAI/mqdefault.jpg" alt="Claude CLI Free Setup" width="300"/>
-      </a><br/>
-      <b>🇮🇩 Indonesia</b><br/>
-      <sub>Koding 24 Jam Anti Rate Limit! Hemat Token AI 65% | Tutorial Quick Setup 9Router 🚀<br/>by <a href="https://www.youtube.com/@krisswuh">Krisswuh</a></sub>
-    </td>
-  </tr>
-</table>
-
-</div>
-
-> 🎬 **Made a video about 9Router?** Submit a [Pull Request](https://github.com/decolua/9router/pulls) adding your video to this section — we'll merge it!
-
----
-
 ## 🛠️ Supported CLI Tools
 
-9Router works seamlessly with all major AI coding tools:
+kRouter works seamlessly with all major AI coding tools:
 
 <div align="center">
   <table>
@@ -559,7 +491,7 @@ Combo: "my-coding-stack"
 
 Seamless translation between formats:
 - **OpenAI** ↔ **Claude** ↔ **Gemini** ↔ **Cursor** ↔ **Kiro** ↔ **Vertex** ↔ **Antigravity** ↔ **Ollama** ↔ **OpenAI Responses**
-- Your CLI tool sends OpenAI format → 9Router translates → Provider receives native format
+- Your CLI tool sends OpenAI format → kRouter translates → Provider receives native format
 - Works with any tool that supports custom OpenAI endpoints
 
 ### 👥 Multi-Account Support
@@ -613,13 +545,13 @@ Seamless translation between formats:
 > **💡 IMPORTANT - Understanding Dashboard Costs:**
 > 
 > The "cost" displayed in Usage Analytics is **for tracking and comparison purposes only**. 
-> 9Router itself **never charges** you anything. You only pay providers directly (if using paid services).
+> kRouter itself **never charges** you anything. You only pay providers directly (if using paid services).
 > 
 > **Example:** If your dashboard shows "$290 total cost" while using iFlow models, this represents 
 > what you would have paid using paid APIs directly. Your actual cost = **$0** (iFlow is free unlimited).
 > 
 > Think of it as a "savings tracker" showing how much you're saving by using free models or 
-> routing through 9Router!
+> routing through kRouter!
 
 ### 🌐 Deploy Anywhere
 
@@ -652,15 +584,15 @@ Seamless translation between formats:
 
 ---
 
-### 📊 Understanding 9Router Costs & Billing
+### 📊 Understanding kRouter Costs & Billing
 
-**9Router Billing Reality:**
+**kRouter Billing Reality:**
 
-✅ **9Router software = FREE forever** (open source, never charges)  
+✅ **kRouter software = FREE forever** (open source, never charges)  
 ✅ **Dashboard "costs" = Display/tracking only** (not actual bills)  
 ✅ **You pay providers directly** (subscriptions or API fees)  
 ✅ **FREE providers stay FREE** (iFlow, Kiro, Qwen = $0 unlimited)  
-❌ **9Router never sends invoices** or charges your card
+❌ **kRouter never sends invoices** or charges your card
 
 **How Cost Display Works:**
 
@@ -681,9 +613,9 @@ Reality Check:
 
 **Payment Rules:**
 - **Subscription providers** (Claude Code, Codex): Pay them directly via their websites
-- **Cheap providers** (GLM, MiniMax): Pay them directly, 9Router just routes
+- **Cheap providers** (GLM, MiniMax): Pay them directly, kRouter just routes
 - **FREE providers** (iFlow, Kiro, Qwen): Genuinely free forever, no hidden charges
-- **9Router**: Never charges anything, ever
+- **kRouter**: Never charges anything, ever
 
 ---
 
@@ -758,7 +690,7 @@ Access via: WhatsApp, Telegram, Slack, Discord, iMessage, Signal...
 <details>
 <summary><b>📊 Why does my dashboard show high costs?</b></summary>
 
-The dashboard tracks your token usage and displays **estimated costs** as if you were using paid APIs directly. This is **not actual billing** - it's a reference to show how much you're saving by using free models or existing subscriptions through 9Router.
+The dashboard tracks your token usage and displays **estimated costs** as if you were using paid APIs directly. This is **not actual billing** - it's a reference to show how much you're saving by using free models or existing subscriptions through kRouter.
 
 **Example:**
 - **Dashboard shows:** "$290 total cost"
@@ -771,16 +703,16 @@ The cost display is a "savings tracker" to help you understand your usage patter
 </details>
 
 <details>
-<summary><b>💳 Will I be charged by 9Router?</b></summary>
+<summary><b>💳 Will I be charged by kRouter?</b></summary>
 
-**No.** 9Router is free, open-source software that runs on your own computer. It never charges you anything.
+**No.** kRouter is free, open-source software that runs on your own computer. It never charges you anything.
 
 **You only pay:**
 - ✅ **Subscription providers** (Claude Code $20/mo, Codex $20-200/mo) → Pay them directly on their websites
-- ✅ **Cheap providers** (GLM, MiniMax) → Pay them directly, 9Router just routes your requests
-- ❌ **9Router itself** → **Never charges anything, ever**
+- ✅ **Cheap providers** (GLM, MiniMax) → Pay them directly, kRouter just routes your requests
+- ❌ **kRouter itself** → **Never charges anything, ever**
 
-9Router is a local proxy/router. It doesn't have your credit card, can't send invoices, and has no billing system. It's completely free software.
+kRouter is a local proxy/router. It doesn't have your credit card, can't send invoices, and has no billing system. It's completely free software.
 
 </details>
 
@@ -794,7 +726,7 @@ These are free services offered by those respective companies:
 - **OpenCode Free**: No-auth passthrough proxy, models auto-fetched from `opencode.ai/zen/v1/models`
 - **Vertex AI**: $300 free credits for new Google Cloud accounts (90 days)
 
-9Router just routes your requests to them - there's no "catch" or future billing. They're truly free services, and 9Router makes them easy to use with fallback support.
+kRouter just routes your requests to them - there's no "catch" or future billing. They're truly free services, and kRouter makes them easy to use with fallback support.
 
 **Discontinued free tiers (no longer recommended):**
 - ❌ **iFlow**: Was free unlimited, now changed to paid (2026)
@@ -824,7 +756,7 @@ These are free services offered by those respective companies:
 
 3. **Use subscription providers last:**
    - Only if you already have them
-   - 9Router helps maximize their value through quota tracking
+   - kRouter helps maximize their value through quota tracking
 
 **Result:** Most users can operate at $0/month using only free tiers!
 
@@ -833,20 +765,20 @@ These are free services offered by those respective companies:
 <details>
 <summary><b>📈 What if my usage suddenly spikes?</b></summary>
 
-9Router's smart fallback prevents surprise charges:
+kRouter's smart fallback prevents surprise charges:
 
 **Scenario:** You're on a coding sprint and blow through your quotas
 
-**Without 9Router:**
+**Without kRouter:**
 - ❌ Hit rate limit → Work stops → Frustration
 - ❌ Or: Accidentally rack up huge API bills
 
-**With 9Router:**
+**With kRouter:**
 - ✅ Subscription hits limit → Auto-fallback to cheap tier
 - ✅ Cheap tier gets expensive → Auto-fallback to free tier
 - ✅ Never stop coding → Predictable costs
 
-**You're in control:** Set spending limits per provider in dashboard, and 9Router respects them.
+**You're in control:** Set spending limits per provider in dashboard, and kRouter respects them.
 
 </details>
 
@@ -871,7 +803,7 @@ Models:
   cc/claude-haiku-4-5-20251001
 ```
 
-**Pro Tip:** Use Opus for complex tasks, Sonnet for speed. 9Router tracks quota per model!
+**Pro Tip:** Use Opus for complex tasks, Sonnet for speed. kRouter tracks quota per model!
 
 ### OpenAI Codex (Plus/Pro)
 
@@ -1115,7 +1047,7 @@ Dashboard → CLI Tools → OpenClaw → Select Model → Apply
 }
 ```
 
-> **Note:** OpenClaw only works with local 9Router. Use `127.0.0.1` instead of `localhost` to avoid IPv6 resolution issues.
+> **Note:** OpenClaw only works with local kRouter. Use `127.0.0.1` instead of `localhost` to avoid IPv6 resolution issues.
 
 ### Cline / Continue / RooCode
 
@@ -1322,7 +1254,7 @@ Notes:
 - Add combo: `cc/claude-opus-4-7 → glm/glm-5.1 → kr/claude-sonnet-4.5`
 
 **OAuth token expired**
-- Auto-refreshed by 9Router
+- Auto-refreshed by kRouter
 - If issues persist: Dashboard → Provider → Reconnect
 
 **High costs**
@@ -1383,29 +1315,9 @@ Authorization: Bearer your-api-key
 
 ## 📧 Support
 
-- **Website**: [9router.com](https://9router.com)
-- **GitHub**: [github.com/decolua/9router](https://github.com/decolua/9router)
-- **Issues**: [github.com/decolua/9router/issues](https://github.com/decolua/9router/issues)
-
----
-
-## 👥 Contributors
-
-Thanks to all contributors who helped make 9Router better!
-
-[![Contributors](https://contrib.rocks/image?repo=decolua/9router&max=150&columns=15&anon=1&v=20260309)](https://github.com/decolua/9router/graphs/contributors)
-
----
-
-## 📊 Star Chart
-
-[![Star Chart](https://starchart.cc/decolua/9router.svg?variant=adaptive)](https://starchart.cc/decolua/9router)
-
-
-
-## 🔀 Forks
-
-**[OmniRoute](https://github.com/diegosouzapw/OmniRoute)** — A full-featured TypeScript fork of 9Router. Adds 36+ providers, 4-tier auto-fallback, multi-modal APIs (images, embeddings, audio, TTS), circuit breaker, semantic cache, LLM evaluations, and a polished dashboard. 368+ unit tests. Available via npm and Docker.
+- **GitHub**: [github.com/sifxprime/krouter](https://github.com/sifxprime/krouter)
+- **Issues**: [github.com/sifxprime/krouter/issues](https://github.com/sifxprime/krouter/issues)
+- **npm**: [`@sifxprime/krouter`](https://www.npmjs.com/package/@sifxprime/krouter)
 
 ---
 
@@ -1413,12 +1325,13 @@ Thanks to all contributors who helped make 9Router better!
 
 Built on the shoulders of giants:
 
-- **[decolua/9router](https://github.com/decolua/9router)** — the upstream project that this fork tracks. All core architecture, providers, dashboard, and ongoing feature work are authored upstream. This fork only adds the security + stability hardening described in the [About this fork](#-about-this-fork--sifxprime9router) section.
+- **[decolua/9router](https://github.com/decolua/9router)** — the upstream project this fork tracks. All core architecture, providers, dashboard, and ongoing feature work are authored upstream. kRouter only adds the security + stability hardening described in the [About this fork](#-about-this-fork--sifxprimekrouter) section.
+- **[CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI)** — original Go implementation that inspired the upstream JavaScript port.
 - **[CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI)** — original Go implementation that inspired this JavaScript port.
-- **[RTK](https://github.com/rtk-ai/rtk)** ![Stars](https://img.shields.io/github/stars/rtk-ai/rtk?style=flat&color=yellow) — Rust token-saver. 9Router ports its compression pipeline to JS → **−20-40% input tokens** on every request.
-- **[Caveman](https://github.com/JuliusBrussee/caveman)** ![Stars](https://img.shields.io/github/stars/JuliusBrussee/caveman?style=flat&color=yellow) by **[@JuliusBrussee](https://github.com/JuliusBrussee)** — viral *"why use many token when few token do trick"*. 9Router adapts its prompt → **−65% output tokens**.
+- **[RTK](https://github.com/rtk-ai/rtk)** ![Stars](https://img.shields.io/github/stars/rtk-ai/rtk?style=flat&color=yellow) — Rust token-saver. kRouter ports its compression pipeline to JS → **−20-40% input tokens** on every request.
+- **[Caveman](https://github.com/JuliusBrussee/caveman)** ![Stars](https://img.shields.io/github/stars/JuliusBrussee/caveman?style=flat&color=yellow) by **[@JuliusBrussee](https://github.com/JuliusBrussee)** — viral *"why use many token when few token do trick"*. kRouter adapts its prompt → **−65% output tokens**.
 
-Huge thanks to these authors — without their work, 9Router's token-saving features wouldn't exist. ⭐ them on GitHub!
+Huge thanks to these authors — without their work, kRouter's token-saving features wouldn't exist. ⭐ them on GitHub!
 
 ---
 

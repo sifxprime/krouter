@@ -123,7 +123,7 @@ export async function DELETE() {
       }
     } catch { /* ignore */ }
 
-    return NextResponse.json({ success: true, message: "9Router settings removed from Kilo Code" });
+    return NextResponse.json({ success: true, message: "kRouter settings removed from Kilo Code" });
   } catch (error) {
     console.log("Error resetting kilo settings:", error);
     return NextResponse.json({ error: "Failed to reset kilo settings" }, { status: 500 });

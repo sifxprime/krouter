@@ -229,7 +229,7 @@ export async function DELETE() {
 
     return NextResponse.json({
       success: true,
-      message: "9Router settings removed successfully",
+      message: "kRouter settings removed successfully",
     });
   } catch (error) {
     console.log("Error resetting codex settings:", error);
