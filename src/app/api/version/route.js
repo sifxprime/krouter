@@ -1,13 +1,20 @@
 import https from "https";
 import pkg from "../../../../package.json" with { type: "json" };
 
-const NPM_PACKAGE_NAME = "9router";
+// Brand: this fork publishes under @sifxprime/krouter on npm. The dashboard's
+// "Update now" banner polls this package's "latest" tag and compares against
+// the running pkg.version. Pointing at the upstream "9router" name would
+// surface upstream's version as available and let the user wipe this fork by
+// clicking Update.
+const NPM_PACKAGE_NAME = "@sifxprime/krouter";
 
-// Fetch latest version from npm registry
+// Fetch latest version from npm registry. Scoped packages need URL-encoding:
+// "@sifxprime/krouter" → "@sifxprime%2Fkrouter".
 function fetchLatestVersion() {
+  const encoded = NPM_PACKAGE_NAME.replace("/", "%2F");
   return new Promise((resolve) => {
     const req = https.get(
-      `https://registry.npmjs.org/${NPM_PACKAGE_NAME}/latest`,
+      `https://registry.npmjs.org/${encoded}/latest`,
       { timeout: 4000 },
       (res) => {
         let data = "";
