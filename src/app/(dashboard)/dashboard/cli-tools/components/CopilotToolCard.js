@@ -168,7 +168,7 @@ export default function CopilotToolCard({ tool, isExpanded, onToggle, baseUrl, a
     return [{
       filename: "~/Library/Application Support/Code/User/chatLanguageModels.json",
       content: JSON.stringify([{
-        name: "9Router",
+        name: "kRouter",
         vendor: "azure",
         apiKey: keyToUse,
         models: modelsToShow.map((id) => ({
