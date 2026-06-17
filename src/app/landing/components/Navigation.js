@@ -19,7 +19,7 @@ export default function Navigation() {
           <div className="size-8 rounded bg-linear-to-br from-[#f97815] to-orange-700 flex items-center justify-center text-white">
             <span className="material-symbols-outlined text-[20px]">hub</span>
           </div>
-          <h2 className="text-white text-xl font-bold tracking-tight">9Router</h2>
+          <h2 className="text-white text-xl font-bold tracking-tight">kRouter</h2>
         </button>
 
         {/* Desktop menu */}

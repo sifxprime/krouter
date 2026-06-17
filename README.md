@@ -1,30 +1,27 @@
 <div align="center">
-  <img src="./images/9router.png?1" alt="9Router Dashboard" width="800"/>
-  
-  # 9Router - FREE AI Router & Token Saver
-  
-  **Never stop coding. Save 20-40% tokens with RTK + auto-fallback to FREE & cheap AI models.**
-  
-  **Connect All AI Code Tools (Claude Code, Cursor, Antigravity, Copilot, Codex, Gemini, OpenCode, Cline, OpenClaw...) to 40+ AI Providers & 100+ Models.**
-  
-  [![npm](https://img.shields.io/npm/v/9router.svg)](https://www.npmjs.com/package/9router)
-  [![Downloads](https://img.shields.io/npm/dm/9router.svg)](https://www.npmjs.com/package/9router)
-  [![Docker Pulls](https://img.shields.io/docker/pulls/decolua/9router.svg?logo=docker&label=Docker%20pulls)](https://hub.docker.com/r/decolua/9router)
-  [![GHCR](https://img.shields.io/badge/GHCR-decolua%2F9router-blue?logo=github)](https://github.com/decolua/9router/pkgs/container/9router)
-  [![License](https://img.shields.io/npm/l/9router.svg)](https://github.com/decolua/9router/blob/main/LICENSE)
+  <img src="./images/kodelyth-router.png" alt="kRouter — Kodelyth AI Infrastructure" width="320"/>
 
-  <a href="https://trendshift.io/repositories/22628" target="_blank"><img src="https://trendshift.io/api/badge/repositories/22628" alt="decolua%2F9router | Trendshift" style="width: 250px; height: 55px;" width="250" height="55"/></a>
-  
-  [🚀 Quick Start](#-quick-start) • [💡 Features](#-key-features) • [📖 Setup](#-setup-guide) • [🌐 Website](https://9router.com)
+  # kRouter — Kodelyth AI Infrastructure
+
+  **A hardened fork of [9Router](https://github.com/decolua/9router). Same FREE AI router & token saver — 11 audited security/stability fixes layered on top.**
+
+  **Never stop coding. Save 20-40% tokens with RTK + auto-fallback to FREE & cheap AI models. Connect Claude Code, Cursor, Antigravity, Copilot, Codex, Gemini, OpenCode, Cline, Kiro, OpenClaw... to 40+ AI providers & 100+ models — through one local endpoint.**
+
+  [![npm](https://img.shields.io/npm/v/@sifxprime/krouter.svg)](https://www.npmjs.com/package/@sifxprime/krouter)
+  [![GitHub](https://img.shields.io/badge/github-sifxprime%2Fkrouter-blue?logo=github)](https://github.com/sifxprime/krouter)
+  [![License](https://img.shields.io/npm/l/@sifxprime/krouter.svg)](https://github.com/sifxprime/krouter/blob/main/LICENSE)
+  [![Upstream](https://img.shields.io/badge/upstream-decolua%2F9router-orange)](https://github.com/decolua/9router)
+
+  [🚀 Quick Start](#-quick-start) • [💡 Features](#-key-features) • [📖 Setup](#-setup-guide) • [🔧 About this fork](#-about-this-fork--sifxprimekrouter)
 
   [🇻🇳 Tiếng Việt](./i18n/README.vi.md) • [🇨🇳 中文](./i18n/README.zh-CN.md) • [🇯🇵 日本語](./i18n/README.ja-JP.md) • [🇷🇺 Русский](./i18n/README.ru.md)
 </div>
 
 ---
 
-## 🔧 About this fork — `sifxprime/9router`
+## 🔧 About this fork — `sifxprime/krouter`
 
-This is a hardened fork of the upstream **[decolua/9router](https://github.com/decolua/9router)** maintained at **[sifxprime/9router](https://github.com/sifxprime/9router)**.
+This is a hardened fork of the upstream **[decolua/9router](https://github.com/decolua/9router)**, rebranded as **kRouter** by **Kodelyth AI Infrastructure** and maintained at **[sifxprime/krouter](https://github.com/sifxprime/krouter)**.
 
 It tracks upstream but adds an audited security + stability layer focused on production reliability when 9Router is exposed via tunnel (Cloudflare, Tailscale) or used under concurrent multi-agent load. **Eleven audit findings closed across nine atomic commits**, each with reproducing unit tests and live end-to-end verification before commit.
 
@@ -99,11 +96,11 @@ Result: Never stop coding, minimal cost + 20-40% token savings via RTK
 > Press **Enter after each line**. Windows CMD/PowerShell will not split a single pasted block into separate commands and will treat `git clone …\n cd 9router` as one — you'll see `Repository not found` because Git tries to clone a URL with `cd` appended.
 
 ```bash
-git clone https://github.com/sifxprime/9router.git
+git clone https://github.com/sifxprime/krouter.git
 ```
 
 ```bash
-cd 9router
+cd krouter
 ```
 
 ```bash
@@ -132,8 +129,8 @@ That's the whole install. The rest of this section breaks down what each step ne
 **1. Get the code**
 
 ```bash
-git clone https://github.com/sifxprime/9router.git
-cd 9router
+git clone https://github.com/sifxprime/krouter.git
+cd krouter
 ```
 
 **2. Install dependencies** (≈ 1–3 minutes)
@@ -186,7 +183,7 @@ On first run the app creates `~/.9router/` (SQLite DB, machine-id, MITM CA) — 
 ### Updating to the latest fork commits
 
 ```bash
-cd 9router
+cd krouter
 git pull origin main
 npm install          # only if package.json changed
 # restart dev/start
@@ -223,7 +220,7 @@ This fork's changes are pure cross-platform JavaScript and re-use upstream's per
 
 **Windows note:** MITM requires an elevated process (binds `:443`, edits `C:\Windows\System32\drivers\etc\hosts`, installs the root CA). Launch your CMD or PowerShell as **Run as administrator**, then `cd` into the project and run `npm run dev`. The dashboard will hide the "Administrator required" banner once `net session` succeeds inside the dev server's Node process.
 
-If you hit anything OS-specific, [open an issue](https://github.com/sifxprime/9router/issues) — I'll try to repro and patch.
+If you hit anything OS-specific, [open an issue](https://github.com/sifxprime/krouter/issues) — I'll try to repro and patch.
 
 ---
 
@@ -1139,7 +1136,7 @@ Model: cc/claude-opus-4-7
 ```bash
 # Clone and install
 git clone https://github.com/decolua/9router.git
-cd 9router
+cd krouter
 npm install
 npm run build
 

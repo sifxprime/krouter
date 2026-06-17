@@ -1,8 +1,8 @@
 export default function manifest() {
   return {
-    name: '9Router - AI Infrastructure Management',
-    short_name: '9Router',
-    description: 'One endpoint for all your AI providers. Manage keys, monitor usage, and scale effortlessly.',
+    name: 'kRouter — Kodelyth AI Infrastructure',
+    short_name: 'kRouter',
+    description: 'One endpoint for all your AI providers. Manage keys, monitor usage, and scale effortlessly. By Kodelyth.',
     start_url: '/',
     display: 'standalone',
     background_color: '#0a0a0a',
