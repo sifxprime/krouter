@@ -5,6 +5,7 @@ import { buildClineHeaders } from "../../src/shared/utils/clineAuth.js";
 import { getCachedClaudeHeaders } from "../utils/claudeHeaderCache.js";
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
 import { injectReasoningContent } from "../utils/reasoningContentInjector.js";
+import { stripUnsupportedParams } from "../translator/helpers/paramSupport.js";
 
 export class DefaultExecutor extends BaseExecutor {
   constructor(provider) {
@@ -18,6 +19,10 @@ export class DefaultExecutor extends BaseExecutor {
       if (this.provider === "cerebras" || this.provider === "mistral") {
         delete transformed.client_metadata;
       }
+      // Drop any params the target provider/model is known to reject (e.g.
+      // claude-opus-4 + temperature → Anthropic 400). Rule-table lives in
+      // translator/helpers/paramSupport.js.
+      stripUnsupportedParams(this.provider, model, transformed);
     }
 
     return injectReasoningContent({ provider: this.provider, model, body: transformed });

@@ -7,6 +7,7 @@ import { openaiResponsesToOpenAIResponse } from "../translator/response/openai-r
 import { initState } from "../translator/index.js";
 import { parseSSELine, formatSSE } from "../utils/streamHelpers.js";
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
+import { stripUnsupportedParams } from "../translator/helpers/paramSupport.js";
 import crypto from "crypto";
 
 export class GithubExecutor extends BaseExecutor {
@@ -108,54 +109,22 @@ export class GithubExecutor extends BaseExecutor {
     return /gpt-5|o[134]-/i.test(model);
   }
 
-  // Some models (like gpt-5.4) don't support the temperature parameter
-  supportsTemperature(model) {
-    // gpt-5.4 and similar newer models don't support temperature
-    return !/gpt-5\.4/i.test(model);
-  }
-
-  // GitHub Copilot /chat/completions rejects Claude-style thinking payloads
-  // (OpenClaw sends thinking: { type: "enabled" } → upstream 400).
-  // GPT-5 family on Copilot DOES honor reasoning_effort, so only strip for Claude. (#713)
-  supportsThinking(model) {
-    return !/claude/i.test(model);
-  }
-
-  // reasoning_effort works for GPT-5 family AND Claude Opus 4.6 / Sonnet 4.6
-  // on GitHub Copilot. Only strip for models that don't support it:
-  // Claude Haiku 4.5, Claude Opus 4.7 (rejected upstream).
-  supportsReasoningEffort(model) {
-    const m = model.toLowerCase();
-    // Claude models that DO support reasoning_effort
-    if (/claude.*opus.*4\.6/i.test(m) || /claude.*sonnet.*4\.6/i.test(m)) return true;
-    // All other Claude models: strip
-    if (/claude/i.test(model)) return false;
-    // GPT-5 family, Gemini, etc.: keep
-    return true;
-  }
-
   transformRequest(model, body, stream, credentials) {
     const transformed = { ...body };
     if (this.requiresMaxCompletionTokens(model) && transformed.max_tokens !== undefined) {
       transformed.max_completion_tokens = transformed.max_tokens;
       delete transformed.max_tokens;
     }
-    // Strip temperature for models that don't support it
-    if (!this.supportsTemperature(model) && transformed.temperature !== undefined) {
-      delete transformed.temperature;
-    }
-    // Always strip Claude-style thinking payload (Copilot doesn't understand it)
-    if (!this.supportsThinking(model)) {
-      delete transformed.thinking;
-    }
-    // "none" means no thinking — strip it so models that don't support "none" don't 400
+    // "none" means no thinking — strip it so models that don't support "none" don't 400.
+    // Kept as a per-value strip because the rule depends on the value, not just the key.
     if (transformed.reasoning_effort === "none") {
       delete transformed.reasoning_effort;
     }
-    // Strip reasoning_effort only for models that reject it
-    if (!this.supportsReasoningEffort(model) && transformed.reasoning_effort !== undefined) {
-      delete transformed.reasoning_effort;
-    }
+    // Config-driven strip of params Copilot rejects for specific model families
+    // (gpt-5.4 → no temperature; Claude non-4.6 → no thinking / reasoning_effort).
+    // Rule table lives in translator/helpers/paramSupport.js — add a rule there
+    // instead of growing more scattered supports*/strip branches here.
+    stripUnsupportedParams("github", model, transformed);
     return transformed;
   }
 
