@@ -700,7 +700,10 @@ export async function appendRequestLog() {}
 
 export async function getRecentLogs(limit = 200) {
   try {
-    const db = getAdapter();
+    // getAdapter() is async — without await, `db` is a Promise and db.all() throws
+    // synchronously. The outer try/catch then silently returns [], so the usage-logs
+    // endpoints (/api/usage/logs, /api/usage/request-logs) always show empty.
+    const db = await getAdapter();
     const rows = db.all(
       `SELECT timestamp, provider, model, connectionId, promptTokens, completionTokens, status, tokens FROM usageHistory ORDER BY id DESC LIMIT ?`,
       [limit],
