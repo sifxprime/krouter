@@ -125,8 +125,10 @@ export default function ModelSelectModal({
 
     // Filter a models[] array by kindFilter (keep only matching m.type)
     const filterByKind = (models) => {
-      // No kindFilter → LLM context: keep only LLM models (no type or type === "llm")
-      if (!kindFilter) return models.filter((m) => m.isPlaceholder || !m.type || m.type === "llm");
+      // No kindFilter → LLM context. Keep custom models visible because
+      // user-added models may have typed capabilities (e.g. imageToText) while
+      // still being valid chat/combo targets — ported from upstream 5e5e78d.
+      if (!kindFilter) return models.filter((m) => m.isPlaceholder || m.isCustom || !m.type || m.type === "llm");
       if (!TYPED_KINDS.has(kindFilter)) return models;
       return models.filter((m) => m.isPlaceholder || m.type === kindFilter);
     };
