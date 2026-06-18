@@ -132,10 +132,10 @@ export default function Sidebar({ onClose }) {
             </div>
             <div className="flex flex-col leading-none">
               <h1
-                className="text-[17px] font-bold text-text-main"
+                className="text-[17px] font-bold text-text-main uppercase"
                 style={{
                   fontFamily: "var(--font-display)",
-                  letterSpacing: "-0.01em",
+                  letterSpacing: "0.04em",
                 }}
               >
                 {APP_CONFIG.name}

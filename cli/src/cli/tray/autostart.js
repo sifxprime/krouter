@@ -3,7 +3,13 @@ const path = require("path");
 const os = require("os");
 const { execSync } = require("child_process");
 
-const APP_NAME = "9router";
+const APP_NAME = "krouter";
+// macOS LaunchAgent bundle ID intentionally kept as the legacy "com.9router.autostart"
+// to avoid double-launch on upgrade: changing it would leave the old plist at
+// ~/Library/LaunchAgents/com.9router.autostart.plist still registered with launchd
+// while the new file writes alongside, firing TWO kRouter processes on every login
+// until the user manually unloads the old plist. Identifier is invisible to the
+// user — only relevant to launchctl.
 const APP_LABEL = "com.9router.autostart";
 
 /**
@@ -182,9 +188,9 @@ function enableMacOS(cliPath) {
     <key>KeepAlive</key>
     <false/>
     <key>StandardOutPath</key>
-    <string>/tmp/9router.log</string>
+    <string>/tmp/krouter.log</string>
     <key>StandardErrorPath</key>
-    <string>/tmp/9router.error.log</string>
+    <string>/tmp/krouter.error.log</string>
 </dict>
 </plist>`;
 
@@ -280,8 +286,8 @@ function enableLinux(cliPath) {
 
   const desktopContent = `[Desktop Entry]
 Type=Application
-Name=9Router
-Comment=9Router API Proxy
+Name=kRouter
+Comment=kRouter API Proxy
 Exec=${nodePath} ${routerScript} --tray --skip-update
 Hidden=false
 NoDisplay=false

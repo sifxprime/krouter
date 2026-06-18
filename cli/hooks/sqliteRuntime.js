@@ -8,11 +8,23 @@ const path = require("path");
 
 const BETTER_SQLITE3_VERSION = "12.6.2";
 
+// Must match src/mitm/paths.js / src/lib/dataDir.js — one-time auto-migration
+// of ~/.9router → ~/.krouter. Idempotent.
+function appNameDir(name) {
+  return process.platform === "win32"
+    ? path.join(process.env.APPDATA || os.homedir(), name)
+    : path.join(os.homedir(), `.${name}`);
+}
 function getDataDir() {
   if (process.env.DATA_DIR) return process.env.DATA_DIR;
-  return process.platform === "win32"
-    ? path.join(process.env.APPDATA || os.homedir(), "9router")
-    : path.join(os.homedir(), ".9router");
+  const target = appNameDir("krouter");
+  const legacy = appNameDir("9router");
+  try {
+    if (!fs.existsSync(target) && fs.existsSync(legacy)) {
+      fs.renameSync(legacy, target);
+    }
+  } catch { /* best effort */ }
+  return target;
 }
 
 function getRuntimeDir() {
@@ -31,10 +43,10 @@ function ensureRuntimeDir() {
   const pkgPath = path.join(dir, "package.json");
   if (!fs.existsSync(pkgPath)) {
     fs.writeFileSync(pkgPath, JSON.stringify({
-      name: "9router-runtime",
+      name: "krouter-runtime",
       version: "1.0.0",
       private: true,
-      description: "User-writable runtime deps for 9router (better-sqlite3 native binary)",
+      description: "User-writable runtime deps for krouter (better-sqlite3 native binary)",
     }, null, 2));
   }
   return dir;

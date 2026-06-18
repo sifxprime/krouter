@@ -15,14 +15,28 @@ const DEFAULT_CONFIG = {
 
 const CLI_TOKEN_HEADER = "x-9r-cli-token";
 const CLI_TOKEN_SALT = "9r-cli-auth";
-const APP_NAME = "9router";
+// Must match src/mitm/paths.js / src/lib/dataDir.js — one-time auto-migration
+// of ~/.9router → ~/.krouter. Idempotent.
+const APP_NAME = "krouter";
+const LEGACY_APP_NAME = "9router";
+
+function appNameDir(name) {
+  if (process.platform === "win32") {
+    return path.join(process.env.APPDATA || path.join(os.homedir(), "AppData", "Roaming"), name);
+  }
+  return path.join(os.homedir(), `.${name}`);
+}
 
 function getDataDir() {
   if (process.env.DATA_DIR) return process.env.DATA_DIR;
-  if (process.platform === "win32") {
-    return path.join(process.env.APPDATA || path.join(os.homedir(), "AppData", "Roaming"), APP_NAME);
-  }
-  return path.join(os.homedir(), `.${APP_NAME}`);
+  const target = appNameDir(APP_NAME);
+  const legacy = appNameDir(LEGACY_APP_NAME);
+  try {
+    if (!fs.existsSync(target) && fs.existsSync(legacy)) {
+      fs.renameSync(legacy, target);
+    }
+  } catch { /* best effort */ }
+  return target;
 }
 
 const MACHINE_ID_FILE = path.join(getDataDir(), "machine-id");

@@ -44,10 +44,19 @@ const readSettings = async () => {
   }
 };
 
-// Check if settings has 9Router customModels
-const has9RouterConfig = (settings) => {
+// Droid stores our entries under `custom:kRouter-N`. The legacy "custom:9Router-N"
+// prefix is detected as a fallback so existing installs still show as configured;
+// next POST cleans them up and replaces them with the new prefix.
+const CUSTOM_ID_PREFIX = "custom:kRouter";
+const LEGACY_CUSTOM_ID_PREFIX = "custom:9Router";
+
+const isOurCustomEntry = (m) => (
+  m?.id?.startsWith(CUSTOM_ID_PREFIX) || m?.id?.startsWith(LEGACY_CUSTOM_ID_PREFIX)
+);
+
+const hasKRouterConfig = (settings) => {
   if (!settings || !settings.customModels) return false;
-  return settings.customModels.some(m => m.id?.startsWith("custom:9Router"));
+  return settings.customModels.some(isOurCustomEntry);
 };
 
 // GET - Check droid CLI and read current settings
@@ -68,7 +77,8 @@ export async function GET() {
     return NextResponse.json({
       installed: true,
       settings,
-      has9Router: has9RouterConfig(settings),
+      hasKRouter: hasKRouterConfig(settings),
+      has9Router: hasKRouterConfig(settings), // legacy field name kept for UIs not yet updated
       settingsPath: getDroidSettingsPath(),
     });
   } catch (error) {
@@ -109,8 +119,8 @@ export async function POST(request) {
       settings.customModels = [];
     }
 
-    // Remove all existing 9Router configs
-    settings.customModels = settings.customModels.filter(m => !m.id?.startsWith("custom:9Router"));
+    // Remove all existing kRouter configs (both new and legacy prefixes)
+    settings.customModels = settings.customModels.filter(m => !isOurCustomEntry(m));
 
     // Normalize baseUrl to ensure /v1 suffix
     const normalizedBaseUrl = baseUrl.endsWith("/v1") ? baseUrl : `${baseUrl}/v1`;
@@ -135,7 +145,7 @@ export async function POST(request) {
       if (!m || typeof m !== "string") continue;
       settings.customModels.push({
         model: m,
-        id: `custom:9Router-${i}`,
+        id: `${CUSTOM_ID_PREFIX}-${i}`,
         index: i,
         baseUrl: normalizedBaseUrl,
         apiKey: keyToUse,
@@ -189,9 +199,9 @@ export async function DELETE() {
       throw error;
     }
 
-    // Remove 9Router customModels
+    // Remove kRouter customModels (both new and legacy prefixes)
     if (settings.customModels) {
-      settings.customModels = settings.customModels.filter(m => !m.id?.startsWith("custom:9Router"));
+      settings.customModels = settings.customModels.filter(m => !isOurCustomEntry(m));
       
       // Remove customModels array if empty
       if (settings.customModels.length === 0) {

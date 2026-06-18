@@ -39,10 +39,16 @@ export default function DroidToolCard({
   const [customBaseUrl, setCustomBaseUrl] = useState("");
   const hasInitializedModel = useRef(false);
 
+  // Droid stores our entries under `custom:kRouter-N`. The legacy `custom:9Router-N`
+  // prefix is detected as a fallback so an existing install shows as configured;
+  // next save cleans them up and replaces with the new prefix.
+  const isOurCustomEntry = (m) => (
+    m?.id?.startsWith("custom:kRouter") || m?.id?.startsWith("custom:9Router")
+  );
+
   const getConfigStatus = () => {
     if (!droidStatus?.installed) return null;
-    // Check for any 9Router model entry (support multi-model: custom:9Router-0, custom:9Router-1, ...)
-    const currentConfig = droidStatus.settings?.customModels?.find(m => m.id?.startsWith("custom:9Router"));
+    const currentConfig = droidStatus.settings?.customModels?.find(isOurCustomEntry);
     if (!currentConfig) return "not_configured";
     return matchKnownEndpoint(currentConfig.baseUrl, { tunnelPublicUrl, tailscaleUrl, cloudUrl: cloudEnabled ? CLOUD_URL : null }) ? "configured" : "other";
   };
@@ -82,14 +88,16 @@ export default function DroidToolCard({
     if (droidStatus?.installed && !hasInitializedModel.current) {
       hasInitializedModel.current = true;
       const existingModels = (droidStatus.settings?.customModels || [])
-        .filter(m => m.id?.startsWith("custom:9Router"))
+        .filter(isOurCustomEntry)
         .sort((a, b) => (a.index || 0) - (b.index || 0))
         .map(m => m.model);
       if (existingModels.length > 0) {
         setModelList(existingModels);
       } else {
-        // Legacy: single model stored as custom:9Router-0
-        const legacy = droidStatus.settings?.customModels?.find(m => m.id === "custom:9Router-0");
+        // Legacy single-model fallback (custom:9Router-0 or custom:kRouter-0)
+        const legacy = droidStatus.settings?.customModels?.find(
+          m => m.id === "custom:kRouter-0" || m.id === "custom:9Router-0"
+        );
         if (legacy?.model) {
           setModelList([legacy.model]);
         }
@@ -195,7 +203,7 @@ export default function DroidToolCard({
     const settingsContent = {
       customModels: modelList.map((m, i) => ({
         model: m,
-        id: `custom:9Router-${i}`,
+        id: `custom:kRouter-${i}`,
         index: i,
         baseUrl: getEffectiveBaseUrl(),
         apiKey: keyToUse,
