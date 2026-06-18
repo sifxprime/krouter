@@ -150,6 +150,7 @@ function dataDirByName(name) {
     ? path.join(process.env.APPDATA || "", name)
     : path.join(os.homedir(), `.${name}`);
 }
+let legacyCoexistWarned = false;
 function getAppDataDir() {
   const target = dataDirByName(DATA_DIR_NAME);
   const legacy = dataDirByName(LEGACY_DATA_DIR_NAME);
@@ -157,6 +158,15 @@ function getAppDataDir() {
     if (!fs.existsSync(target) && fs.existsSync(legacy)) {
       fs.renameSync(legacy, target);
       console.log(`[cli] Migrated data dir: ${legacy} → ${target}`);
+    } else if (fs.existsSync(target) && fs.existsSync(legacy) && !legacyCoexistWarned) {
+      // Both dirs exist — auto-migration won't fire. Surface so user can reconcile.
+      // Don't auto-delete (user data); they decide how to merge / remove the legacy.
+      legacyCoexistWarned = true;
+      console.warn(
+        `[cli] Legacy ${legacy} still exists alongside ${target}. ` +
+        `New writes go to ${target}; the legacy is not read. ` +
+        `If unmerged settings exist there, back it up, merge manually, then: rm -rf ${legacy}`
+      );
     }
   } catch (e) {
     console.warn(`[cli] Data-dir auto-migration failed (${e.code || e.message}); continuing with ${target}`);

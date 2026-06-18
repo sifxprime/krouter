@@ -12,6 +12,23 @@ function appNameDir(name) {
   return path.join(os.homedir(), `.${name}`);
 }
 
+// Warn once per process when both ~/.krouter and ~/.9router co-exist after
+// migration. This happens if the user runs a pre-rename build mid-session,
+// then upgrades — the auto-migration only fires when target is absent, so
+// two parallel data dirs persist forever with no signal. Don't auto-delete
+// (user data); just surface the situation so they can manually reconcile.
+let legacyCoexistWarned = false;
+function warnLegacyCoexistence(target, legacy) {
+  if (legacyCoexistWarned) return;
+  legacyCoexistWarned = true;
+  console.warn(
+    `[dataDir] Legacy ${legacy} still exists alongside ${target}. ` +
+    `New writes go to ${target}; the legacy directory is not read. ` +
+    `If you have unmerged settings in ${legacy}, back it up and merge manually, ` +
+    `then remove it: rm -rf ${legacy}`
+  );
+}
+
 function defaultDir() {
   const target = appNameDir(APP_NAME);
   const legacy = appNameDir(LEGACY_APP_NAME);
@@ -20,6 +37,9 @@ function defaultDir() {
     if (!fs.existsSync(target) && fs.existsSync(legacy)) {
       fs.renameSync(legacy, target);
       console.log(`[dataDir] Migrated data dir: ${legacy} → ${target}`);
+    } else if (fs.existsSync(target) && fs.existsSync(legacy)) {
+      // Both exist — auto-migration won't fire. Surface this so user can decide.
+      warnLegacyCoexistence(target, legacy);
     }
   } catch (e) {
     console.warn(`[dataDir] Auto-migration of ${legacy} → ${target} failed (${e.code || e.message}); continuing with ${target}`);
