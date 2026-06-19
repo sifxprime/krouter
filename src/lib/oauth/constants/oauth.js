@@ -157,6 +157,21 @@ export const GITHUB_CONFIG = {
 // 1. AWS Builder ID (Device Code Flow)
 // 2. AWS IAM Identity Center/IDC (Device Code Flow with custom startUrl/region)
 // 3. Google/GitHub Social Login (Authorization Code Flow - manual callback)
+// AWS region allowlist pattern — prevents SSRF via region injection into
+// upstream URLs. Port of upstream fix for GHSA-6mwv-4mrm-5p3m.
+//
+// Without this, a malicious value like `region="us-east-1.attacker.com#"`
+// would interpolate into `https://oidc.${region}.amazonaws.com/...` and
+// redirect the OAuth call to an attacker-controlled host.
+export const AWS_REGION_PATTERN = /^[a-z]{2}-[a-z]+-\d{1,2}$/;
+
+export function assertValidAwsRegion(region) {
+  if (typeof region !== "string" || !AWS_REGION_PATTERN.test(region)) {
+    throw new Error("Invalid region");
+  }
+  return region;
+}
+
 // 4. Import Token (paste refresh token from Kiro IDE)
 export const KIRO_CONFIG = {
   // AWS SSO OIDC endpoints for Builder ID/IDC (Device Code Flow)
