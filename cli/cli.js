@@ -376,12 +376,15 @@ function killProxyByPidFile() {
   } catch { }
 }
 
-// Kill any process on specific port
+// Kill ALL processes listening on the given port. Returns true if any were killed.
+// Previous version: on Windows only killed the first PID from netstat, missing
+// parent/child pairs (next-server has a watcher + worker). Now sweeps all PIDs.
 function killProcessOnPort(port) {
   return new Promise((resolve) => {
+    let killedAny = false;
     try {
       const platform = process.platform;
-      let pid;
+      const pidsToKill = new Set();
 
       if (platform === "win32") {
         try {
@@ -391,35 +394,47 @@ function killProcessOnPort(port) {
             windowsHide: true,
             timeout: 5000
           }).trim();
-          const lines = output.split('\n').filter(l => l.includes('LISTENING'));
-          if (lines.length > 0) {
-            pid = lines[0].trim().split(/\s+/).pop();
-            execSync(`taskkill /F /PID ${pid} 2>nul`, { stdio: 'ignore', shell: true, windowsHide: true, timeout: 3000 });
+          output.split('\n').filter(l => l.includes('LISTENING')).forEach(line => {
+            const pid = line.trim().split(/\s+/).pop();
+            if (pid && /^\d+$/.test(pid) && pid !== String(process.pid)) pidsToKill.add(pid);
+          });
+          for (const pid of pidsToKill) {
+            try {
+              execSync(`taskkill /F /T /PID ${pid} 2>nul`, { stdio: 'ignore', shell: true, windowsHide: true, timeout: 3000 });
+              killedAny = true;
+            } catch { /* PID may have already exited */ }
           }
         } catch (e) {
-          // Port is free or error
+          // Port is free or netstat failed
         }
       } else {
-        // macOS/Linux
+        // macOS/Linux — lsof returns all PIDs holding the port (TCP, both IPv4 + IPv6)
         try {
           const pidOutput = execSync(`lsof -ti:${port}`, {
             encoding: 'utf8',
             stdio: ['pipe', 'pipe', 'ignore']
           }).trim();
-          if (pidOutput) {
-            pid = pidOutput.split('\n')[0];
-            execSync(`kill -9 ${pid} 2>/dev/null`, { stdio: 'ignore', timeout: 3000 });
+          pidOutput.split('\n').filter(Boolean).forEach(pid => {
+            if (pid !== String(process.pid)) pidsToKill.add(pid);
+          });
+          for (const pid of pidsToKill) {
+            try {
+              execSync(`kill -9 ${pid} 2>/dev/null`, { stdio: 'ignore', timeout: 3000 });
+              killedAny = true;
+            } catch { /* PID may have already exited */ }
           }
         } catch (e) {
-          // Port is free or error
+          // Port is free or lsof errored
         }
       }
 
-      // Wait for port to be released
-      setTimeout(() => resolve(), 500);
+      // Wait for kernel to release the socket (Windows is slow here, give it 1s).
+      // Then verify the port is actually free — if not, surface the result so
+      // the caller can decide whether to retry or fail-fast.
+      setTimeout(() => resolve(killedAny), platform === "win32" ? 1000 : 500);
     } catch (err) {
       // Silent fail - continue anyway
-      resolve();
+      resolve(false);
     }
   });
 }
@@ -829,10 +844,55 @@ function startServer(latestVersion) {
     });
   }
 
+  // Detect "address already in use" in the captured crash log so we can take
+  // the correct recovery path (re-kill the port-holder) instead of the generic
+  // crash path (disable MITM — which is unrelated to a port conflict and only
+  // wastes the user's time).
+  function crashIsAddressInUse() {
+    return crashLog.some(l => /EADDRINUSE|address already in use|port.*in use/i.test(l));
+  }
+
   function tryRestart(code) {
     const aliveMs = Date.now() - serverStartTime;
     // Reset counter if last run was stable
     if (aliveMs >= RESTART_RESET_MS) restartCount = 0;
+
+    // EADDRINUSE recovery path: another process is holding the port. Most
+    // commonly a stale next-server from a previous run that didn't exit
+    // cleanly, or an old `9router` global from before the rebrand. Sweep all
+    // PIDs on the port (including parent+child pairs); if even after that the
+    // port is still occupied, exit with a clear actionable error instead of
+    // looping forever (which is what 0.5.7 did).
+    if (crashIsAddressInUse()) {
+      console.error(`\n⚠️  Port ${port} is in use by another process. Trying to free it...`);
+      Promise.all([killAllAppProcesses(port), killProcessOnPort(port)]).then(() => {
+        // Give the kernel one more breath, then probe.
+        setTimeout(() => {
+          const net = require("net");
+          const probe = net.createServer();
+          probe.once("error", (e) => {
+            if (e.code === "EADDRINUSE") {
+              console.error(`\n❌ Port ${port} is still occupied after attempted cleanup.`);
+              console.error(`   Identify the holder (Windows: netstat -ano | findstr :${port}; macOS/Linux: lsof -i:${port}).`);
+              console.error(`   Either stop that process, or run kRouter on a different port: krouter --port <N>`);
+              process.exit(1);
+            }
+            // Other error — try anyway
+            server = spawnServer();
+            attachServerEvents();
+          });
+          probe.once("listening", () => {
+            probe.close(() => {
+              restartCount = 0;
+              server = spawnServer();
+              attachServerEvents();
+            });
+          });
+          probe.listen(port, host);
+        }, 800);
+      });
+      return;
+    }
 
     if (restartCount >= MAX_RESTARTS) {
       console.error(`\n⚠️  Server crashed ${MAX_RESTARTS} times. Disabling MIT and restarting...`);

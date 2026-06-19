@@ -1,3 +1,54 @@
+# v0.5.9 (2026-06-19) — Windows EADDRINUSE crash-loop fix
+
+Single-purpose patch release. Symptom reported on Windows after upgrading
+to 0.5.8:
+
+```
+⨯ Failed to start server
+Error: listen EADDRINUSE: address already in use 0.0.0.0:20128
+⚠️  Server exited (code=1). Restarting in 1s... (1/2)
+[repeated forever]
+```
+
+Two real bugs surfaced by the upgrade:
+
+1. **`killProcessOnPort` only killed the first PID from `netstat`.** Windows
+   Next.js spawns a parent + child pair (the dev runner + the actual
+   `next-server`); on graceful shutdown only the parent dies and the child
+   inherits the listen socket. Killing just the first PID left the child
+   still bound to the port. Now sweeps ALL PIDs returned by `netstat`
+   (Windows) / `lsof -ti` (macOS/Linux), uses `taskkill /F /T` to kill the
+   whole process tree on Windows, and waits 1s on Windows (vs 500ms
+   elsewhere) for the kernel to release the socket.
+
+2. **The restart loop didn't re-kill on EADDRINUSE.** When the first start
+   failed because a stale process held the port, `tryRestart` just respawned
+   blindly into the same conflict — forever. New EADDRINUSE-aware recovery
+   path detects "address already in use" in the captured crash log, runs
+   `killAllAppProcesses` + `killProcessOnPort` AGAIN, then probes the port
+   with a one-shot `net.createServer` before respawning. If the port is
+   still occupied after the cleanup, exits with an actionable error:
+
+   ```
+   ❌ Port 20128 is still occupied after attempted cleanup.
+      Identify the holder (Windows: netstat -ano | findstr :20128;
+      macOS/Linux: lsof -i:20128).
+      Either stop that process, or run kRouter on a different port:
+      krouter --port <N>
+   ```
+
+   No more infinite "Disabling MIT and restarting..." (which was the wrong
+   recovery anyway — EADDRINUSE has nothing to do with MITM, which runs on
+   port 26139).
+
+Verified
+  - node --check passes
+  - Isolated unit test: spawn victim child holding port → run kill logic →
+    probe → port free → PROBE OK
+  - Excludes own PID (won't suicide)
+
+---
+
 # v0.5.8 (2026-06-19) — security, brand polish, performance, upstream catch-up
 
 25 commits since 0.5.7 — full audit pass with live end-to-end verification on the dev machine, zero test regressions throughout.
