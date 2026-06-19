@@ -513,7 +513,10 @@ async function getAntigravitySubscriptionInfo(accessToken, proxyOptions = null) 
 //     again. If lastGoodCache exists, the user sees fresh-ish data; if not,
 //     they see the rate-limit message.
 const CLAUDE_USAGE_COOLDOWN_MS = 180000;  // 3 minutes
-const CLAUDE_USAGE_GOOD_TTL_MS = 60000;   // serve cached "good" up to 60s old
+// Cached "good" data is fresh enough to serve while cooldown is active. Quota
+// numbers are stable for several minutes — 5min staleness is much better UX
+// than a "retrying in Xs" placeholder when we have real data on hand.
+const CLAUDE_USAGE_GOOD_TTL_MS = 300000;
 const claudeUsageCooldownUntil = new Map();
 const claudeUsageLastGood = new Map();
 
@@ -547,10 +550,19 @@ export async function getClaudeUsage(accessToken, proxyOptions = null) {
     }, proxyOptions);
 
     // Stamp the cooldown ON 429 so we stop hammering the endpoint immediately.
+    // Two paths:
+    //   - Have cached-good data → return it (slightly stale, but real numbers)
+    //   - No cache → return the rate-limit message DIRECTLY. Do NOT fall
+    //     through to the legacy admin endpoint — Anthropic rate-limits the
+    //     whole IP, so the legacy call will 429 too AND burn 2 more requests.
     if (oauthResponse.status === 429) {
       claudeUsageCooldownUntil.set(accessToken, Date.now() + CLAUDE_USAGE_COOLDOWN_MS);
       const lastGood = claudeUsageLastGood.get(accessToken);
       if (lastGood) return { ...lastGood.data, fromCache: true };
+      const secondsLeft = Math.ceil(CLAUDE_USAGE_COOLDOWN_MS / 1000);
+      return {
+        message: `Claude connected. Usage API rate-limited (HTTP 429) — retrying in ~${secondsLeft}s.`,
+      };
     }
 
     if (oauthResponse.ok) {
