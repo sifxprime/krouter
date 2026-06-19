@@ -15,7 +15,24 @@ import { CLAUDE_AUTOPING_CONFIG } from "@/shared/constants/config";
 const C = CLAUDE_AUTOPING_CONFIG;
 const PING_URL = "https://api.anthropic.com/v1/messages?beta=true";
 
-const g = (global.__claudeAutoPing ??= { interval: null, running: false, resetCache: {} });
+const g = (global.__claudeAutoPing ??= {
+  interval: null,
+  running: false,
+  resetCache: {},
+  // Per-connection "skip until" cache. Set when we observe a disabled_reason
+  // on the account (e.g. "out_of_credits", "account_suspended"). Pinging a
+  // disabled account is wasted bandwidth — Anthropic will reject the request
+  // anyway. Re-check after 1 hour in case the user topped up.
+  disabledUntil: {},
+  // Per-connection logged-disabled-reason cache so we only log the same
+  // disabled_reason once per state-change instead of every tick.
+  loggedDisabledReason: {},
+});
+
+// Re-probe disabled accounts at most once per hour. Topping up credits or
+// switching billing tier can re-enable an account; this gives the change a
+// chance to flow through without burning a ping per minute meanwhile.
+const DISABLED_RECHECK_MS = 3600000;
 
 function buildProxyOptions(cfg) {
   return {
@@ -45,6 +62,11 @@ async function sendPing(accessToken, proxyOptions) {
 }
 
 async function pingConnection(conn) {
+  // Skip if we recently observed this account is disabled (e.g. out_of_credits).
+  // The disabledUntil window expires hourly so a topped-up account auto-resumes.
+  const disabledUntil = g.disabledUntil[conn.id];
+  if (disabledUntil && Date.now() < disabledUntil) return;
+
   // Cached resetAt is stable for the whole 5h window; skip usage poll until near reset
   const cachedReset = g.resetCache[conn.id];
   if (cachedReset && Date.now() < new Date(cachedReset).getTime() - C.refreshAheadMs) return;
@@ -63,6 +85,26 @@ async function pingConnection(conn) {
   }
 
   const usage = await getClaudeUsage(connection.accessToken, proxyOptions);
+
+  // Detect a billing-disabled account and short-circuit the ping. Anthropic
+  // surfaces this on the OAuth-usage endpoint as `extra_usage.disabled_reason`.
+  // Common values: "out_of_credits", "account_suspended". Pinging in this
+  // state wastes API calls AND can trigger more aggressive throttling.
+  const disabledReason = usage?.extraUsage?.disabled_reason;
+  if (disabledReason) {
+    g.disabledUntil[conn.id] = Date.now() + DISABLED_RECHECK_MS;
+    if (g.loggedDisabledReason[conn.id] !== disabledReason) {
+      console.warn(`[AutoPing] ${conn.id}: skipping — Claude account disabled_reason="${disabledReason}". Will re-check in ${DISABLED_RECHECK_MS / 60000}m.`);
+      g.loggedDisabledReason[conn.id] = disabledReason;
+    }
+    return;
+  } else if (g.loggedDisabledReason[conn.id]) {
+    // Account recovered (credits topped up, suspension lifted) — clear state.
+    console.log(`[AutoPing] ${conn.id}: account recovered — auto-ping resumed.`);
+    delete g.loggedDisabledReason[conn.id];
+    delete g.disabledUntil[conn.id];
+  }
+
   const resetAt = usage?.quotas?.[C.fiveHourKey]?.resetAt;
   if (!resetAt) return;
 
