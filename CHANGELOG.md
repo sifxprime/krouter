@@ -1,3 +1,51 @@
+# v0.5.12 (2026-06-20) — Claude Desktop MITM + account health
+
+## Features
+
+### Claude Desktop app routing via MITM (new)
+Adds DNS-hijack + TLS interception for `api.anthropic.com` so the
+Anthropic Claude Desktop Electron app — which hardcodes the URL and
+does NOT honor ANTHROPIC_BASE_URL — can be routed through kRouter.
+
+Verified live: Claude Desktop chat works through kRouter with
+`kr/auto` → Kiro routing. Token preview (/v1/messages/count_tokens)
+and telemetry (/api/event_logging/v2/batch) both handled correctly.
+
+Opt-in via Dashboard → MITM → Claude Desktop. Toggle MITM off to
+revert instantly (api.anthropic.com removed from /etc/hosts).
+
+Note: Claude Code CLI users do NOT need this — use ANTHROPIC_BASE_URL.
+
+## Bug fixes
+
+### Antigravity 403 "Verify your account" — lock whole account for 1hr
+When Google flags an Antigravity OAuth account for needing verification
+(PERMISSION_DENIED, "Verify your account to continue"), kRouter was
+locking only the specific model that errored. Since a flagged account
+fails on ALL models, this caused 5+ wasted 403 requests per combo
+cycle before reaching a healthy account.
+
+Fix: new accountLock:true flag on ERROR_RULES. When matched, writes
+modelLock___all (locks entire account) instead of per-model lock.
+1hr cooldown. Auto-clears after 1hr or on "Test connection" click.
+
+Log now shows "WHOLE ACCOUNT locked for 3600s" vs "modelLock_X".
+
+### Anti-loop header on ALL outbound Anthropic calls
+Every kRouter-initiated call to api.anthropic.com now includes
+x-request-source:local so the MITM server passes them through to real
+Anthropic instead of intercepting (infinite loop prevention). Previously
+only the Antigravity quota endpoints had this header. Fixed in:
+  - open-sse/executors/base.js buildHeaders() (covers all providers)
+  - claudeAutoPing.js sendPing()
+  - usage.js getClaudeUsage() + getClaudeUsageLegacy() (3 call sites)
+
+## Verified
+  - Claude Desktop MITM live on Mac — HTTP 200, 11.2s, routes via kr/auto
+  - 403 verify-account unit tests: 4/4 pass
+  - Full test suite: 605 pass + 20 expected-fail + 27 fail (baseline)
+
+
 # v0.5.11 (2026-06-20) — CLI menu reliability + final 9router scrub
 
 Two real bug fixes + the last batch of standalone cleanups.
