@@ -665,13 +665,14 @@ async function startServer(apiKey, sudoPassword, forceKillPort443 = false) {
       try {
         const written = setLinuxNodeExtraCaCerts(rootCAPath);
         if (written.length > 0) {
-          log(`[linux-node-ca] NODE_EXTRA_CA_CERTS written to ${written.length} shell rc file(s): ${written.map(p => p.replace(os.homedir(), "~")).join(", ")}`);
-          log(`[linux-node-ca] ⚠ Effective in NEW shells only — restart your IDE (Antigravity / Claude Desktop / VS Code) OR run: source ~/.profile`);
+          log(`[linux-node-ca] NODE_EXTRA_CA_CERTS written to ${written.length} file(s): ${written.map(p => p.replace(os.homedir(), "~")).join(", ")}`);
+          log(`[linux-node-ca] ⚠ Terminal-launched IDE: open a NEW terminal OR run: source ~/.profile`);
+          log(`[linux-node-ca] ⚠ Menu-launched IDE (GNOME / KDE Activities, .desktop): log out + back in OR run: systemctl --user daemon-reload && systemctl --user import-environment`);
         } else {
           log(`[linux-node-ca] NODE_EXTRA_CA_CERTS already set, no changes needed`);
         }
       } catch (e) {
-        log(`[linux-node-ca] Failed to set NODE_EXTRA_CA_CERTS in shell rc: ${e.message}`);
+        log(`[linux-node-ca] Failed to set NODE_EXTRA_CA_CERTS: ${e.message}`);
       }
     }
   }

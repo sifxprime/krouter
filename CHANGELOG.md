@@ -1,3 +1,66 @@
+# v0.5.13 (2026-06-20) — Linux GUI launcher coverage for MITM cert trust
+
+## Bug fix
+
+### Linux: NODE_EXTRA_CA_CERTS now reaches GUI-launched Antigravity / Claude Desktop / VS Code
+
+Symptom (Ubuntu user, post-0.5.12):
+  Even after kRouter auto-wrote NODE_EXTRA_CA_CERTS to ~/.profile,
+  ~/.bashrc, ~/.zshrc in 0.5.12, GUI-launched Antigravity STILL rejected
+  the MITM cert and forced the user to fall back to
+    NODE_TLS_REJECT_UNAUTHORIZED=0 antigravity
+  (which disables ALL TLS verification — insecure).
+
+Root cause:
+  Linux GUI launchers (GNOME Activities, KDE menu, .desktop files,
+  desktop shortcuts) do NOT source shell rc files. They go through
+  systemd-user / gnome-session, which only reads:
+    - ~/.config/environment.d/*.conf  (systemd-user env)
+    - ~/.pam_environment              (legacy PAM, deprecated but works)
+    - /etc/environment                (system-wide, needs root)
+  Our 0.5.12 fix only covered shell rc files → terminal-launched IDE
+  worked, menu-launched IDE didn't.
+
+Fix:
+  Extended src/mitm/linuxNodeCaCerts.js to also write:
+    ~/.config/environment.d/95-krouter.conf   (systemd-user, KEY=VALUE format)
+    ~/.pam_environment                         (PAM, KEY DEFAULT=value format)
+  in addition to the existing 4 shell rc files. 95- prefix sorts late
+  so kRouter overrides earlier defaults (00-99 priority convention).
+  PAM block uses BEGIN/END markers like the shell files so we can strip
+  cleanly on uninstall without touching user-added PAM entries.
+
+  src/mitm/manager.js log line updated to surface both reload paths:
+    [linux-node-ca] Terminal-launched IDE: open a NEW terminal OR run: source ~/.profile
+    [linux-node-ca] Menu-launched IDE (GNOME / KDE Activities, .desktop): log out + back in
+                    OR run: systemctl --user daemon-reload && systemctl --user import-environment
+
+Effect on Ubuntu user:
+  Before 0.5.13: GUI Antigravity rejects MITM cert -> NODE_TLS_REJECT_UNAUTHORIZED=0 workaround
+  After 0.5.13:  GUI Antigravity -> systemd-user reads 95-krouter.conf ->
+                 NODE_EXTRA_CA_CERTS set -> cert accepted -> MITM works.
+
+  User must log out + back in once (or systemctl --user reload) for
+  systemd-user to re-read environment.d after the upgrade.
+
+Verified (mocked-Linux unit tests, 17/17 PASS):
+  - 5 files written on first set (.profile, .bashrc, .zshrc, environment.d, pam_environment)
+  - systemd file has correct KEY=VALUE format (no shell export syntax)
+  - pam_environment uses correct KEY DEFAULT=value syntax
+  - Idempotent: second set with same path = 0 files changed
+  - Rotation: new cert path replaces all 5 surfaces in place
+  - Unset: all 5 surfaces cleaned, user content preserved in shell rc files
+  - systemd file fully removed (we own it); pam_environment removed when empty
+  - Non-Linux platforms: early return, no-op
+
+Plus regression: 605 pass / 20 expected-fail / 27 fail — identical baseline.
+
+## Upgrade
+
+    npm install -g @sifxprime/krouter@latest
+    # Restart kRouter MITM (writes new env files)
+    # Log out + back in once for systemd-user to pick up environment.d
+
 # v0.5.12 (2026-06-20) — Claude Desktop MITM + account health + Linux trust + cert UI
 
 ## Features
