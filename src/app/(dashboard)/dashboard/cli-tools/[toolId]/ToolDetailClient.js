@@ -5,6 +5,7 @@ import Link from "next/link";
 import { CardSkeleton } from "@/shared/components";
 import { CLI_TOOLS } from "@/shared/constants/cliTools";
 import { getModelsByProviderId, PROVIDER_ID_TO_ALIAS } from "@/shared/constants/models";
+import { AI_PROVIDERS } from "@/shared/constants/providers";
 import {
   ClaudeToolCard, CodexToolCard, DroidToolCard, OpenClawToolCard,
   HermesToolCard, DefaultToolCard, OpenCodeToolCard, CoworkToolCard,
@@ -101,7 +102,14 @@ export default function ToolDetailClient({ toolId, machineId }) {
 
   const renderToolCard = () => {
     const availableModels = getAllAvailableModels();
-    const hasActiveProviders = availableModels.length > 0;
+    // Hardcoded model list is empty for passthroughModels providers (MiMo Free,
+    // OpenCode Free, OpenRouter, Vercel AI Gateway, Grok Web). Treat them as
+    // active if connected — the ModelSelectModal fetches their live model list
+    // from the provider's API URL when opened.
+    const hasPassthroughProvider = getActiveProviders().some(
+      c => AI_PROVIDERS[c.provider]?.passthroughModels === true
+    );
+    const hasActiveProviders = availableModels.length > 0 || hasPassthroughProvider;
     const commonProps = {
       tool,
       isExpanded: true,

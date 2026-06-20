@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { MITM_TOOLS } from "@/shared/constants/cliTools";
 import { getModelsByProviderId } from "@/shared/constants/models";
-import { isOpenAICompatibleProvider, isAnthropicCompatibleProvider } from "@/shared/constants/providers";
+import { isOpenAICompatibleProvider, isAnthropicCompatibleProvider, AI_PROVIDERS } from "@/shared/constants/providers";
 import { MitmServerCard, MitmToolCard } from "@/app/(dashboard)/dashboard/cli-tools/components";
 
 export default function MitmPageClient() {
@@ -68,7 +68,13 @@ export default function MitmPageClient() {
     return active.some(conn =>
       getModelsByProviderId(conn.provider).length > 0 ||
       isOpenAICompatibleProvider(conn.provider) ||
-      isAnthropicCompatibleProvider(conn.provider)
+      isAnthropicCompatibleProvider(conn.provider) ||
+      // Providers like MiMo Free / OpenCode Free / OpenRouter / Vercel AI
+      // Gateway / Grok Web have no hardcoded models — they're fetched live
+      // from a remote URL when /v1/models is hit. Without this clause those
+      // connections register as "inactive" and the MITM model-picker button
+      // stays disabled even though models ARE available at runtime.
+      AI_PROVIDERS[conn.provider]?.passthroughModels === true
     );
   };
 
