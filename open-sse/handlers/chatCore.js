@@ -104,6 +104,7 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
     toolNameMap = translatedBody._toolNameMap;
     delete translatedBody._toolNameMap;
     translatedBody.model = upstreamModel;
+    if (translatedBody.stream === undefined) translatedBody.stream = stream;
   }
 
   // Dedupe duplicate built-in tools when equivalent MCP tools are present (Claude clients only).

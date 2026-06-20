@@ -8,7 +8,7 @@ const NATIVE_PAIRS = {
   "claude": ["claude", "anthropic"],
   "gemini-cli": ["gemini-cli"],
   "antigravity": ["antigravity"],
-  "codex": ["codex"],
+  "codex": ["codex", "openai", "commandcode"],
 };
 
 /**
@@ -38,7 +38,7 @@ export function detectClientTool(headers = {}, body = {}) {
   if (ua.includes("gemini-cli")) return "gemini-cli";
 
   // Codex CLI
-  if (ua.includes("codex-cli")) return "codex";
+  if (ua.includes("codex-cli") || ua.includes("codex/")) return "codex";
 
   // DeepSeek TUI
   if (ua.includes("deepseek-tui")) return "deepseek-tui";

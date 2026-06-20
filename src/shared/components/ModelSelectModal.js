@@ -4,6 +4,8 @@ import { useState, useMemo, useEffect } from "react";
 import PropTypes from "prop-types";
 import Modal from "./Modal";
 import ProviderIcon from "./ProviderIcon";
+import CapacityBadges from "./CapacityBadges";
+import { getCapabilitiesForModel } from "open-sse/providers/capabilities.js";
 import { getModelsByProviderId } from "@/shared/constants/models";
 import { OAUTH_PROVIDERS, APIKEY_PROVIDERS, FREE_PROVIDERS, FREE_TIER_PROVIDERS, AI_PROVIDERS, isOpenAICompatibleProvider, isAnthropicCompatibleProvider, getProviderAlias } from "@/shared/constants/providers";
 
@@ -595,6 +597,10 @@ export default function ModelSelectModal({
               {group.models.map((model) => {
                 const isSelected = selectedModel === model.value;
                 const isPlaceholder = model.isPlaceholder;
+                const caps = !isPlaceholder ? getCapabilitiesForModel(providerId, model.id || model.value) : null;
+                const capSubset = caps
+                  ? { vision: caps.vision, pdf: caps.pdf, reasoning: caps.reasoning }
+                  : null;
                 return (
                   <button
                     key={model.value}
@@ -628,6 +634,13 @@ export default function ModelSelectModal({
                         </>
                       ) : (
                         model.name
+                      )}
+                      {capSubset && (capSubset.vision || capSubset.pdf || capSubset.reasoning) && (
+                        <CapacityBadges
+                          caps={capSubset}
+                          size={12}
+                          colorOverride={isSelected || addedModelValues.includes(model.value) ? "text-white/85" : undefined}
+                        />
                       )}
                     </span>
                   </button>

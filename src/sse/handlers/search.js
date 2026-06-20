@@ -114,7 +114,10 @@ async function handleSingleProviderSearch(body, providerInput, request, apiKey, 
     log.info("ROUTING", `Provider: ${providerId}`);
   }
 
-  // Sanitized body forwarded to core
+  // Merge dashboard-level provider overrides (e.g. custom SearXNG baseUrl) with per-request options
+  const strategyOverrides = (settings.providerStrategies || {})[providerId] || {};
+  const mergedProviderOptions = { ...strategyOverrides, ...(body.provider_options || {}) };
+
   const coreBody = {
     query: query.trim(),
     provider: providerId,
@@ -126,7 +129,7 @@ async function handleSingleProviderSearch(body, providerInput, request, apiKey, 
     offset: body.offset,
     domain_filter: body.domain_filter,
     content_options: body.content_options,
-    provider_options: body.provider_options
+    provider_options: Object.keys(mergedProviderOptions).length > 0 ? mergedProviderOptions : undefined
   };
 
   // No-auth providers (e.g. searxng) bypass credential lookup

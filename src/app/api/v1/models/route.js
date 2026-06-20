@@ -446,9 +446,20 @@ export async function OPTIONS() {
  * GET /v1/models - OpenAI compatible models list (LLM/chat models only by default).
  * For other capabilities use /v1/models/{kind} (image, tts, stt, embedding, image-to-text, web).
  */
-export async function GET() {
+export async function GET(request) {
   try {
     const data = await buildModelsList([LLM_KIND]);
+
+    const ua = (request?.headers?.get("user-agent") || "").toLowerCase();
+    const url = new URL(request.url);
+    const wantsCatalog = ua.includes("codex") || url.searchParams.get("format") === "codex";
+
+    if (wantsCatalog) {
+      return Response.json({
+        models: data.map((m) => ({ id: m.id, name: m.id, ...(m.capabilities ? { capabilities: m.capabilities } : {}) })),
+      }, { headers: { "Access-Control-Allow-Origin": "*" } });
+    }
+
     return Response.json({ object: "list", data }, {
       headers: { "Access-Control-Allow-Origin": "*" },
     });

@@ -154,25 +154,27 @@ export function openaiResponsesToOpenAIRequest(model, body, stream, credentials)
   // Filter them out to avoid sending nameless functionDeclarations to downstream providers
   // such as Gemini, which strictly validates function names.
   if (body.tools && Array.isArray(body.tools)) {
-    result.tools = body.tools
-      .map(tool => {
-        // Already in Chat Completions format: { type: "function", function: { name, ... } }
-        if (tool.function) return tool;
-        // Responses API function tool: { type: "function", name, description, parameters }
-        // Only convert when a non-empty name is present; skip hosted tools without one.
-        const name = tool.name;
-        if (!name || typeof name !== "string" || name.trim() === "") return null;
-        return {
-          type: "function",
-          function: {
-            name,
-            description: String(tool.description || ""),
-            parameters: normalizeToolParameters(tool.parameters),
-            strict: tool.strict
-          }
-        };
-      })
-      .filter(Boolean);
+    const converted = [];
+    const hosted = [];
+    for (const tool of body.tools) {
+      if (tool.function) { converted.push(tool); continue; }
+      const name = tool.name;
+      if (!name || typeof name !== "string" || name.trim() === "") {
+        hosted.push(tool);
+        continue;
+      }
+      converted.push({
+        type: "function",
+        function: {
+          name,
+          description: String(tool.description || ""),
+          parameters: normalizeToolParameters(tool.parameters),
+          strict: tool.strict
+        }
+      });
+    }
+    result.tools = converted;
+    if (hosted.length > 0) result._hostedTools = hosted;
   }
 
   // Cleanup Responses API specific fields

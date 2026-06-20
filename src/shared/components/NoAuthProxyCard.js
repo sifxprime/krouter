@@ -3,16 +3,22 @@
 import { useEffect, useState } from "react";
 import PropTypes from "prop-types";
 import Card from "./Card";
+import Input from "./Input";
 import Select from "./Select";
 import Badge from "./Badge";
+import { AI_PROVIDERS } from "@/shared/constants/providers";
 
 const NONE_PROXY_POOL_VALUE = "__none__";
 
 export default function NoAuthProxyCard({ providerId }) {
   const [proxyPools, setProxyPools] = useState([]);
   const [proxyPoolId, setProxyPoolId] = useState(NONE_PROXY_POOL_VALUE);
+  const [customBaseUrl, setCustomBaseUrl] = useState("");
   const [saving, setSaving] = useState(false);
   const [savedFlash, setSavedFlash] = useState(false);
+
+  const providerInfo = AI_PROVIDERS[providerId];
+  const defaultBaseUrl = providerInfo?.searchConfig?.baseUrl || "";
 
   useEffect(() => {
     let cancelled = false;
@@ -24,20 +30,21 @@ export default function NoAuthProxyCard({ providerId }) {
       setProxyPools(poolData.proxyPools || []);
       const override = (settingsData.providerStrategies || {})[providerId] || {};
       setProxyPoolId(override.proxyPoolId || NONE_PROXY_POOL_VALUE);
+      setCustomBaseUrl(override.baseUrl || "");
     }).catch(() => {});
     return () => { cancelled = true; };
   }, [providerId]);
 
-  const handleChange = async (newValue) => {
-    setProxyPoolId(newValue);
+  const patchProviderStrategy = async (patch) => {
     setSaving(true);
     try {
       const res = await fetch("/api/settings", { cache: "no-store" });
       const data = res.ok ? await res.json() : {};
       const current = data.providerStrategies || {};
-      const override = { ...(current[providerId] || {}) };
-      if (newValue === NONE_PROXY_POOL_VALUE) delete override.proxyPoolId;
-      else override.proxyPoolId = newValue;
+      const override = { ...(current[providerId] || {}), ...patch };
+      for (const k of Object.keys(override)) {
+        if (override[k] === undefined || override[k] === NONE_PROXY_POOL_VALUE) delete override[k];
+      }
       const updated = { ...current };
       if (Object.keys(override).length === 0) delete updated[providerId];
       else updated[providerId] = override;
@@ -49,10 +56,20 @@ export default function NoAuthProxyCard({ providerId }) {
       setSavedFlash(true);
       setTimeout(() => setSavedFlash(false), 1500);
     } catch (e) {
-      console.log("Save proxyPoolId error:", e);
+      console.log("Save provider strategy error:", e);
     } finally {
       setSaving(false);
     }
+  };
+
+  const handleChange = async (newValue) => {
+    setProxyPoolId(newValue);
+    await patchProviderStrategy({ proxyPoolId: newValue === NONE_PROXY_POOL_VALUE ? undefined : newValue });
+  };
+
+  const handleBaseUrlSave = async () => {
+    const trimmed = customBaseUrl.trim();
+    await patchProviderStrategy({ baseUrl: trimmed || undefined });
   };
 
   return (
@@ -77,6 +94,21 @@ export default function NoAuthProxyCard({ providerId }) {
           ...proxyPools.map((pool) => ({ value: pool.id, label: pool.name })),
         ]}
       />
+      {defaultBaseUrl && (
+        <div className="mt-4">
+          <Input
+            label="Base URL"
+            placeholder={defaultBaseUrl}
+            value={customBaseUrl}
+            onChange={(e) => setCustomBaseUrl(e.target.value)}
+            onBlur={handleBaseUrlSave}
+            disabled={saving}
+          />
+          <p className="text-xs text-text-muted mt-1">
+            Default: {defaultBaseUrl}
+          </p>
+        </div>
+      )}
     </Card>
   );
 }
