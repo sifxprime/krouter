@@ -15,6 +15,7 @@ import {
 } from "@/lib/tunnel";
 import { getMitmStatus, startMitm, loadEncryptedPassword, initDbHooks, restoreToolDNS, removeAllDNSEntriesSync } from "@/mitm/manager";
 import { startClaudeAutoPing } from "@/shared/services/claudeAutoPing";
+import { startTokenWarmer } from "@/shared/services/tokenWarmer";
 import { syncToJson as syncMitmAliasCache } from "@/lib/mitmAliasCache";
 
 // Inject correct paths and DB hooks into manager.js (CJS) from ESM context
@@ -90,6 +91,7 @@ export async function initializeApp() {
     startNetworkMonitor();
     autoStartMitm();
     startClaudeAutoPing();
+    startTokenWarmer();
   } catch (error) {
     console.error("[InitApp] Error:", error);
   }

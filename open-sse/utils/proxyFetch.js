@@ -5,6 +5,56 @@ import { dbg } from "./debugLog.js";
 const originalFetch = globalThis.fetch;
 const proxyDispatchers = new Map();
 
+// ─── HTTPS Keep-Alive Agents (added 0.5.15) ─────────────────────────────────
+// Reuses TCP+TLS connections across requests to the same upstream so every
+// LLM call doesn't pay the ~150-300ms TLS handshake cost. Two surfaces use
+// these:
+//   1. The native-fetch path (no proxy, no MITM-bypass) gets a singleton
+//      undici.Agent injected as dispatcher.
+//   2. The createBypassRequest path (manual IP-resolved socket connect) gets
+//      a per-host https.Agent so subsequent requests to api.anthropic.com /
+//      cloudcode-pa / etc. reuse the TLS session.
+// Both pools are bounded; idle sockets close after 60s to avoid holding
+// connections forever in an idle dev process.
+let _keepAliveDispatcher = null;
+async function getKeepAliveDispatcher() {
+  if (_keepAliveDispatcher) return _keepAliveDispatcher;
+  try {
+    const { Agent } = await import("undici");
+    _keepAliveDispatcher = new Agent({
+      keepAliveTimeout: 60_000,
+      keepAliveMaxTimeout: 600_000,
+      connections: 50, // max sockets per host:port
+      pipelining: 1,
+    });
+  } catch {
+    _keepAliveDispatcher = null;
+  }
+  return _keepAliveDispatcher;
+}
+
+const _bypassHttpsAgents = new Map();
+async function getBypassHttpsAgent(realIP, servername) {
+  const key = `${servername}|${realIP}`;
+  const existing = _bypassHttpsAgents.get(key);
+  if (existing) return existing;
+  const httpsModule = await import("https");
+  const https = httpsModule.default ?? httpsModule;
+  // Custom createConnection overrides DNS — every reused socket from this
+  // agent dials realIP directly while presenting the correct SNI / Host so
+  // upstream TLS validation passes against the public CA chain.
+  const agent = new https.Agent({
+    keepAlive: true,
+    keepAliveMsecs: 30_000,
+    maxSockets: 50,
+    maxFreeSockets: 10,
+    timeout: 60_000,
+    scheduling: "lifo",
+  });
+  _bypassHttpsAgents.set(key, agent);
+  return agent;
+}
+
 // ─── TLS fingerprinting via got-scraping (browser-like JA3) ───────────────
 // Disabled: not in use. Kept commented for future re-enable.
 // Restore the original block to re-enable per-host JA3 spoofing.
@@ -99,6 +149,14 @@ async function tryGotScrapingFetch(url, options) {
 
 // DNS cache — use Map to avoid prototype pollution via malformed hostnames
 const DNS_CACHE = new Map();
+// Hosts where kRouter's own outbound calls must bypass the MITM /etc/hosts spoof.
+// When MITM intercept is enabled for a tool, /etc/hosts redirects the upstream
+// hostname → 127.0.0.1 so the IDE traffic lands on our MITM server. But our
+// OWN server-side calls (Claude OAuth, autoping, quota usage, provider model
+// list fetch, etc.) must reach the REAL upstream — otherwise we'd intercept
+// ourselves and hit a self-signed-cert error. The header guard works for the
+// MITM dispatcher, but the OS-level DNS spoof needs this bypass list to know
+// "always resolve via Google DNS for these hosts, never use /etc/hosts".
 const MITM_BYPASS_HOSTS = [
   "cloudcode-pa.googleapis.com",
   "daily-cloudcode-pa.googleapis.com",
@@ -106,6 +164,11 @@ const MITM_BYPASS_HOSTS = [
   "q.us-east-1.amazonaws.com",
   "codewhisperer.us-east-1.amazonaws.com",
   "api2.cursor.sh",
+  // Added 0.5.15: api.anthropic.com was added to TARGET_HOSTS in 0.5.12 when
+  // we shipped the Claude Desktop MITM handler, but never to the bypass list.
+  // Result: every kRouter → Anthropic call (autoping, getClaudeUsage, OAuth
+  // refresh) was doing a manual Google-DNS resolve on every cache miss.
+  "api.anthropic.com",
 ];
 const GOOGLE_DNS_SERVERS = ["8.8.8.8", "8.8.4.4"];
 const HTTPS_PORT = 443;
@@ -234,60 +297,60 @@ async function getDispatcher(proxyUrl) {
 
 /**
  * Create HTTPS request with manual socket connection (bypass DNS)
+ *
+ * 0.5.15: Now backed by a keep-alive https.Agent that pools sockets per
+ * host:realIP. First request pays ~200ms TLS; subsequent requests reuse
+ * the open socket and complete in 1-2 RTTs without a new handshake.
  */
 async function createBypassRequest(parsedUrl, realIP, options) {
   const httpsModule = await import("https");
-  const netModule = await import("net");
-  // CJS modules expose exports via .default in ESM dynamic import context
   const https = httpsModule.default ?? httpsModule;
-  const net = netModule.default ?? netModule;
+  const agent = await getBypassHttpsAgent(realIP, parsedUrl.hostname);
 
   return new Promise((resolve, reject) => {
-    const socket = new net.Socket();
+    const reqOptions = {
+      host: realIP,
+      port: HTTPS_PORT,
+      // SNI + cert hostname are validated against the hostname the caller
+      // asked for, not the IP we connected to. This keeps the DNS-bypass
+      // (avoiding /etc/hosts MITM) while still rejecting on-path attackers
+      // that present a different cert. The MITM_BYPASS_HOSTS targets are
+      // all public-CA-issued (Google / GitHub / AWS / Cursor / Anthropic)
+      // so default verification works without any extra trust store.
+      servername: parsedUrl.hostname,
+      path: parsedUrl.pathname + parsedUrl.search,
+      method: options.method || "POST",
+      headers: {
+        ...options.headers,
+        Host: parsedUrl.hostname,
+        // Hint to upstream that we want to reuse this connection.
+        Connection: "keep-alive",
+      },
+      agent,
+    };
 
-    socket.connect(HTTPS_PORT, realIP, () => {
-      const reqOptions = {
-        socket,
-        // SNI + cert hostname are validated against the hostname the caller
-        // asked for, not the IP we connected to. This keeps the DNS-bypass
-        // (avoiding /etc/hosts MITM) while still rejecting on-path attackers
-        // that present a different cert. The MITM_BYPASS_HOSTS targets are
-        // all public-CA-issued (Google / GitHub / AWS / Cursor) so default
-        // verification works without any extra trust store.
-        servername: parsedUrl.hostname,
-        path: parsedUrl.pathname + parsedUrl.search,
-        method: options.method || "POST",
-        headers: {
-          ...options.headers,
-          Host: parsedUrl.hostname,
+    const req = https.request(reqOptions, (res) => {
+      const response = {
+        ok: res.statusCode >= HTTP_SUCCESS_MIN && res.statusCode < HTTP_SUCCESS_MAX,
+        status: res.statusCode,
+        statusText: res.statusMessage,
+        headers: new Map(Object.entries(res.headers)),
+        body: Readable.toWeb(res),
+        text: async () => {
+          const chunks = [];
+          for await (const chunk of res) chunks.push(chunk);
+          return Buffer.concat(chunks).toString();
         },
+        json: async () => JSON.parse(await response.text()),
       };
-
-      const req = https.request(reqOptions, (res) => {
-        const response = {
-          ok: res.statusCode >= HTTP_SUCCESS_MIN && res.statusCode < HTTP_SUCCESS_MAX,
-          status: res.statusCode,
-          statusText: res.statusMessage,
-          headers: new Map(Object.entries(res.headers)),
-          body: Readable.toWeb(res),
-          text: async () => {
-            const chunks = [];
-            for await (const chunk of res) chunks.push(chunk);
-            return Buffer.concat(chunks).toString();
-          },
-          json: async () => JSON.parse(await response.text()),
-        };
-        resolve(response);
-      });
-
-      req.on("error", reject);
-      if (options.body) {
-        req.write(typeof options.body === "string" ? options.body : JSON.stringify(options.body));
-      }
-      req.end();
+      resolve(response);
     });
 
-    socket.on("error", reject);
+    req.on("error", reject);
+    if (options.body) {
+      req.write(typeof options.body === "string" ? options.body : JSON.stringify(options.body));
+    }
+    req.end();
   });
 }
 
@@ -348,8 +411,13 @@ export async function proxyAwareFetch(url, options = {}, proxyOptions = null) {
     }
   }
 
-  // got-scraping disabled — use native fetch directly
-  // (Re-enable per-host by wrapping with tryGotScrapingFetch when needed)
+  // got-scraping disabled — use native fetch with a keep-alive dispatcher so
+  // repeat calls to the same upstream (api.openai.com, oauth2.googleapis.com,
+  // openrouter.ai, etc.) reuse the TLS session and shave ~150-300ms per call.
+  const dispatcher = await getKeepAliveDispatcher();
+  if (dispatcher) {
+    return originalFetch(url, { ...options, dispatcher });
+  }
   return originalFetch(url, options);
 }
 
