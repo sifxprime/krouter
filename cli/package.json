@@ -1,6 +1,6 @@
 {
   "name": "@sifxprime/krouter",
-  "version": "0.5.9",
+  "version": "0.5.10",
   "description": "kRouter (Kodelyth Router) CLI — Kodelyth AI Infrastructure",
   "homepage": "https://github.com/sifxprime/krouter",
   "repository": {
@@ -9,8 +9,7 @@
   },
   "bugs": "https://github.com/sifxprime/krouter/issues",
   "bin": {
-    "krouter": "./cli.js",
-    "9router": "./cli.js"
+    "krouter": "./cli.js"
   },
   "files": [
     "cli.js",

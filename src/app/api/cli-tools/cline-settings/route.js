@@ -47,7 +47,7 @@ const hasKRouterConfig = (globalState) => {
   const isOpenAi =
     globalState.actModeApiProvider === "openai" || globalState.planModeApiProvider === "openai";
   const baseUrl = globalState.openAiBaseUrl || "";
-  return isOpenAi && (baseUrl.includes("localhost") || baseUrl.includes("127.0.0.1") || baseUrl.includes("krouter") || baseUrl.includes("9router"));
+  return isOpenAi && (baseUrl.includes("localhost") || baseUrl.includes("127.0.0.1") || baseUrl.includes("krouter"));
 };
 
 export async function GET() {
@@ -66,7 +66,6 @@ export async function GET() {
         openAiModelId: globalState?.openAiModelId,
       },
       hasKRouter: hasKRouterConfig(globalState),
-      has9Router: hasKRouterConfig(globalState), // legacy field name kept for UIs not yet updated
       globalStatePath: getGlobalStatePath(),
     });
   } catch (error) {

@@ -42,16 +42,14 @@ const readConfig = async () => {
   }
 };
 
-// Provider key in OpenCode's opencode.json. "krouter" is the canonical key; "9router"
 // is read as a fallback for existing user configs from before the rename, and removed
 // from the file the next time we write.
 const PROVIDER_KEY = "krouter";
-const LEGACY_PROVIDER_KEY = "9router";
 const MODEL_PREFIX = "krouter/";
-const MODEL_PREFIX_RE = /^(?:krouter|9router)\//;
+const MODEL_PREFIX_RE = /^krouter\//;
 
 const getProviderEntry = (config) => (
-  config?.provider?.[PROVIDER_KEY] ?? config?.provider?.[LEGACY_PROVIDER_KEY] ?? null
+  config?.provider?.[PROVIDER_KEY] ?? null
 );
 
 const hasKRouterConfig = (config) => !!getProviderEntry(config);
@@ -77,7 +75,6 @@ export async function GET() {
       installed: true,
       config,
       hasKRouter: hasKRouterConfig(config),
-      has9Router: hasKRouterConfig(config), // legacy field name kept for any UI not yet updated
       configPath: getConfigPath(),
         opencode: {
           models: Object.keys(modelMap),
@@ -91,7 +88,7 @@ export async function GET() {
   }
 }
 
-// POST - Apply 9Router as openai-compatible provider (multi-model support)
+// POST - Apply kRouter as openai-compatible provider (multi-model support)
 export async function POST(request) {
   try {
     const { baseUrl, apiKey, model, models, activeModel, subagentModel } = await request.json();
@@ -122,7 +119,7 @@ export async function POST(request) {
     // Ensure provider object
     if (!config.provider) config.provider = {};
 
-    // Preserve any existing krouter (or legacy 9router) provider entry and its models
+    // Preserve any existing krouter provider entry and its models
     const existingProvider = getProviderEntry(config) || { npm: "@ai-sdk/openai-compatible", options: {}, models: {} };
 
     // Merge options (overwrite baseURL/apiKey)
@@ -143,7 +140,6 @@ export async function POST(request) {
 
     // Save merged provider back under the new key; remove legacy key if present.
     config.provider[PROVIDER_KEY] = existingProvider;
-    delete config.provider[LEGACY_PROVIDER_KEY];
 
     // Set the active model: prefer explicit activeModel, else first of modelsArray
     // If activeModel is explicitly empty string, clear the model
@@ -213,7 +209,7 @@ export async function PATCH(request) {
   }
 }
 
-// DELETE - Remove 9Router provider or specific models from config
+// DELETE - Remove kRouter provider or specific models from config
 export async function DELETE(request) {
   try {
     const { searchParams } = new URL(request.url);
@@ -231,9 +227,9 @@ export async function DELETE(request) {
       throw error;
     }
 
-    // Resolve which key currently holds the provider entry (krouter or legacy 9router)
+    // Resolve which key currently holds the provider entry
     const providerEntry = getProviderEntry(config);
-    const activeProviderKey = config.provider?.[PROVIDER_KEY] ? PROVIDER_KEY : (config.provider?.[LEGACY_PROVIDER_KEY] ? LEGACY_PROVIDER_KEY : null);
+    const activeProviderKey = config.provider?.[PROVIDER_KEY] ? PROVIDER_KEY : null;
 
     // If specific model provided, remove just that model
     if (modelToRemove && providerEntry?.models && activeProviderKey) {
@@ -242,11 +238,9 @@ export async function DELETE(request) {
       // If no models left, remove the provider
       if (Object.keys(providerEntry.models).length === 0) {
         delete config.provider[PROVIDER_KEY];
-        delete config.provider[LEGACY_PROVIDER_KEY];
         if (MODEL_PREFIX_RE.test(config.model || "")) delete config.model;
       } else if (
-        config.model === `${MODEL_PREFIX}${modelToRemove}` ||
-        config.model === `9router/${modelToRemove}`
+        config.model === `${MODEL_PREFIX}${modelToRemove}`
       ) {
         // If removed model was active, switch to first remaining model
         const remainingModels = Object.keys(providerEntry.models);
@@ -256,7 +250,6 @@ export async function DELETE(request) {
       // No specific model - remove entire kRouter provider (both new and legacy keys)
       if (config.provider) {
         delete config.provider[PROVIDER_KEY];
-        delete config.provider[LEGACY_PROVIDER_KEY];
       }
       if (MODEL_PREFIX_RE.test(config.model || "")) delete config.model;
     }

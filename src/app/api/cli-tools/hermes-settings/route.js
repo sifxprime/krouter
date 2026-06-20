@@ -110,7 +110,6 @@ export async function GET() {
       installed: true,
       settings: { model },
       hasKRouter: hasKRouterConfig(model),
-      has9Router: hasKRouterConfig(model), // legacy field name kept for UIs not yet updated
       configPath: getHermesConfigPath(),
     });
   } catch (error) {

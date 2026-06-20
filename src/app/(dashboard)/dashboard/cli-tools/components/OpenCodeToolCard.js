@@ -57,9 +57,9 @@ export default function OpenCodeToolCard({ tool, isExpanded, onToggle, baseUrl, 
       setActiveModel(status.opencode.activeModel);
     }
 
-    // Parse subagent settings from agent.explorer if exists (accept either prefix)
+    // Parse subagent settings from agent.explorer if exists
     const explorerModel = status?.config?.agent?.explorer?.model || "";
-    const explorerMatch = /^(?:krouter|9router)\/(.+)/.exec(explorerModel);
+    const explorerMatch = /^krouter\/(.+)/.exec(explorerModel);
     if (explorerMatch) {
       setSubagentModel(explorerMatch[1]);
     }
@@ -98,15 +98,13 @@ export default function OpenCodeToolCard({ tool, isExpanded, onToggle, baseUrl, 
   };
 
   const getProviderEntry = () => (
-    status?.config?.provider?.["krouter"]
-    ?? status?.config?.provider?.["9router"]
-    ?? null
+    status?.config?.provider?.["krouter"] ?? null
   );
 
   const getConfigStatus = () => {
     if (!status?.installed) return null;
     if (!status.config) return "not_configured";
-    if (!(status.hasKRouter ?? status.has9Router)) return "not_configured";
+    if (!(status.hasKRouter)) return "not_configured";
     const url = getProviderEntry()?.options?.baseURL || "";
     return matchKnownEndpoint(url, { tunnelPublicUrl, tailscaleUrl }) ? "configured" : "other";
   };
@@ -448,7 +446,7 @@ export default function OpenCodeToolCard({ tool, isExpanded, onToggle, baseUrl, 
                 <Button variant="primary" size="sm" onClick={handleApply} disabled={selectedModels.length === 0} loading={applying}>
                   <span className="material-symbols-outlined text-[14px] mr-1">save</span>Apply
                 </Button>
-                <Button variant="outline" size="sm" onClick={handleReset} disabled={!status.has9Router} loading={restoring}>
+                <Button variant="outline" size="sm" onClick={handleReset} disabled={!status.hasKRouter} loading={restoring}>
                   <span className="material-symbols-outlined text-[14px] mr-1">restore</span>Reset
                 </Button>
                 <Button variant="ghost" size="sm" onClick={() => setShowManualConfigModal(true)}>

@@ -2,7 +2,6 @@
 // Each skill = 1 raw GitHub URL the user copies and pastes to any AI agent.
 //
 // Post-rebrand: repo + branch + skill ids all switched from upstream's
-// decolua/9router@master/9router-* to this fork's sifxprime/krouter@main/krouter-*.
 // Anyone with an old URL pasted into an AI prompt will need to re-grab it
 // (intentional one-time break — see commit body for rationale).
 

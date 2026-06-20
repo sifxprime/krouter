@@ -10,7 +10,7 @@ export const ENV_VAR_CATALOG = [
   { name: "NODE_ENV", category: "app", desc: "Runtime mode (production / development)", default: "(framework)", secret: false },
   { name: "DATA_DIR", category: "app", desc: "Main app data location (SQLite + machine-id + MITM cert)", default: "~/.krouter", secret: false },
   { name: "BASE_URL", category: "app", desc: "Server-side internal base URL for cloud sync jobs", default: "http://localhost:20128", secret: false },
-  { name: "CLOUD_URL", category: "app", desc: "Server-side cloud sync endpoint", default: "https://9router.com", secret: false },
+  { name: "CLOUD_URL", category: "app", desc: "Server-side cloud sync endpoint", default: "https://krouter.com", secret: false },
   { name: "TRAY_MODE", category: "app", desc: "Set internally when launched in system tray mode", default: "(unset)", secret: false },
 
   // --- Security ---
@@ -32,9 +32,6 @@ export const ENV_VAR_CATALOG = [
   { name: "KROUTER_PROXY_URL", category: "network", desc: "Canonical proxy URL written by kRouter when the dashboard toggle is on", default: "(unset)", secret: false },
   { name: "KROUTER_PROXY_MANAGED", category: "network", desc: "Marker so kRouter only clears env it wrote itself", default: "(unset)", secret: false },
   { name: "KROUTER_NO_PROXY", category: "network", desc: "Canonical no-proxy list paired with KROUTER_PROXY_URL", default: "(unset)", secret: false },
-  { name: "NINE_ROUTER_PROXY_URL", category: "network", desc: "DEPRECATED — legacy alias for KROUTER_PROXY_URL", default: "(unset)", secret: false, deprecated: true },
-  { name: "NINE_ROUTER_PROXY_MANAGED", category: "network", desc: "DEPRECATED — legacy alias for KROUTER_PROXY_MANAGED", default: "(unset)", secret: false, deprecated: true },
-  { name: "NINE_ROUTER_NO_PROXY", category: "network", desc: "DEPRECATED — legacy alias for KROUTER_NO_PROXY", default: "(unset)", secret: false, deprecated: true },
 
   // --- MITM / Tunnel ---
   { name: "DEBUG_MITM", category: "mitm", desc: "Enable verbose MITM logging", default: "false", secret: false },
@@ -79,7 +76,7 @@ export const CATEGORIES = [
 
 const CATALOG_NAMES = new Set(ENV_VAR_CATALOG.map((e) => e.name));
 
-// Used by the dashboard API route to detect uncatalogued KROUTER_* / NINE_ROUTER_* /
+// Used by the dashboard API route to detect uncatalogued KROUTER_* /
 // app-prefixed vars actually set in process.env so users see everything.
 export function isCataloguedEnvVar(name) {
   return CATALOG_NAMES.has(name);

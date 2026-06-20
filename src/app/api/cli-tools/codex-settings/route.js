@@ -73,18 +73,14 @@ const readConfig = async () => {
   }
 };
 
-// Provider key in Codex's config.toml. "krouter" is canonical; "9router" is detected
-// as a fallback so existing installs still light up green, then get cleaned up on next write.
+// Provider key in Codex's config.toml.
 const PROVIDER_KEY = "krouter";
-const LEGACY_PROVIDER_KEY = "9router";
 
-// Check if config has kRouter settings (under new or legacy key)
+// Check if config has kRouter settings
 const hasKRouterConfig = (config) => {
   if (!config) return false;
   return config.includes(`model_provider = "${PROVIDER_KEY}"`)
-    || config.includes(`[model_providers.${PROVIDER_KEY}]`)
-    || config.includes(`model_provider = "${LEGACY_PROVIDER_KEY}"`)
-    || config.includes(`[model_providers.${LEGACY_PROVIDER_KEY}]`);
+    || config.includes(`[model_providers.${PROVIDER_KEY}]`);
 };
 
 // GET - Check codex CLI and read current settings
@@ -106,7 +102,6 @@ export async function GET() {
       installed: true,
       config,
       hasKRouter: hasKRouterConfig(config),
-      has9Router: hasKRouterConfig(config), // legacy field name kept for UIs not yet updated
       configPath: getCodexConfigPath(),
     });
   } catch (error) {
@@ -115,7 +110,7 @@ export async function GET() {
   }
 }
 
-// POST - Update 9Router settings (merge with existing config)
+// POST - Update kRouter settings (merge with existing config)
 export async function POST(request) {
   try {
     const { baseUrl, apiKey, model, subagentModel } = await request.json();
@@ -141,15 +136,13 @@ export async function POST(request) {
     parsed.model = model;
     parsed.model_provider = PROVIDER_KEY;
 
-    // Update or create krouter provider section. Clean up the legacy 9router section
-    // if it exists so the user's config ends up canonical.
+    // Update or create krouter provider section.
     const normalizedBaseUrl = baseUrl.endsWith("/v1") ? baseUrl : `${baseUrl}/v1`;
     setNestedSection(parsed, `model_providers.${PROVIDER_KEY}`, {
       name: "kRouter",
       base_url: normalizedBaseUrl,
       wire_api: "responses",
     });
-    deleteNestedSection(parsed, `model_providers.${LEGACY_PROVIDER_KEY}`);
 
     // Add subagent configuration
     const effectiveSubagentModel = subagentModel || model;
@@ -185,7 +178,7 @@ export async function POST(request) {
   }
 }
 
-// DELETE - Remove 9Router settings only (keep other settings)
+// DELETE - Remove kRouter settings only (keep other settings)
 export async function DELETE() {
   try {
     const configPath = getCodexConfigPath();
@@ -206,14 +199,13 @@ export async function DELETE() {
     }
 
     // Remove kRouter-related root fields if they point to either provider key
-    if (parsed.model_provider === PROVIDER_KEY || parsed.model_provider === LEGACY_PROVIDER_KEY) {
+    if (parsed.model_provider === PROVIDER_KEY) {
       delete parsed.model;
       delete parsed.model_provider;
     }
 
     // Remove provider section under both keys
     deleteNestedSection(parsed, `model_providers.${PROVIDER_KEY}`);
-    deleteNestedSection(parsed, `model_providers.${LEGACY_PROVIDER_KEY}`);
 
     // Remove subagent configuration
     deleteNestedSection(parsed, "agents.subagent");

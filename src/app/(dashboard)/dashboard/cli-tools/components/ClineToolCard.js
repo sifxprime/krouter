@@ -53,7 +53,7 @@ export default function ClineToolCard({ tool, isExpanded, onToggle, baseUrl, api
 
   const getConfigStatus = () => {
     if (!status?.installed) return null;
-    if (!status.has9Router) return "not_configured";
+    if (!status.hasKRouter) return "not_configured";
     const url = status.settings?.openAiBaseUrl || "";
     return matchKnownEndpoint(url, { tunnelPublicUrl, tailscaleUrl }) ? "configured" : "other";
   };

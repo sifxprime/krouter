@@ -20,23 +20,13 @@ const waitMaxMs = parseInt(process.env.UPDATER_WAIT_MAX_MS || "15000", 10);
 const waitCheckMs = parseInt(process.env.UPDATER_WAIT_CHECK_MS || "500", 10);
 const appPort = parseInt(process.env.UPDATER_APP_PORT || "20128", 10);
 
-// Data directory (must match src/mitm/paths.js — one-time auto-migration of ~/.9router → ~/.krouter)
-function appNameDir(name) {
-  if (process.platform === "win32") {
-    return path.join(process.env.APPDATA || path.join(os.homedir(), "AppData", "Roaming"), name);
-  }
-  return path.join(os.homedir(), `.${name}`);
-}
+// Data directory (kept in sync with src/mitm/paths.js)
 function getDataDir() {
   if (process.env.DATA_DIR) return process.env.DATA_DIR;
-  const target = appNameDir("krouter");
-  const legacy = appNameDir("9router");
-  try {
-    if (!fs.existsSync(target) && fs.existsSync(legacy)) {
-      fs.renameSync(legacy, target);
-    }
-  } catch { /* best effort */ }
-  return target;
+  if (process.platform === "win32") {
+    return path.join(process.env.APPDATA || path.join(os.homedir(), "AppData", "Roaming"), "krouter");
+  }
+  return path.join(os.homedir(), ".krouter");
 }
 const updateDir = path.join(getDataDir(), "update");
 try { fs.mkdirSync(updateDir, { recursive: true }); } catch { /* best effort */ }

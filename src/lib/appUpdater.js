@@ -31,8 +31,7 @@ function killMitmByPidFile() {
   } catch { /* best effort */ }
 }
 
-// Collect PIDs of all krouter-related processes (excluding current). Matches both
-// the current "krouter" name and the legacy "9router" name so existing installs upgrade cleanly.
+// Collect PIDs of all kRouter-related processes (excluding current).
 function collectAppPids() {
   const pids = [];
   const platform = process.platform;
@@ -44,9 +43,8 @@ function collectAppPids() {
       const lines = output.split("\n").slice(1).filter(l => l.trim());
       lines.forEach(line => {
         const lower = line.toLowerCase();
-        // Match anything running from krouter (or legacy 9router) install dir or wrapper cli.js
+        // Match anything running from the krouter install dir or wrapper cli.js
         const isAppProcess = lower.includes("krouter") ||
-          lower.includes("9router") ||
           lower.includes("next-server") ||
           lower.includes("\\bin\\app\\") ||
           lower.includes("/bin/app/") ||
@@ -74,7 +72,6 @@ function collectAppPids() {
       const output = execSync("ps aux 2>/dev/null", { encoding: "utf8", timeout: KILL_TIMEOUT_MS });
       output.split("\n").forEach(line => {
         const isAppProcess = line.includes("krouter") ||
-          line.includes("9router") ||
           line.includes("next-server") ||
           line.includes("cloudflared") ||
           line.includes("/bin/app/") ||
@@ -93,23 +90,12 @@ function collectAppPids() {
 }
 
 // Copy updater.js into DATA_DIR so npm -g can overwrite node_modules safely.
-// Mirrors src/lib/dataDir.js — one-time auto-migration of ~/.9router → ~/.krouter.
-function appNameDir(name) {
-  if (process.platform === "win32") {
-    return path.join(process.env.APPDATA || path.join(os.homedir(), "AppData", "Roaming"), name);
-  }
-  return path.join(os.homedir(), `.${name}`);
-}
 function getDataDir() {
   if (process.env.DATA_DIR) return process.env.DATA_DIR;
-  const target = appNameDir("krouter");
-  const legacy = appNameDir("9router");
-  try {
-    if (!fs.existsSync(target) && fs.existsSync(legacy)) {
-      fs.renameSync(legacy, target);
-    }
-  } catch { /* best effort — paths.js / dataDir.js will retry on their next call */ }
-  return target;
+  if (process.platform === "win32") {
+    return path.join(process.env.APPDATA || path.join(os.homedir(), "AppData", "Roaming"), "krouter");
+  }
+  return path.join(os.homedir(), ".krouter");
 }
 
 function resolveBundledUpdaterPath() {

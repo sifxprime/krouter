@@ -55,10 +55,9 @@ try { ensureSqliteRuntime({ silent: true }); } catch {}
 // Self-heal tray runtime (systray for macOS/Linux only). Windows skipped.
 try { ensureTrayRuntime({ silent: true }); } catch {}
 
-// Upgrade safety: existing v0.5.6 users who had autostart enabled may have a
-// LaunchAgent / Startup .vbs / .desktop file pointing at the old `9router`
-// global binary that's been uninstalled. Sweep dangling entries so launchd
-// doesn't error every boot — user re-enables from the new tray when ready.
+// Sweep autostart entries whose binary path no longer exists on disk (e.g. the
+// user uninstalled the global kRouter then reinstalled to a different path).
+// Cheap startup check; no-op when nothing's wrong.
 try {
   const { sweepDanglingAutostartEntries } = require("./src/cli/tray/autostart");
   sweepDanglingAutostartEntries();
@@ -71,11 +70,7 @@ const INSTALL_CMD_LATEST = `npm i -g ${APP_NAME}@latest --prefer-online`;
 const DEFAULT_PORT = 20128;
 const DEFAULT_HOST = "0.0.0.0";
 const MAX_PORT_ATTEMPTS = 10;
-// Identifiers for killAllAppProcesses - only kill our own app specifically (new + legacy names)
-const PROCESS_IDENTIFIERS = [
-  'krouter',
-  '9router'  // legacy — kept so an existing install still cleans up properly
-];
+const PROCESS_IDENTIFIERS = ['krouter'];
 
 // Parse arguments
 let port = DEFAULT_PORT;
@@ -142,36 +137,12 @@ function compareVersions(a, b) {
   return 0;
 }
 
-// Get app data dir (must match src/mitm/paths.js — same one-time auto-migration).
+// Get app data dir — kept in sync with src/mitm/paths.js
 const DATA_DIR_NAME = "krouter";
-const LEGACY_DATA_DIR_NAME = "9router";
-function dataDirByName(name) {
-  return process.platform === "win32"
-    ? path.join(process.env.APPDATA || "", name)
-    : path.join(os.homedir(), `.${name}`);
-}
-let legacyCoexistWarned = false;
 function getAppDataDir() {
-  const target = dataDirByName(DATA_DIR_NAME);
-  const legacy = dataDirByName(LEGACY_DATA_DIR_NAME);
-  try {
-    if (!fs.existsSync(target) && fs.existsSync(legacy)) {
-      fs.renameSync(legacy, target);
-      console.log(`[cli] Migrated data dir: ${legacy} → ${target}`);
-    } else if (fs.existsSync(target) && fs.existsSync(legacy) && !legacyCoexistWarned) {
-      // Both dirs exist — auto-migration won't fire. Surface so user can reconcile.
-      // Don't auto-delete (user data); they decide how to merge / remove the legacy.
-      legacyCoexistWarned = true;
-      console.warn(
-        `[cli] Legacy ${legacy} still exists alongside ${target}. ` +
-        `New writes go to ${target}; the legacy is not read. ` +
-        `If unmerged settings exist there, back it up, merge manually, then: rm -rf ${legacy}`
-      );
-    }
-  } catch (e) {
-    console.warn(`[cli] Data-dir auto-migration failed (${e.code || e.message}); continuing with ${target}`);
-  }
-  return target;
+  return process.platform === "win32"
+    ? path.join(process.env.APPDATA || "", DATA_DIR_NAME)
+    : path.join(os.homedir(), `.${DATA_DIR_NAME}`);
 }
 
 // Kill PID from file (best-effort, removes file after)
@@ -228,7 +199,7 @@ function killCloudflaredByAppPort(appPort) {
   return pids;
 }
 
-// Kill all krouter (or legacy 9router) processes
+// Kill all kRouter processes
 function killAllAppProcesses(appPort) {
   return new Promise((resolve) => {
     try {
@@ -254,11 +225,11 @@ function killAllAppProcesses(appPort) {
           });
           const lines = output.split("\n").slice(1).filter(l => l.trim());
           lines.forEach(line => {
-            // Whitelist: real node process running krouter (or legacy 9router) cli.js, or next-server.
+            // Whitelist: real node process running krouter cli.js, or next-server.
             // Avoids killing editors/grep/strace/cursor that just incidentally match the name.
             const cmd = line.toLowerCase();
-            const hasAppName = cmd.includes("krouter") || cmd.includes("9router");
-            const hasAppPath = cmd.includes("cli.js") || cmd.includes("\\krouter") || cmd.includes("/krouter") || cmd.includes("\\9router") || cmd.includes("/9router");
+            const hasAppName = cmd.includes("krouter");
+            const hasAppPath = cmd.includes("cli.js") || cmd.includes("\\krouter") || cmd.includes("/krouter");
             const isAppProcess =
               (cmd.includes("node") && hasAppName && hasAppPath)
               || cmd.includes("next-server");
@@ -282,11 +253,11 @@ function killAllAppProcesses(appPort) {
           const lines = output.split('\n');
 
           lines.forEach(line => {
-            // Whitelist: real node process running krouter (or legacy 9router) cli.js, or next-server.
+            // Whitelist: real node process running krouter cli.js, or next-server.
             // Avoids killing grep/strace/editors/cursor that incidentally match the name.
             const cmd = line.toLowerCase();
-            const hasAppName = cmd.includes("krouter") || cmd.includes("9router");
-            const hasAppPath = cmd.includes("cli.js") || cmd.includes("/krouter") || cmd.includes("/9router");
+            const hasAppName = cmd.includes("krouter");
+            const hasAppPath = cmd.includes("cli.js") || cmd.includes("/krouter");
             const isAppProcess =
               (cmd.includes("node") && hasAppName && hasAppPath)
               || cmd.includes("next-server");
@@ -859,7 +830,7 @@ function startServer(latestVersion) {
 
     // EADDRINUSE recovery path: another process is holding the port. Most
     // commonly a stale next-server from a previous run that didn't exit
-    // cleanly, or an old `9router` global from before the rebrand. Sweep all
+    // cleanly. Sweep all
     // PIDs on the port (including parent+child pairs); if even after that the
     // port is still occupied, exit with a clear actionable error instead of
     // looping forever (which is what 0.5.7 did).

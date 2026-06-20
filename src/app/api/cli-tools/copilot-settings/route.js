@@ -28,16 +28,14 @@ const readConfig = async () => {
   }
 };
 
-// Connections wrote with name "9Router" pre-rebrand and "kRouter" after. Match BOTH on read
-// so an existing user's connection is still detected without forcing them to reconnect.
-const isOurEntry = (entry) => entry.name === "kRouter" || entry.name === "9Router";
+const isOurEntry = (entry) => entry.name === "kRouter";
 
-const has9RouterConfig = (config) => {
+const hasKRouterConfig = (config) => {
   if (!Array.isArray(config)) return false;
   return config.some(isOurEntry);
 };
 
-const get9RouterEntry = (config) => {
+const getKRouterEntry = (config) => {
   if (!Array.isArray(config)) return null;
   return config.find(isOurEntry) || null;
 };
@@ -46,12 +44,12 @@ const get9RouterEntry = (config) => {
 export async function GET() {
   try {
     const config = await readConfig();
-    const entry = get9RouterEntry(config);
+    const entry = getKRouterEntry(config);
 
     return NextResponse.json({
       installed: true,
       config,
-      has9Router: has9RouterConfig(config),
+      hasKRouter: hasKRouterConfig(config),
       configPath: getConfigPath(),
       currentModel: entry?.models?.[0]?.id || null,
       currentUrl: entry?.models?.[0]?.url || null,
@@ -62,7 +60,7 @@ export async function GET() {
   }
 }
 
-// POST - Apply 9Router config to chatLanguageModels.json
+// POST - Apply kRouter config to chatLanguageModels.json
 export async function POST(request) {
   try {
     const { baseUrl, apiKey, models } = await request.json();
@@ -100,7 +98,7 @@ export async function POST(request) {
       })),
     };
 
-    // Replace existing entry (matching either legacy "9Router" or current "kRouter") or append
+    // Replace existing entry or append
     const idx = config.findIndex(isOurEntry);
     if (idx >= 0) {
       config[idx] = newEntry;
@@ -121,7 +119,7 @@ export async function POST(request) {
   }
 }
 
-// DELETE - Remove 9Router entry from chatLanguageModels.json
+// DELETE - Remove kRouter entry from chatLanguageModels.json
 export async function DELETE() {
   try {
     const configPath = getConfigPath();
@@ -138,7 +136,7 @@ export async function DELETE() {
       throw error;
     }
 
-    // Drop entries matching either legacy "9Router" or current "kRouter"
+    // Drop entries
     config = config.filter((e) => !isOurEntry(e));
     await fs.writeFile(configPath, JSON.stringify(config, null, 2));
 

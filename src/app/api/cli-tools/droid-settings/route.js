@@ -44,14 +44,11 @@ const readSettings = async () => {
   }
 };
 
-// Droid stores our entries under `custom:kRouter-N`. The legacy "custom:9Router-N"
-// prefix is detected as a fallback so existing installs still show as configured;
 // next POST cleans them up and replaces them with the new prefix.
 const CUSTOM_ID_PREFIX = "custom:kRouter";
-const LEGACY_CUSTOM_ID_PREFIX = "custom:9Router";
 
 const isOurCustomEntry = (m) => (
-  m?.id?.startsWith(CUSTOM_ID_PREFIX) || m?.id?.startsWith(LEGACY_CUSTOM_ID_PREFIX)
+  m?.id?.startsWith(CUSTOM_ID_PREFIX)
 );
 
 const hasKRouterConfig = (settings) => {
@@ -78,7 +75,6 @@ export async function GET() {
       installed: true,
       settings,
       hasKRouter: hasKRouterConfig(settings),
-      has9Router: hasKRouterConfig(settings), // legacy field name kept for UIs not yet updated
       settingsPath: getDroidSettingsPath(),
     });
   } catch (error) {
@@ -87,7 +83,7 @@ export async function GET() {
   }
 }
 
-// POST - Update 9Router customModels (merge with existing settings)
+// POST - Update kRouter customModels (merge with existing settings)
 // Accepts either `model` (string, legacy single-model) or `models` (array of strings, multi-model)
 // Also accepts `activeModel` to set which model is active/primary
 export async function POST(request) {
@@ -179,7 +175,7 @@ export async function POST(request) {
   }
 }
 
-// DELETE - Remove 9Router customModels only (keep other settings)
+// DELETE - Remove kRouter customModels only (keep other settings)
 export async function DELETE() {
   try {
     const settingsPath = getDroidSettingsPath();

@@ -164,10 +164,6 @@ export default function CodexToolCard({ tool, isExpanded, onToggle, baseUrl, api
 
     const effectiveSubagentModel = subagentModel || selectedModel;
 
-    // Section keys (`model_provider`, `[model_providers.krouter]`) are canonical.
-    // The settings route also reads the legacy `[model_providers.9router]` key for
-    // backward compat with installs that ran an earlier version of this app, and
-    // cleans that legacy section up on the next write.
     const configContent = `# kRouter Configuration for Codex CLI
 model = "${selectedModel}"
 model_provider = "krouter"

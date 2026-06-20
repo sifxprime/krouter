@@ -4,7 +4,6 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { UPDATER_CONFIG } from "@/shared/constants/config";
 
 const STORAGE_KEY = "krouter.cliToolEndpointPresets";
-const LEGACY_STORAGE_KEY = "9router.cliToolEndpointPresets";
 const CUSTOM_VALUE = "__custom__";
 const SAVE_VALUE = "__save__";
 
@@ -32,7 +31,7 @@ const writeSavedPresets = (presets) => {
   if (typeof window === "undefined") return;
   window.localStorage.setItem(STORAGE_KEY, JSON.stringify(presets));
   // Remove the legacy key so future reads come from the new one only.
-  window.localStorage.removeItem(LEGACY_STORAGE_KEY);
+  window.
 };
 
 const buildOptions = ({ requiresExternalUrl, tunnelEnabled, tunnelPublicUrl, tailscaleEnabled, tailscaleUrl, cloudEnabled, cloudUrl, savedPresets, withV1 }) => {

@@ -18,3 +18,164 @@ Edit freely — add, remove, reword. These are YOUR rules.
 ## 2026-06-17
 
 - so check and find end to end bugs please don't do any mistake from our krouter every name belongs 9router from project is changed? and fresh new user not seeing old 9router anything? and on dashboard 9 Router Have Icon. Kodelyth Mark Icon then KROUTER and below version. make it publish on git and np
+## 2026-06-17
+
+- so check and find end to end bugs please don't do any mistake from our krouter every name belongs 9router from project is changed? and fresh new user not seeing old 9router anything? and on dashboard 9 Router Have Icon. Kodelyth Mark Icon then KROUTER and below version. make it publish on git and np
+## 2026-06-17
+
+- so check and find end to end bugs please don't do any mistake from our krouter every name belongs 9router from project is changed? and fresh new user not seeing old 9router anything? and on dashboard 9 Router Have Icon. Kodelyth Mark Icon then KROUTER and below version. make it publish on git and np
+## 2026-06-17
+
+- so check and find end to end bugs please don't do any mistake from our krouter every name belongs 9router from project is changed? and fresh new user not seeing old 9router anything? and on dashboard 9 Router Have Icon. Kodelyth Mark Icon then KROUTER and below version. make it publish on git and np
+## 2026-06-17
+
+- so check and find end to end bugs please don't do any mistake from our krouter every name belongs 9router from project is changed? and fresh new user not seeing old 9router anything? and on dashboard 9 Router Have Icon. Kodelyth Mark Icon then KROUTER and below version. make it publish on git and np
+## 2026-06-17
+
+- so check and find end to end bugs please don't do any mistake from our krouter every name belongs 9router from project is changed? and fresh new user not seeing old 9router anything? and on dashboard 9 Router Have Icon. Kodelyth Mark Icon then KROUTER and below version. make it publish on git and np
+## 2026-06-18
+
+- so check and find end to end bugs please don't do any mistake from our krouter every name belongs 9router from project is changed? and fresh new user not seeing old 9router anything? and on dashboard 9 Router Have Icon. Kodelyth Mark Icon then KROUTER and below version. make it publish on git and np
+## 2026-06-18
+
+- so check and find end to end bugs please don't do any mistake from our krouter every name belongs 9router from project is changed? and fresh new user not seeing old 9router anything? and on dashboard 9 Router Have Icon. Kodelyth Mark Icon then KROUTER and below version. make it publish on git and np
+## 2026-06-18
+
+- so check and find end to end bugs please don't do any mistake from our krouter every name belongs 9router from project is changed? and fresh new user not seeing old 9router anything? and on dashboard 9 Router Have Icon. Kodelyth Mark Icon then KROUTER and below version. make it publish on git and np
+## 2026-06-18
+
+- so check and find end to end bugs please don't do any mistake from our krouter every name belongs 9router from project is changed? and fresh new user not seeing old 9router anything? and on dashboard 9 Router Have Icon. Kodelyth Mark Icon then KROUTER and below version. make it publish on git and np
+## 2026-06-18
+
+- My previous claude code Limit is finis thats why here am on new claude code. here some summary. Ran 7 commands The vitest config is at tests/vitest.config.js but vitest auto-discovers from project root. Need to pass --config explicitly. Ran 6 commands The model-routing test exposes a REAL bug in my 
+## 2026-06-18
+
+- My previous claude code Limit is finis thats why here am on new claude code. here some summary. Ran 7 commands The vitest config is at tests/vitest.config.js but vitest auto-discovers from project root. Need to pass --config explicitly. Ran 6 commands The model-routing test exposes a REAL bug in my 
+## 2026-06-18
+
+- My previous claude code Limit is finis thats why here am on new claude code. here some summary. Ran 7 commands The vitest config is at tests/vitest.config.js but vitest auto-discovers from project root. Need to pass --config explicitly. Ran 6 commands The model-routing test exposes a REAL bug in my 
+## 2026-06-18
+
+- My previous claude code Limit is finis thats why here am on new claude code. here some summary. Ran 7 commands The vitest config is at tests/vitest.config.js but vitest auto-discovers from project root. Need to pass --config explicitly. Ran 6 commands The model-routing test exposes a REAL bug in my 
+## 2026-06-18
+
+- My previous claude code Limit is finis thats why here am on new claude code. here some summary. Ran 7 commands The vitest config is at tests/vitest.config.js but vitest auto-discovers from project root. Need to pass --config explicitly. Ran 6 commands The model-routing test exposes a REAL bug in my 
+## 2026-06-18
+
+- My previous claude code Limit is finis thats why here am on new claude code. here some summary. Ran 7 commands The vitest config is at tests/vitest.config.js but vitest auto-discovers from project root. Need to pass --config explicitly. Ran 6 commands The model-routing test exposes a REAL bug in my 
+## 2026-06-18
+
+- My previous claude code Limit is finis thats why here am on new claude code. here some summary. Ran 7 commands The vitest config is at tests/vitest.config.js but vitest auto-discovers from project root. Need to pass --config explicitly. Ran 6 commands The model-routing test exposes a REAL bug in my 
+- here the chat let read carefully: Found the answer. Let me explain both why it shows that path and what the choice is. Why it shows ~/.9router/db/data.sqlite Two reasons: 1. The displayed text is hardcoded. In src/app/(dashboard)/dashboard/profile/page.js:620: <p className="font-medium text-sm sm:te
+## 2026-06-18
+
+- My previous claude code Limit is finis thats why here am on new claude code. here some summary. Ran 7 commands The vitest config is at tests/vitest.config.js but vitest auto-discovers from project root. Need to pass --config explicitly. Ran 6 commands The model-routing test exposes a REAL bug in my 
+- here the chat let read carefully: Found the answer. Let me explain both why it shows that path and what the choice is. Why it shows ~/.9router/db/data.sqlite Two reasons: 1. The displayed text is hardcoded. In src/app/(dashboard)/dashboard/profile/page.js:620: <p className="font-medium text-sm sm:te
+## 2026-06-18
+
+- My previous claude code Limit is finis thats why here am on new claude code. here some summary. Ran 7 commands The vitest config is at tests/vitest.config.js but vitest auto-discovers from project root. Need to pass --config explicitly. Ran 6 commands The model-routing test exposes a REAL bug in my 
+- here the chat let read carefully: Found the answer. Let me explain both why it shows that path and what the choice is. Why it shows ~/.9router/db/data.sqlite Two reasons: 1. The displayed text is hardcoded. In src/app/(dashboard)/dashboard/profile/page.js:620: <p className="font-medium text-sm sm:te
+## 2026-06-18
+
+- My previous claude code Limit is finis thats why here am on new claude code. here some summary. Ran 7 commands The vitest config is at tests/vitest.config.js but vitest auto-discovers from project root. Need to pass --config explicitly. Ran 6 commands The model-routing test exposes a REAL bug in my 
+- here the chat let read carefully: Found the answer. Let me explain both why it shows that path and what the choice is. Why it shows ~/.9router/db/data.sqlite Two reasons: 1. The displayed text is hardcoded. In src/app/(dashboard)/dashboard/profile/page.js:620: <p className="font-medium text-sm sm:te
+## 2026-06-18
+
+- My previous claude code Limit is finis thats why here am on new claude code. here some summary. Ran 7 commands The vitest config is at tests/vitest.config.js but vitest auto-discovers from project root. Need to pass --config explicitly. Ran 6 commands The model-routing test exposes a REAL bug in my 
+- here the chat let read carefully: Found the answer. Let me explain both why it shows that path and what the choice is. Why it shows ~/.9router/db/data.sqlite Two reasons: 1. The displayed text is hardcoded. In src/app/(dashboard)/dashboard/profile/page.js:620: <p className="font-medium text-sm sm:te
+## 2026-06-18
+
+- My previous claude code Limit is finis thats why here am on new claude code. here some summary. Ran 7 commands The vitest config is at tests/vitest.config.js but vitest auto-discovers from project root. Need to pass --config explicitly. Ran 6 commands The model-routing test exposes a REAL bug in my 
+- here the chat let read carefully: Found the answer. Let me explain both why it shows that path and what the choice is. Why it shows ~/.9router/db/data.sqlite Two reasons: 1. The displayed text is hardcoded. In src/app/(dashboard)/dashboard/profile/page.js:620: <p className="font-medium text-sm sm:te
+## 2026-06-18
+
+- My previous claude code Limit is finis thats why here am on new claude code. here some summary. Ran 7 commands The vitest config is at tests/vitest.config.js but vitest auto-discovers from project root. Need to pass --config explicitly. Ran 6 commands The model-routing test exposes a REAL bug in my 
+- here the chat let read carefully: Found the answer. Let me explain both why it shows that path and what the choice is. Why it shows ~/.9router/db/data.sqlite Two reasons: 1. The displayed text is hardcoded. In src/app/(dashboard)/dashboard/profile/page.js:620: <p className="font-medium text-sm sm:te
+## 2026-06-18
+
+- My previous claude code Limit is finis thats why here am on new claude code. here some summary. Ran 7 commands The vitest config is at tests/vitest.config.js but vitest auto-discovers from project root. Need to pass --config explicitly. Ran 6 commands The model-routing test exposes a REAL bug in my 
+- here the chat let read carefully: Found the answer. Let me explain both why it shows that path and what the choice is. Why it shows ~/.9router/db/data.sqlite Two reasons: 1. The displayed text is hardcoded. In src/app/(dashboard)/dashboard/profile/page.js:620: <p className="font-medium text-sm sm:te
+## 2026-06-18
+
+- My previous claude code Limit is finis thats why here am on new claude code. here some summary. Ran 7 commands The vitest config is at tests/vitest.config.js but vitest auto-discovers from project root. Need to pass --config explicitly. Ran 6 commands The model-routing test exposes a REAL bug in my 
+- here the chat let read carefully: Found the answer. Let me explain both why it shows that path and what the choice is. Why it shows ~/.9router/db/data.sqlite Two reasons: 1. The displayed text is hardcoded. In src/app/(dashboard)/dashboard/profile/page.js:620: <p className="font-medium text-sm sm:te
+## 2026-06-18
+
+- My previous claude code Limit is finis thats why here am on new claude code. here some summary. Ran 7 commands The vitest config is at tests/vitest.config.js but vitest auto-discovers from project root. Need to pass --config explicitly. Ran 6 commands The model-routing test exposes a REAL bug in my 
+- here the chat let read carefully: Found the answer. Let me explain both why it shows that path and what the choice is. Why it shows ~/.9router/db/data.sqlite Two reasons: 1. The displayed text is hardcoded. In src/app/(dashboard)/dashboard/profile/page.js:620: <p className="font-medium text-sm sm:te
+## 2026-06-19
+
+- My previous claude code Limit is finis thats why here am on new claude code. here some summary. Ran 7 commands The vitest config is at tests/vitest.config.js but vitest auto-discovers from project root. Need to pass --config explicitly. Ran 6 commands The model-routing test exposes a REAL bug in my 
+- here the chat let read carefully: Found the answer. Let me explain both why it shows that path and what the choice is. Why it shows ~/.9router/db/data.sqlite Two reasons: 1. The displayed text is hardcoded. In src/app/(dashboard)/dashboard/profile/page.js:620: <p className="font-medium text-sm sm:te
+## 2026-06-19
+
+- My previous claude code Limit is finis thats why here am on new claude code. here some summary. Ran 7 commands The vitest config is at tests/vitest.config.js but vitest auto-discovers from project root. Need to pass --config explicitly. Ran 6 commands The model-routing test exposes a REAL bug in my 
+- here the chat let read carefully: Found the answer. Let me explain both why it shows that path and what the choice is. Why it shows ~/.9router/db/data.sqlite Two reasons: 1. The displayed text is hardcoded. In src/app/(dashboard)/dashboard/profile/page.js:620: <p className="font-medium text-sm sm:te
+## 2026-06-19
+
+- My previous claude code Limit is finis thats why here am on new claude code. here some summary. Ran 7 commands The vitest config is at tests/vitest.config.js but vitest auto-discovers from project root. Need to pass --config explicitly. Ran 6 commands The model-routing test exposes a REAL bug in my 
+- here the chat let read carefully: Found the answer. Let me explain both why it shows that path and what the choice is. Why it shows ~/.9router/db/data.sqlite Two reasons: 1. The displayed text is hardcoded. In src/app/(dashboard)/dashboard/profile/page.js:620: <p className="font-medium text-sm sm:te
+## 2026-06-19
+
+- My previous claude code Limit is finis thats why here am on new claude code. here some summary. Ran 7 commands The vitest config is at tests/vitest.config.js but vitest auto-discovers from project root. Need to pass --config explicitly. Ran 6 commands The model-routing test exposes a REAL bug in my 
+- here the chat let read carefully: Found the answer. Let me explain both why it shows that path and what the choice is. Why it shows ~/.9router/db/data.sqlite Two reasons: 1. The displayed text is hardcoded. In src/app/(dashboard)/dashboard/profile/page.js:620: <p className="font-medium text-sm sm:te
+## 2026-06-19
+
+- My previous claude code Limit is finis thats why here am on new claude code. here some summary. Ran 7 commands The vitest config is at tests/vitest.config.js but vitest auto-discovers from project root. Need to pass --config explicitly. Ran 6 commands The model-routing test exposes a REAL bug in my 
+- here the chat let read carefully: Found the answer. Let me explain both why it shows that path and what the choice is. Why it shows ~/.9router/db/data.sqlite Two reasons: 1. The displayed text is hardcoded. In src/app/(dashboard)/dashboard/profile/page.js:620: <p className="font-medium text-sm sm:te
+## 2026-06-19
+
+- My previous claude code Limit is finis thats why here am on new claude code. here some summary. Ran 7 commands The vitest config is at tests/vitest.config.js but vitest auto-discovers from project root. Need to pass --config explicitly. Ran 6 commands The model-routing test exposes a REAL bug in my 
+- here the chat let read carefully: Found the answer. Let me explain both why it shows that path and what the choice is. Why it shows ~/.9router/db/data.sqlite Two reasons: 1. The displayed text is hardcoded. In src/app/(dashboard)/dashboard/profile/page.js:620: <p className="font-medium text-sm sm:te
+## 2026-06-19
+
+- My previous claude code Limit is finis thats why here am on new claude code. here some summary. Ran 7 commands The vitest config is at tests/vitest.config.js but vitest auto-discovers from project root. Need to pass --config explicitly. Ran 6 commands The model-routing test exposes a REAL bug in my 
+- here the chat let read carefully: Found the answer. Let me explain both why it shows that path and what the choice is. Why it shows ~/.9router/db/data.sqlite Two reasons: 1. The displayed text is hardcoded. In src/app/(dashboard)/dashboard/profile/page.js:620: <p className="font-medium text-sm sm:te
+## 2026-06-19
+
+- My previous claude code Limit is finis thats why here am on new claude code. here some summary. Ran 7 commands The vitest config is at tests/vitest.config.js but vitest auto-discovers from project root. Need to pass --config explicitly. Ran 6 commands The model-routing test exposes a REAL bug in my 
+- here the chat let read carefully: Found the answer. Let me explain both why it shows that path and what the choice is. Why it shows ~/.9router/db/data.sqlite Two reasons: 1. The displayed text is hardcoded. In src/app/(dashboard)/dashboard/profile/page.js:620: <p className="font-medium text-sm sm:te
+## 2026-06-19
+
+- My previous claude code Limit is finis thats why here am on new claude code. here some summary. Ran 7 commands The vitest config is at tests/vitest.config.js but vitest auto-discovers from project root. Need to pass --config explicitly. Ran 6 commands The model-routing test exposes a REAL bug in my 
+- here the chat let read carefully: Found the answer. Let me explain both why it shows that path and what the choice is. Why it shows ~/.9router/db/data.sqlite Two reasons: 1. The displayed text is hardcoded. In src/app/(dashboard)/dashboard/profile/page.js:620: <p className="font-medium text-sm sm:te
+## 2026-06-19
+
+- My previous claude code Limit is finis thats why here am on new claude code. here some summary. Ran 7 commands The vitest config is at tests/vitest.config.js but vitest auto-discovers from project root. Need to pass --config explicitly. Ran 6 commands The model-routing test exposes a REAL bug in my 
+- here the chat let read carefully: Found the answer. Let me explain both why it shows that path and what the choice is. Why it shows ~/.9router/db/data.sqlite Two reasons: 1. The displayed text is hardcoded. In src/app/(dashboard)/dashboard/profile/page.js:620: <p className="font-medium text-sm sm:te
+## 2026-06-19
+
+- My previous claude code Limit is finis thats why here am on new claude code. here some summary. Ran 7 commands The vitest config is at tests/vitest.config.js but vitest auto-discovers from project root. Need to pass --config explicitly. Ran 6 commands The model-routing test exposes a REAL bug in my 
+- here the chat let read carefully: Found the answer. Let me explain both why it shows that path and what the choice is. Why it shows ~/.9router/db/data.sqlite Two reasons: 1. The displayed text is hardcoded. In src/app/(dashboard)/dashboard/profile/page.js:620: <p className="font-medium text-sm sm:te
+## 2026-06-19
+
+- My previous claude code Limit is finis thats why here am on new claude code. here some summary. Ran 7 commands The vitest config is at tests/vitest.config.js but vitest auto-discovers from project root. Need to pass --config explicitly. Ran 6 commands The model-routing test exposes a REAL bug in my 
+- here the chat let read carefully: Found the answer. Let me explain both why it shows that path and what the choice is. Why it shows ~/.9router/db/data.sqlite Two reasons: 1. The displayed text is hardcoded. In src/app/(dashboard)/dashboard/profile/page.js:620: <p className="font-medium text-sm sm:te
+## 2026-06-19
+
+- My previous claude code Limit is finis thats why here am on new claude code. here some summary. Ran 7 commands The vitest config is at tests/vitest.config.js but vitest auto-discovers from project root. Need to pass --config explicitly. Ran 6 commands The model-routing test exposes a REAL bug in my 
+- here the chat let read carefully: Found the answer. Let me explain both why it shows that path and what the choice is. Why it shows ~/.9router/db/data.sqlite Two reasons: 1. The displayed text is hardcoded. In src/app/(dashboard)/dashboard/profile/page.js:620: <p className="font-medium text-sm sm:te
+## 2026-06-19
+
+- My previous claude code Limit is finis thats why here am on new claude code. here some summary. Ran 7 commands The vitest config is at tests/vitest.config.js but vitest auto-discovers from project root. Need to pass --config explicitly. Ran 6 commands The model-routing test exposes a REAL bug in my 
+- here the chat let read carefully: Found the answer. Let me explain both why it shows that path and what the choice is. Why it shows ~/.9router/db/data.sqlite Two reasons: 1. The displayed text is hardcoded. In src/app/(dashboard)/dashboard/profile/page.js:620: <p className="font-medium text-sm sm:te
+## 2026-06-19
+
+- My previous claude code Limit is finis thats why here am on new claude code. here some summary. Ran 7 commands The vitest config is at tests/vitest.config.js but vitest auto-discovers from project root. Need to pass --config explicitly. Ran 6 commands The model-routing test exposes a REAL bug in my 
+- here the chat let read carefully: Found the answer. Let me explain both why it shows that path and what the choice is. Why it shows ~/.9router/db/data.sqlite Two reasons: 1. The displayed text is hardcoded. In src/app/(dashboard)/dashboard/profile/page.js:620: <p className="font-medium text-sm sm:te
+## 2026-06-19
+
+- My previous claude code Limit is finis thats why here am on new claude code. here some summary. Ran 7 commands The vitest config is at tests/vitest.config.js but vitest auto-discovers from project root. Need to pass --config explicitly. Ran 6 commands The model-routing test exposes a REAL bug in my 
+- here the chat let read carefully: Found the answer. Let me explain both why it shows that path and what the choice is. Why it shows ~/.9router/db/data.sqlite Two reasons: 1. The displayed text is hardcoded. In src/app/(dashboard)/dashboard/profile/page.js:620: <p className="font-medium text-sm sm:te
+## 2026-06-19
+
+- My previous claude code Limit is finis thats why here am on new claude code. here some summary. Ran 7 commands The vitest config is at tests/vitest.config.js but vitest auto-discovers from project root. Need to pass --config explicitly. Ran 6 commands The model-routing test exposes a REAL bug in my 
+- here the chat let read carefully: Found the answer. Let me explain both why it shows that path and what the choice is. Why it shows ~/.9router/db/data.sqlite Two reasons: 1. The displayed text is hardcoded. In src/app/(dashboard)/dashboard/profile/page.js:620: <p className="font-medium text-sm sm:te
+## 2026-06-19
+
+- My previous claude code Limit is finis thats why here am on new claude code. here some summary. Ran 7 commands The vitest config is at tests/vitest.config.js but vitest auto-discovers from project root. Need to pass --config explicitly. Ran 6 commands The model-routing test exposes a REAL bug in my 
+- here the chat let read carefully: Found the answer. Let me explain both why it shows that path and what the choice is. Why it shows ~/.9router/db/data.sqlite Two reasons: 1. The displayed text is hardcoded. In src/app/(dashboard)/dashboard/profile/page.js:620: <p className="font-medium text-sm sm:te
+## 2026-06-19
+
+- My previous claude code Limit is finis thats why here am on new claude code. here some summary. Ran 7 commands The vitest config is at tests/vitest.config.js but vitest auto-discovers from project root. Need to pass --config explicitly. Ran 6 commands The model-routing test exposes a REAL bug in my 
+- here the chat let read carefully: Found the answer. Let me explain both why it shows that path and what the choice is. Why it shows ~/.9router/db/data.sqlite Two reasons: 1. The displayed text is hardcoded. In src/app/(dashboard)/dashboard/profile/page.js:620: <p className="font-medium text-sm sm:te

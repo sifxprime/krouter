@@ -36,14 +36,12 @@ export default function JcodeToolCard({
   const hasInitializedModel = useRef(false);
 
   const getProviderEntry = () => (
-    jcodeStatus?.config?.providers?.["krouter"]
-    ?? jcodeStatus?.config?.providers?.["9router"]
-    ?? null
+    jcodeStatus?.config?.providers?.["krouter"] ?? null
   );
 
   const getConfigStatus = () => {
     if (!jcodeStatus?.installed) return null;
-    if (!(jcodeStatus?.hasKRouter ?? jcodeStatus?.has9Router)) return "not_configured";
+    if (!(jcodeStatus?.hasKRouter)) return "not_configured";
     const currentProvider = getProviderEntry();
     if (!currentProvider) return "not_configured";
     return matchKnownEndpoint(currentProvider.base_url, { tunnelPublicUrl, tailscaleUrl }) ? "configured" : "other";
@@ -82,7 +80,7 @@ export default function JcodeToolCard({
   useEffect(() => {
     if (jcodeStatus?.installed && !hasInitializedModel.current) {
       hasInitializedModel.current = true;
-      const provider = jcodeStatus.config?.providers?.["krouter"] ?? jcodeStatus.config?.providers?.["9router"];
+      const provider = jcodeStatus.config?.providers?.["krouter"];
       if (provider) {
         if (provider.default_model) {
           setSelectedModel(provider.default_model);
@@ -353,7 +351,7 @@ id = "${selectedModel || "cc/claude-opus-4-7"}"`;
                 <Button variant="primary" size="sm" onClick={handleApplySettings} disabled={!selectedModel} loading={applying}>
                   <span className="material-symbols-outlined text-[14px] mr-1">save</span>Apply
                 </Button>
-                <Button variant="outline" size="sm" onClick={handleResetSettings} disabled={!jcodeStatus?.has9Router} loading={restoring}>
+                <Button variant="outline" size="sm" onClick={handleResetSettings} disabled={!jcodeStatus?.hasKRouter} loading={restoring}>
                   <span className="material-symbols-outlined text-[14px] mr-1">restore</span>Reset
                 </Button>
                 <Button variant="ghost" size="sm" onClick={() => setShowManualConfigModal(true)}>

@@ -191,7 +191,7 @@ function buildEventStreamFrame(eventType, payload) {
 /**
  * Safely stringify a tool-call input value.
  * OpenAI expects `function.arguments` to be a JSON string, never an object.
- * If 9router's Anthropic→OpenAI conversion passes the input as a pre-parsed object,
+ * If kRouter's Anthropic→OpenAI conversion passes the input as a pre-parsed object,
  * this prevents the "" + object → "[object Object]" corruption.
  */
 function safeArgsString(value) {

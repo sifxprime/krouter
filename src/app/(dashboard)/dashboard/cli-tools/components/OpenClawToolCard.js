@@ -39,7 +39,7 @@ export default function OpenClawToolCard({
 
   const getProviderEntry = () => (
     openclawStatus?.settings?.models?.providers?.["krouter"]
-    ?? openclawStatus?.settings?.models?.providers?.["9router"]
+    
     ?? null
   );
 
@@ -86,7 +86,7 @@ export default function OpenClawToolCard({
       const provider = getProviderEntry();
       if (provider) {
         const primaryModel = openclawStatus.settings?.agents?.defaults?.model?.primary;
-        if (primaryModel) setSelectedModel(primaryModel.replace(/^(?:krouter|9router)\//, ""));
+        if (primaryModel) setSelectedModel(primaryModel.replace(/^krouter\//, ""));
         if (provider.apiKey && apiKeys?.some(k => k.key === provider.apiKey)) {
           setSelectedApiKey(provider.apiKey);
         }
@@ -361,7 +361,7 @@ export default function OpenClawToolCard({
                 <Button variant="primary" size="sm" onClick={handleApplySettings} disabled={!selectedModel} loading={applying}>
                   <span className="material-symbols-outlined text-[14px] mr-1">save</span>Apply
                 </Button>
-                <Button variant="outline" size="sm" onClick={handleResetSettings} disabled={!openclawStatus?.has9Router} loading={restoring}>
+                <Button variant="outline" size="sm" onClick={handleResetSettings} disabled={!openclawStatus?.hasKRouter} loading={restoring}>
                   <span className="material-symbols-outlined text-[14px] mr-1">restore</span>Reset
                 </Button>
                 <Button variant="ghost" size="sm" onClick={() => setShowManualConfigModal(true)}>

@@ -13,22 +13,14 @@ const execAsync = promisify(exec);
 const getJcodeConfigDir = () => path.join(os.homedir(), ".jcode");
 const getConfigPath = () => path.join(getJcodeConfigDir(), "config.toml");
 
-// Provider names and on-disk artifacts. "krouter" is canonical; "9router" is read
 // for backward-compat with existing jcode installs from before the rename.
 const PROVIDER_KEY = "krouter";
-const LEGACY_PROVIDER_KEY = "9router";
 const ENV_FILE = "provider-krouter.env";
-const LEGACY_ENV_FILE = "provider-9router.env";
 const API_KEY_ENV_VAR = "JCODE_KROUTER_API_KEY";
-const LEGACY_API_KEY_ENV_VAR = "JCODE_9ROUTER_API_KEY";
 
 const getProviderEnvPath = () => {
   const configDir = process.env.XDG_CONFIG_HOME || path.join(os.homedir(), ".config");
   return path.join(configDir, "jcode", ENV_FILE);
-};
-const getLegacyProviderEnvPath = () => {
-  const configDir = process.env.XDG_CONFIG_HOME || path.join(os.homedir(), ".config");
-  return path.join(configDir, "jcode", LEGACY_ENV_FILE);
 };
 
 const checkJcodeInstalled = async () => {
@@ -62,7 +54,7 @@ const hasKRouterConfig = (config) => {
 
   const providers = config.providers;
 
-  if (providers[PROVIDER_KEY] || providers[LEGACY_PROVIDER_KEY]) return true;
+  if (providers[PROVIDER_KEY]) return true;
 
   for (const [name, provider] of Object.entries(providers)) {
     if (provider.base_url && provider.base_url.includes("localhost:20128")) {
@@ -80,13 +72,7 @@ const writeConfig = async (config) => {
 };
 
 const readProviderEnv = async () => {
-  // Read the new provider-krouter.env first; fall back to legacy file for existing installs.
-  let envPath = getProviderEnvPath();
-  try {
-    await fs.access(envPath);
-  } catch {
-    envPath = getLegacyProviderEnvPath();
-  }
+  const envPath = getProviderEnvPath();
   try {
     const content = await fs.readFile(envPath, "utf-8");
     const env = {};
@@ -143,7 +129,6 @@ export async function GET() {
     installed: true,
     config,
     hasKRouter,
-    has9Router: hasKRouter, // legacy field name kept for UIs not yet updated
     configPath: getConfigPath(),
   });
 }
@@ -179,7 +164,6 @@ export async function POST(request) {
       requires_api_key: true,
     };
     // Remove the legacy provider block on this write so the user's config ends up canonical
-    delete config.providers[LEGACY_PROVIDER_KEY];
 
     const configDir = getJcodeConfigDir();
     await fs.mkdir(configDir, { recursive: true });
@@ -192,10 +176,7 @@ export async function POST(request) {
 
     const env = await readProviderEnv();
     env[API_KEY_ENV_VAR] = apiKey;
-    delete env[LEGACY_API_KEY_ENV_VAR];
     await writeProviderEnv(env);
-    // Best-effort remove legacy env file so it doesn't shadow the new one
-    try { await fs.unlink(getLegacyProviderEnvPath()); } catch { /* not present */ }
 
     return NextResponse.json({
       success: true,
@@ -220,15 +201,12 @@ export async function DELETE() {
     }
 
     delete config.providers[PROVIDER_KEY];
-    delete config.providers[LEGACY_PROVIDER_KEY];
 
     await writeConfig(config);
 
     const env = await readProviderEnv();
     delete env[API_KEY_ENV_VAR];
-    delete env[LEGACY_API_KEY_ENV_VAR];
     await writeProviderEnv(env);
-    try { await fs.unlink(getLegacyProviderEnvPath()); } catch { /* not present */ }
 
     return NextResponse.json({
       success: true,

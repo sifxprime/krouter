@@ -114,7 +114,6 @@ export async function GET() {
             installed: true,
             settings: config,
             hasKRouter: hasKRouterConfig(config),
-            has9Router: hasKRouterConfig(config), // legacy field name kept for UIs not yet updated
             configPath: getDeepSeekConfigPath(),
         });
     } catch (error) {

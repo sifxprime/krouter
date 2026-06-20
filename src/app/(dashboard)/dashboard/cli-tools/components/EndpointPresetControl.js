@@ -3,7 +3,6 @@
 import { useEffect, useMemo, useState } from "react";
 
 const STORAGE_KEY = "krouter.cliToolEndpointPresets";
-const LEGACY_STORAGE_KEY = "9router.cliToolEndpointPresets";
 
 function maskApiKey(apiKey) {
   if (!apiKey) return "No API key";
@@ -30,7 +29,7 @@ function readPresets() {
 function writePresets(presets) {
   if (typeof window === "undefined") return;
   window.localStorage.setItem(STORAGE_KEY, JSON.stringify(normalizePresets(presets)));
-  window.localStorage.removeItem(LEGACY_STORAGE_KEY);
+  window.
 }
 
 export default function EndpointPresetControl({

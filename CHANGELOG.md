@@ -1,3 +1,64 @@
+# v0.5.10 (2026-06-20) — standalone: drop 9router legacy plumbing
+
+Cleanup release. The fork has been on its own brand long enough that the
+9router → krouter migration plumbing is now dead weight. This release
+rips out every legacy compatibility path, dual-read, and migration
+helper that hasn't fired in months.
+
+What got dropped
+  - `9router` bin alias from `cli/package.json` (only `krouter` works now)
+  - `~/.9router → ~/.krouter` auto-migration in dataDir.js, paths.js,
+    cli.js, appUpdater.js, updater.js, mitmAliasCache.js — single
+    canonical APP_NAME, no LEGACY_* constants
+  - Coexistence warning (added in 0.5.8 — moot now)
+  - `NINE_ROUTER_*` env var dual-read + deprecation warning in
+    outboundProxy.js — only `KROUTER_*` is recognized
+  - 3 catalog entries for `NINE_ROUTER_*` from the Environment panel
+  - "9router" provider key dual-read in 12 IDE settings routes:
+    codex, jcode, opencode, openclaw, kilo, droid, copilot, cline,
+    deepseek-tui, hermes, claude, cowork — only `krouter` keys read +
+    written now
+  - `LEGACY_PROVIDER_KEY` / `LEGACY_AUTH_KEY` / `LEGACY_ENV_FILE` /
+    `LEGACY_CUSTOM_ID_PREFIX` / `LEGACY_API_KEY_ENV_VAR` constants and
+    every site that referenced them
+  - `has9Router` legacy API field in 12 IDE settings responses + 12 UI
+    components that read it — single `hasKRouter` field everywhere
+  - `com.9router.autostart` LaunchAgent / `9router.vbs` / `9router.desktop`
+    legacy cleanup helpers in autostart.js — single-entry-per-platform
+  - `9router` cmdline pattern in `killAllAppProcesses` (cli.js +
+    appUpdater.js) — only matches `krouter`
+  - `sk_9router` placeholder API key fallback → `sk_krouter`
+  - Stale "9router-relay" Deno deployer label → "krouter-relay"
+  - Stale `getLegacyProviderEnvPath()` helper in jcode-settings
+  - Comment text mentioning legacy across cli/mitm/translator paths
+  - Navigation.js upstream-credit links — redirected to sifxprime/krouter
+    (Footer attribution kept — MIT license requirement)
+
+What was intentionally kept
+  - Landing Footer attribution to decolua/9router (MIT license)
+  - README upstream attribution badges + "hardened fork of 9Router" text
+  - 9Router MITM Root CA common name (changing CN would invalidate every
+    existing user's installed MITM cert and force them to re-trust)
+  - 9router-mitm-pwd encryption salt (used to derive the cert-store
+    password key — changing it would brick saved sudo passwords)
+  - X-CLIENT-TYPE / X-Msh-Platform / grok-cli/9router HTTP headers
+    (third-party APIs whitelist by name)
+  - Linux trust-store cert filename uninstall path keeps removing both
+    `9router-root-ca.crt` and `krouter-root-ca.crt`
+
+Upgrade impact
+  Existing kRouter installs: zero. Anyone running 0.5.7+ has long since
+  converged to `~/.krouter` and writes only canonical config keys.
+  Users still on the upstream `9router` package who never installed
+  kRouter: they need to manually rename `~/.9router` → `~/.krouter`
+  before first launch. Anyone in that group is also clearly running
+  a different product (upstream is a separate npm package).
+
+Verified
+  - node --check on every file in the diff (35+ files)
+  - 605 pass + 20 expected-fail + 27 fail — identical baseline, zero
+    regressions
+
 # v0.5.9 (2026-06-19) — Windows EADDRINUSE crash-loop fix
 
 Single-purpose patch release. Symptom reported on Windows after upgrading

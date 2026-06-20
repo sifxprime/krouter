@@ -46,9 +46,9 @@ export async function GET() {
       };
     });
 
-    // Surface any KROUTER_*, NINE_ROUTER_*, MITM_*, OBSERVABILITY_*, OAUTH_*, UPDATER_*
+    // Surface any KROUTER_*, MITM_*, OBSERVABILITY_*, OAUTH_*, UPDATER_*
     // var actually set in env that isn't in the catalog — so users see surprises.
-    const PREFIXES = ["KROUTER_", "NINE_ROUTER_", "MITM_", "OBSERVABILITY_", "OAUTH_", "UPDATER_", "KIRO_", "KIMI_"];
+    const PREFIXES = ["KROUTER_", "MITM_", "OBSERVABILITY_", "OAUTH_", "UPDATER_", "KIRO_", "KIMI_"];
     const uncatalogued = [];
     for (const name of Object.keys(process.env)) {
       if (NEVER_SHOW.has(name)) continue;

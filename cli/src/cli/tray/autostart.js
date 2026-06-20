@@ -4,9 +4,7 @@ const os = require("os");
 const { execSync } = require("child_process");
 
 const APP_NAME = "krouter";
-const LEGACY_APP_NAME = "9router";
 const APP_LABEL = "com.krouter.autostart";
-const LEGACY_APP_LABEL = "com.9router.autostart";
 
 /**
  * Resolve the absolute path to this package's cli.js.
@@ -14,7 +12,7 @@ const LEGACY_APP_LABEL = "com.9router.autostart";
  * Order of preference:
  *   1. Explicit `cliPath` argument — cleanest, used when called from running
  *      cli.js with `__filename`.
- *   2. `process.argv[1]` if it's our cli.js — true when 9router is currently
+ *   2. `process.argv[1]` if it's our cli.js — true when kRouter is currently
  *      running and the tray menu fires this code path.
  *   3. Compute relative to this file's own location. autostart.js lives at
  *      `<pkg>/src/cli/tray/autostart.js`, so cli.js is three levels up.
@@ -80,40 +78,29 @@ function disableAutoStart() {
  * Check if autostart is enabled.
  *
  * On macOS, both the plist file and the launchd registration must be present —
- * otherwise the tray menu would lie about the state (showing "✓ Enabled" even
+ * otherwise the tray menu would lie about the state (showing "Enabled" even
  * when launchd has the agent in a failed state or hasn't loaded it).
- *
- * Both the new label (com.krouter.autostart) and the legacy label
- * (com.9router.autostart) count as enabled, so a pre-rename install still
- * reads as enabled until the next enable/disable cleans up the legacy plist.
  */
 function isAutoStartEnabled() {
   const platform = process.platform;
 
   try {
     if (platform === "darwin") {
-      const newPlist = path.join(os.homedir(), "Library", "LaunchAgents", `${APP_LABEL}.plist`);
-      const legacyPlist = path.join(os.homedir(), "Library", "LaunchAgents", `${LEGACY_APP_LABEL}.plist`);
-      const checkLabel = (label) => {
-        try {
-          execSync(`launchctl list ${label}`, {
-            stdio: ["ignore", "ignore", "ignore"],
-            timeout: 3000
-          });
-          return true;
-        } catch { return false; }
-      };
-      if (fs.existsSync(newPlist) && checkLabel(APP_LABEL)) return true;
-      if (fs.existsSync(legacyPlist) && checkLabel(LEGACY_APP_LABEL)) return true;
-      return false;
+      const plistPath = path.join(os.homedir(), "Library", "LaunchAgents", `${APP_LABEL}.plist`);
+      if (!fs.existsSync(plistPath)) return false;
+      try {
+        execSync(`launchctl list ${APP_LABEL}`, {
+          stdio: ["ignore", "ignore", "ignore"],
+          timeout: 3000
+        });
+        return true;
+      } catch { return false; }
     } else if (platform === "win32") {
       const startupDir = path.join(process.env.APPDATA || "", "Microsoft", "Windows", "Start Menu", "Programs", "Startup");
-      return fs.existsSync(path.join(startupDir, `${APP_NAME}.vbs`))
-        || fs.existsSync(path.join(startupDir, `${LEGACY_APP_NAME}.vbs`));
+      return fs.existsSync(path.join(startupDir, `${APP_NAME}.vbs`));
     } else if (platform === "linux") {
       const autostartDir = path.join(os.homedir(), ".config", "autostart");
-      return fs.existsSync(path.join(autostartDir, `${APP_NAME}.desktop`))
-        || fs.existsSync(path.join(autostartDir, `${LEGACY_APP_NAME}.desktop`));
+      return fs.existsSync(path.join(autostartDir, `${APP_NAME}.desktop`));
     }
   } catch (e) {}
   return false;
@@ -125,15 +112,14 @@ function isAutoStartEnabled() {
  * Returns true when the current Node process IS the running instance that
  * launchd is managing under our agent label.
  *
- * `launchctl unload <plist>` (and `load`) for an Aqua user-domain agent sends
- * SIGTERM to the running process. When the running 9router cli.js was itself
- * spawned by the autostart launchd agent (i.e. user enabled autostart at
- * some point, then rebooted, then clicked the tray icon's "Disable
- * Auto-start" menu item), an unload would kill the very process executing
- * the click handler — and the tray icon would disappear instead of the menu
- * label flipping back to "Enable Auto-start". This helper lets the enable
- * and disable paths sidestep that by skipping launchctl when we'd otherwise
- * be killing ourselves.
+ * `launchctl unload <plist>` for an Aqua user-domain agent sends SIGTERM to
+ * the running process. When the running kRouter cli.js was itself spawned by
+ * the autostart launchd agent (i.e. user enabled autostart, then rebooted,
+ * then clicked the tray icon's "Disable Auto-start" menu item), an unload
+ * would kill the very process executing the click handler — and the tray
+ * icon would disappear instead of the menu label flipping back to "Enable
+ * Auto-start". This helper lets the enable and disable paths sidestep that
+ * by skipping launchctl when we'd otherwise be killing ourselves.
  */
 function isAgentSelfMacOS(label = APP_LABEL) {
   try {
@@ -150,101 +136,55 @@ function isAgentSelfMacOS(label = APP_LABEL) {
 }
 
 /**
- * One-time migration: remove the legacy `com.9router.autostart` LaunchAgent so
- * upgrading installs don't end up with TWO kRouter processes firing on every
- * login (legacy + new agent both registered with launchd).
- *
- * Self-kill protection: if the current process IS the running legacy agent
- * (i.e. user enabled autostart under the old version, then rebooted, then
- * upgraded and clicked "Enable autostart" again), unloading the legacy plist
- * would SIGTERM us mid-execution. Skip the unload in that case — just delete
- * the plist file. launchd will release the agent on next login or quit, and
- * the new agent we're about to write takes over from then on.
- */
-function cleanupLegacyMacOSAutostart() {
-  const legacyPlist = path.join(os.homedir(), "Library", "LaunchAgents", `${LEGACY_APP_LABEL}.plist`);
-  if (!fs.existsSync(legacyPlist)) return;
-
-  if (!isAgentSelfMacOS(LEGACY_APP_LABEL)) {
-    try {
-      execSync(`launchctl unload "${legacyPlist}"`, { stdio: "ignore" });
-    } catch (e) { /* best effort — the file removal below is what actually matters */ }
-  }
-  try {
-    fs.unlinkSync(legacyPlist);
-  } catch (e) { /* leave it alone if we can't write */ }
-}
-
-/**
- * One-time best-effort sweep run at every kRouter startup: detect autostart
- * entries (LaunchAgent / Startup .vbs / .desktop) that point at an executable
- * which no longer exists on disk, and remove them. Catches the upgrade case
- * where a v0.5.6 user:
- *   1. had autostart enabled (entry points at npm-global path of the old
- *      `9router` package)
- *   2. ran `npm uninstall -g 9router` then `npm i -g @sifxprime/krouter`
- *   3. the entry now references a binary that no longer exists, so launchd
- *      logs an error every boot and no tray appears.
- *
- * After cleanup the user can re-enable autostart from the new tray menu and
- * the cleanup helpers above write a fresh entry pointing at the new install.
+ * Startup sweep: detect autostart entries pointing at a binary or script that
+ * no longer exists on disk and remove them. Catches the case where a user
+ * reinstalls kRouter to a different global path (nvm switch, Homebrew → npm,
+ * etc.) — the old entry references a missing binary and launchd logs an
+ * error every boot with no tray icon. After cleanup the user re-enables from
+ * the new tray menu and a fresh entry is written.
  */
 function sweepDanglingAutostartEntries() {
   if (process.platform === "darwin") {
-    for (const label of [LEGACY_APP_LABEL, APP_LABEL]) {
-      const plistPath = path.join(os.homedir(), "Library", "LaunchAgents", `${label}.plist`);
-      if (!fs.existsSync(plistPath)) continue;
-      try {
-        const content = fs.readFileSync(plistPath, "utf-8");
-        // ProgramArguments are inside <string>…</string> tags; we care about the
-        // FIRST node executable and the SECOND argument (path to cli.js).
-        const argMatches = [...content.matchAll(/<string>([^<]+)<\/string>/g)].map((m) => m[1]);
-        // Find the path that looks like a cli.js entry (ends with cli.js or
-        // is the npm-global lib path for the old "9router" package).
-        const scriptArg = argMatches.find((a) => /cli\.js$/.test(a) || a.includes("9router"));
-        if (scriptArg && !fs.existsSync(scriptArg)) {
-          if (!isAgentSelfMacOS(label)) {
-            try { execSync(`launchctl unload "${plistPath}"`, { stdio: "ignore" }); } catch { /* ignore */ }
-          }
-          fs.unlinkSync(plistPath);
+    const plistPath = path.join(os.homedir(), "Library", "LaunchAgents", `${APP_LABEL}.plist`);
+    if (!fs.existsSync(plistPath)) return;
+    try {
+      const content = fs.readFileSync(plistPath, "utf-8");
+      const argMatches = [...content.matchAll(/<string>([^<]+)<\/string>/g)].map((m) => m[1]);
+      const scriptArg = argMatches.find((a) => /cli\.js$/.test(a));
+      if (scriptArg && !fs.existsSync(scriptArg)) {
+        if (!isAgentSelfMacOS(APP_LABEL)) {
+          try { execSync(`launchctl unload "${plistPath}"`, { stdio: "ignore" }); } catch { /* ignore */ }
         }
-      } catch { /* unreadable plist — skip */ }
-    }
+        fs.unlinkSync(plistPath);
+      }
+    } catch { /* unreadable plist — skip */ }
   } else if (process.platform === "win32") {
     const startupDir = path.join(process.env.APPDATA || "", "Microsoft", "Windows", "Start Menu", "Programs", "Startup");
-    for (const name of [`${APP_NAME}.vbs`, `${LEGACY_APP_NAME}.vbs`]) {
-      const vbsPath = path.join(startupDir, name);
-      if (!fs.existsSync(vbsPath)) continue;
-      try {
-        const content = fs.readFileSync(vbsPath, "utf-8");
-        // VBS shape: WshShell.Run """{nodePath}"" ""{cliJsPath}"" --tray --skip-update", 0, False
-        const m = content.match(/WshShell\.Run\s+"""([^"]+)""\s+""([^"]+)""/);
-        if (m && (!fs.existsSync(m[1]) || !fs.existsSync(m[2]))) {
-          fs.unlinkSync(vbsPath);
-        }
-      } catch { /* unreadable vbs — skip */ }
-    }
+    const vbsPath = path.join(startupDir, `${APP_NAME}.vbs`);
+    if (!fs.existsSync(vbsPath)) return;
+    try {
+      const content = fs.readFileSync(vbsPath, "utf-8");
+      // VBS shape: WshShell.Run """{nodePath}"" ""{cliJsPath}"" --tray --skip-update", 0, False
+      const m = content.match(/WshShell\.Run\s+"""([^"]+)""\s+""([^"]+)""/);
+      if (m && (!fs.existsSync(m[1]) || !fs.existsSync(m[2]))) {
+        fs.unlinkSync(vbsPath);
+      }
+    } catch { /* unreadable vbs — skip */ }
   } else if (process.platform === "linux") {
     const autostartDir = path.join(os.homedir(), ".config", "autostart");
-    for (const name of [`${APP_NAME}.desktop`, `${LEGACY_APP_NAME}.desktop`]) {
-      const desktopPath = path.join(autostartDir, name);
-      if (!fs.existsSync(desktopPath)) continue;
-      try {
-        const content = fs.readFileSync(desktopPath, "utf-8");
-        const m = content.match(/^Exec=(\S+)\s+(\S+)/m);
-        if (m && (!fs.existsSync(m[1]) || !fs.existsSync(m[2]))) {
-          fs.unlinkSync(desktopPath);
-        }
-      } catch { /* unreadable desktop — skip */ }
-    }
+    const desktopPath = path.join(autostartDir, `${APP_NAME}.desktop`);
+    if (!fs.existsSync(desktopPath)) return;
+    try {
+      const content = fs.readFileSync(desktopPath, "utf-8");
+      const m = content.match(/^Exec=(\S+)\s+(\S+)/m);
+      if (m && (!fs.existsSync(m[1]) || !fs.existsSync(m[2]))) {
+        fs.unlinkSync(desktopPath);
+      }
+    } catch { /* unreadable desktop — skip */ }
   }
 }
 
 function enableMacOS(cliPath) {
-  // Migrate away from the pre-rename plist BEFORE writing the new one so the
-  // user doesn't end up with two LaunchAgents both firing on next login.
-  cleanupLegacyMacOSAutostart();
-
   const launchAgentsDir = path.join(os.homedir(), "Library", "LaunchAgents");
   const plistPath = path.join(launchAgentsDir, `${APP_LABEL}.plist`);
 
@@ -258,9 +198,6 @@ function enableMacOS(cliPath) {
   if (!routerScript) return false;
 
   // Invoke node + cli.js directly with absolute paths — no shell wrapper.
-  // The previous design ran `zsh -l -c "..."` so a login shell would source
-  // nvm/.zshrc and set PATH; that's fragile (nvm.sh sourcing varies by user,
-  // some setups don't put node on PATH from a non-interactive login shell).
   // EnvironmentVariables.PATH explicitly includes node's bin dir so child
   // processes spawned by cli.js (npm install at runtime, etc.) resolve.
   const launchPath = `${path.dirname(nodePath)}:/usr/local/bin:/usr/bin:/bin`;
@@ -304,37 +241,22 @@ function enableMacOS(cliPath) {
     return true;
   }
 
-  // Register with launchd in the current session. Without this, the agent
-  // only takes effect on the next user login and the user has no signal that
-  // anything actually happened. `unload` first defends against re-enable
-  // replacing an existing plist.
-  try {
-    execSync(`launchctl unload "${plistPath}"`, { stdio: "ignore" });
-  } catch (e) {}
-  try {
-    execSync(`launchctl load -w "${plistPath}"`, { stdio: "ignore" });
-  } catch (e) {
-    // Even if load fails, the plist is on disk and will be picked up at next
-    // login; report success based on the file write.
+  // Register with launchd in the current session.
+  try { execSync(`launchctl unload "${plistPath}"`, { stdio: "ignore" }); } catch (e) {}
+  try { execSync(`launchctl load -w "${plistPath}"`, { stdio: "ignore" }); } catch (e) {
+    // Even if load fails, the plist is on disk and will be picked up at next login.
   }
   return true;
 }
 
 function disableMacOS() {
-  // Also clear any legacy plist still on disk — see cleanupLegacyMacOSAutostart.
-  cleanupLegacyMacOSAutostart();
-
   const plistPath = path.join(os.homedir(), "Library", "LaunchAgents", `${APP_LABEL}.plist`);
 
   // Don't kill ourselves: when the current process is the running agent,
   // `launchctl unload` would send SIGTERM and the user clicking
-  // "Disable Auto-start" from the tray menu would lose their tray icon
-  // instead of just flipping the menu label. Skip the unload — removing the
-  // plist file is enough to prevent the agent from starting on next login.
+  // "Disable Auto-start" from the tray menu would lose their tray icon.
   if (!isAgentSelfMacOS()) {
-    try {
-      execSync(`launchctl unload "${plistPath}"`, { stdio: "ignore" });
-    } catch (e) {}
+    try { execSync(`launchctl unload "${plistPath}"`, { stdio: "ignore" }); } catch (e) {}
   }
 
   if (fs.existsSync(plistPath)) {
@@ -348,21 +270,14 @@ function disableMacOS() {
 function enableWindows(cliPath) {
   const startupDir = path.join(process.env.APPDATA || "", "Microsoft", "Windows", "Start Menu", "Programs", "Startup");
   const vbsPath = path.join(startupDir, `${APP_NAME}.vbs`);
-  const legacyVbsPath = path.join(startupDir, `${LEGACY_APP_NAME}.vbs`);
 
   if (!fs.existsSync(startupDir)) return false;
-
-  // Migrate away from the pre-rename startup entry so we don't double-launch.
-  if (fs.existsSync(legacyVbsPath)) {
-    try { fs.unlinkSync(legacyVbsPath); } catch { /* best effort */ }
-  }
 
   const nodePath = process.execPath;
   const routerScript = getCliJsPath(cliPath);
   if (!routerScript) return false;
 
-  // Run node + cli.js directly, hidden window. Avoids the fragile
-  // `9router.cmd` lookup that depended on the npm prefix path.
+  // Run node + cli.js directly, hidden window.
   const vbsContent = `Set WshShell = CreateObject("WScript.Shell")
 WshShell.Run """${nodePath}"" ""${routerScript}"" --tray --skip-update", 0, False
 `;
@@ -372,11 +287,9 @@ WshShell.Run """${nodePath}"" ""${routerScript}"" --tray --skip-update", 0, Fals
 
 function disableWindows() {
   const startupDir = path.join(process.env.APPDATA || "", "Microsoft", "Windows", "Start Menu", "Programs", "Startup");
-  for (const name of [`${APP_NAME}.vbs`, `${LEGACY_APP_NAME}.vbs`]) {
-    const p = path.join(startupDir, name);
-    if (fs.existsSync(p)) {
-      try { fs.unlinkSync(p); } catch { /* best effort */ }
-    }
+  const vbsPath = path.join(startupDir, `${APP_NAME}.vbs`);
+  if (fs.existsSync(vbsPath)) {
+    try { fs.unlinkSync(vbsPath); } catch { /* best effort */ }
   }
   return true;
 }
@@ -386,16 +299,10 @@ function disableWindows() {
 function enableLinux(cliPath) {
   const autostartDir = path.join(os.homedir(), ".config", "autostart");
   const desktopPath = path.join(autostartDir, `${APP_NAME}.desktop`);
-  const legacyDesktopPath = path.join(autostartDir, `${LEGACY_APP_NAME}.desktop`);
 
   if (!fs.existsSync(autostartDir)) {
     try { fs.mkdirSync(autostartDir, { recursive: true }); }
     catch (e) { return false; }
-  }
-
-  // Migrate away from the pre-rename autostart entry so we don't double-launch.
-  if (fs.existsSync(legacyDesktopPath)) {
-    try { fs.unlinkSync(legacyDesktopPath); } catch { /* best effort */ }
   }
 
   const nodePath = process.execPath;
@@ -417,11 +324,9 @@ X-GNOME-Autostart-enabled=true
 
 function disableLinux() {
   const autostartDir = path.join(os.homedir(), ".config", "autostart");
-  for (const name of [`${APP_NAME}.desktop`, `${LEGACY_APP_NAME}.desktop`]) {
-    const p = path.join(autostartDir, name);
-    if (fs.existsSync(p)) {
-      try { fs.unlinkSync(p); } catch { /* best effort */ }
-    }
+  const desktopPath = path.join(autostartDir, `${APP_NAME}.desktop`);
+  if (fs.existsSync(desktopPath)) {
+    try { fs.unlinkSync(desktopPath); } catch { /* best effort */ }
   }
   return true;
 }
