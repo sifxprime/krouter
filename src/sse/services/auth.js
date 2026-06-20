@@ -200,10 +200,22 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
  * @param {string|null} model - The specific model that triggered the error
  * @returns {{ shouldFallback: boolean, cooldownMs: number }}
  */
+// Extract a Google verification URL from a 403 "Verify your account" response
+// body. When set on the connection's lastError, the dashboard surfaces it as
+// a clickable badge so the user knows EXACTLY which URL to click to fix the
+// account (instead of staring at "Verify your account to continue." with no
+// link). Best-effort regex — degrades to null on parse failure.
+function extractVerificationUrl(errorText) {
+  if (typeof errorText !== "string" || !errorText.includes("accounts.google.com")) return null;
+  const match = errorText.match(/https:\/\/accounts\.google\.com\/signin\/continue\?[^\s"'\\)]+/);
+  return match ? match[0] : null;
+}
+
 export async function markAccountUnavailable(connectionId, status, errorText, provider = null, model = null, resetsAtMs = null) {
   if (!connectionId || connectionId === "noauth") return { shouldFallback: false, cooldownMs: 0 };
 
   const reason = typeof errorText === "string" ? errorText.slice(0, 100) : "Provider error";
+  const verifyUrl = extractVerificationUrl(typeof errorText === "string" ? errorText : "");
 
   // Captured by the atomic compute callback so we can return them to the caller.
   let outcome = { shouldFallback: false, cooldownMs: 0 };
@@ -243,7 +255,13 @@ export async function markAccountUnavailable(connectionId, status, errorText, pr
     return {
       ...lockUpdate,
       testStatus: "unavailable",
-      lastError: reason,
+      // For Google "Verify your account" 403s, embed the clickable verification
+      // URL right in lastError so the dashboard Connection card can render it
+      // as a "Verify on Google" link. Without this the user just sees the
+      // truncated error and has no idea what to do.
+      lastError: accountLock && verifyUrl
+        ? `Verify your account: ${verifyUrl}`
+        : reason,
       errorCode: status,
       lastErrorAt: new Date().toISOString(),
       backoffLevel: newBackoffLevel ?? backoffLevel,
@@ -253,6 +271,12 @@ export async function markAccountUnavailable(connectionId, status, errorText, pr
   if (merged && outcome.shouldFallback) {
     const lockLabel = outcome.accountLock ? "WHOLE ACCOUNT" : lockKey;
     log.warn("AUTH", `${connName} locked ${lockLabel} for ${Math.round(outcome.cooldownMs / 1000)}s [${status}]`);
+    // Extra-loud notice for account-level locks — these need human action
+    // (clicking Google's verification link), unlike per-model quota locks
+    // which auto-clear when the quota resets.
+    if (outcome.accountLock) {
+      log.warn("AUTH", `🔒 ACCOUNT ${connName} needs verification → ${verifyUrl || "(URL not parsable from error body)"}`);
+    }
     if (provider && status && reason) {
       console.error(`❌ ${provider} [${status}]: ${reason}`);
     }

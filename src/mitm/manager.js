@@ -404,6 +404,19 @@ async function getMitmStatus() {
 async function scheduleMitmRestart(apiKey) {
   if (mitmIsRestarting) return;
 
+  // If the MITM server is already up (e.g. user toggled OFF then ON manually
+  // while a stale restart was queued, or two callers raced), there's nothing
+  // to restart. Without this guard, the queued restart calls startServer →
+  // hits the 'MITM server is already running' throw → catch reschedules →
+  // infinite "Restart attempt 1/5 failed" loop that spams the user's log
+  // every 5 seconds. Reset the counter so a future genuine crash gets a
+  // clean retry budget.
+  if (serverProcess && !serverProcess.killed) {
+    mitmRestartCount = 0;
+    log("MITM server already running, no restart needed");
+    return;
+  }
+
   const aliveMs = Date.now() - mitmLastStartTime;
   if (aliveMs >= MITM_RESTART_RESET_MS) mitmRestartCount = 0;
 
