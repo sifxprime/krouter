@@ -18,8 +18,7 @@ function normalizePresets(value) {
 function readPresets() {
   if (typeof window === "undefined") return [];
   try {
-    let raw = window.localStorage.getItem(STORAGE_KEY);
-    if (raw == null) raw = window.localStorage.getItem(LEGACY_STORAGE_KEY);
+    const raw = window.localStorage.getItem(STORAGE_KEY);
     return normalizePresets(JSON.parse(raw || "[]"));
   } catch {
     return [];
@@ -29,7 +28,6 @@ function readPresets() {
 function writePresets(presets) {
   if (typeof window === "undefined") return;
   window.localStorage.setItem(STORAGE_KEY, JSON.stringify(normalizePresets(presets)));
-  window.
 }
 
 export default function EndpointPresetControl({

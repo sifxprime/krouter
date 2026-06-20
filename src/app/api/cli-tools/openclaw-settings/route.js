@@ -54,10 +54,9 @@ const readSettings = async () => {
   }
 };
 
-// is read as a fallback for pre-rename configs and removed on next write.
 const PROVIDER_KEY = "krouter";
 const MODEL_PREFIX = "krouter/";
-const MODEL_PREFIX_RE = /^krouter\/|/^krouter\//;
+const MODEL_PREFIX_RE = /^krouter\//;
 
 const getProviderEntry = (providers) => (
   providers?.[PROVIDER_KEY] ?? null
