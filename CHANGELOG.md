@@ -1,4 +1,4 @@
-# v0.5.12 (2026-06-20) — Claude Desktop MITM + account health
+# v0.5.12 (2026-06-20) — Claude Desktop MITM + account health + Linux trust + cert UI
 
 ## Features
 
@@ -16,7 +16,64 @@ revert instantly (api.anthropic.com removed from /etc/hosts).
 
 Note: Claude Code CLI users do NOT need this — use ANTHROPIC_BASE_URL.
 
+### Cert Install/Uninstall buttons in dashboard (USER3)
+Self-service root certificate management. Replaces hand-running
+`security add-trusted-cert` / `update-ca-certificates` / `certutil -addstore`.
+
+New card on Dashboard → MITM shows current cert state and three buttons:
+  - **Install / Reinstall Certificate** — label changes with state
+  - **Uninstall**
+  - **Remove Legacy 9router Cert** — appears automatically when
+    `~/.9router/mitm/rootCA.crt` is detected on disk
+
+Inline sudo password input on Mac/Linux when not cached. Windows uses
+existing UAC. Auto-refreshes status after every action.
+
+Verified end-to-end on dev machine: full uninstall → keychain check →
+reinstall → keychain check cycle in 6.1s with cached sudo.
+
 ## Bug fixes
+
+### Linux: NODE_EXTRA_CA_CERTS auto-write in shell rc files (USER1 + USER4)
+Ubuntu Antigravity (and any other Electron/Node IDE) was rejecting the
+kRouter MITM cert with `x509: certificate signed by unknown authority`
+even after `update-ca-certificates` ran. Root cause: Node.js + Electron
+read their OWN bundled Mozilla CA store, not the OS trust store. macOS
+and Windows had auto-`launchctl setenv` / `setx` for this since 0.5.6
+— Linux was missing the branch entirely (helper had been removed in the
+0.5.10 standalone cleanup).
+
+Fix: new `src/mitm/linuxNodeCaCerts.js` writes a guarded BEGIN/END
+block exporting `NODE_EXTRA_CA_CERTS=<cert path>` to `~/.profile`,
+`~/.bashrc`, `~/.zshrc`, and `~/.bash_profile` (only existing ones,
+plus always-create `.profile`). Idempotent — re-running with the same
+path is no-op; new path replaces in place. Stripped cleanly on MITM
+stop. Wired into the existing `IS_MAC` / `IS_WIN` start/stop branches
+in `src/mitm/manager.js`.
+
+After install, log surfaces a clear notice:
+```
+[linux-node-ca] NODE_EXTRA_CA_CERTS written to 3 shell rc file(s): ~/.profile, ~/.bashrc, ~/.zshrc
+[linux-node-ca] ⚠ Effective in NEW shells only — restart your IDE
+                (Antigravity / Claude Desktop / VS Code) OR run: source ~/.profile
+```
+
+Verified with 10/10 mocked-Linux unit tests covering idempotency,
+existing-content preservation, in-place block replacement, and clean
+unset.
+
+### Free / passthroughModels providers count as active (USER2)
+Users with ONLY free providers connected (MiMo Free, OpenCode Free,
+OpenRouter, Vercel AI Gateway, Grok Web — all `passthroughModels: true`)
+saw the "Select Model" button disabled on every IDE / CLI tool card
+and the MITM panel. Root cause: `hasActiveProviders()` gate checked
+three conditions (hardcoded models > 0, OpenAI-compatible, Anthropic-
+compatible) — all three false for passthrough providers because their
+models fetch live from a remote URL, not from the hardcoded MODELS map.
+
+Fix: added 4th OR clause `AI_PROVIDERS[provider]?.passthroughModels === true`
+in both `MitmPageClient.js` and `ToolDetailClient.js` so passthrough
+connections register as active. 5 providers now correctly unlocked.
 
 ### Antigravity 403 "Verify your account" — lock whole account for 1hr
 When Google flags an Antigravity OAuth account for needing verification
@@ -25,25 +82,35 @@ locking only the specific model that errored. Since a flagged account
 fails on ALL models, this caused 5+ wasted 403 requests per combo
 cycle before reaching a healthy account.
 
-Fix: new accountLock:true flag on ERROR_RULES. When matched, writes
-modelLock___all (locks entire account) instead of per-model lock.
-1hr cooldown. Auto-clears after 1hr or on "Test connection" click.
-
-Log now shows "WHOLE ACCOUNT locked for 3600s" vs "modelLock_X".
+Fix: new `accountLock: true` flag on `ERROR_RULES`. When matched,
+writes `modelLock___all` (locks entire account) instead of per-model
+lock. 1hr cooldown. Auto-clears after 1hr or on "Test connection" click.
+Log now shows `WHOLE ACCOUNT locked for 3600s` vs `modelLock_X`.
 
 ### Anti-loop header on ALL outbound Anthropic calls
-Every kRouter-initiated call to api.anthropic.com now includes
-x-request-source:local so the MITM server passes them through to real
-Anthropic instead of intercepting (infinite loop prevention). Previously
-only the Antigravity quota endpoints had this header. Fixed in:
-  - open-sse/executors/base.js buildHeaders() (covers all providers)
-  - claudeAutoPing.js sendPing()
-  - usage.js getClaudeUsage() + getClaudeUsageLegacy() (3 call sites)
+Every kRouter-initiated call to `api.anthropic.com` now includes
+`x-request-source: local` so the MITM server passes them through to
+real Anthropic instead of intercepting (infinite loop prevention).
+Previously only the Antigravity quota endpoints had this header. Fixed
+in `open-sse/executors/base.js buildHeaders()` (covers all providers),
+`claudeAutoPing.js sendPing()`, and 3 call sites in
+`open-sse/services/usage.js`.
 
 ## Verified
-  - Claude Desktop MITM live on Mac — HTTP 200, 11.2s, routes via kr/auto
-  - 403 verify-account unit tests: 4/4 pass
-  - Full test suite: 605 pass + 20 expected-fail + 27 fail (baseline)
+- Claude Desktop MITM live on Mac — HTTP 200, 11.2s, routes via `kr/auto`
+- USER2 fix: 5 passthroughModels providers verified, dashboard renders 200
+- USER3 fix: full uninstall → keychain verify → reinstall → keychain verify
+  cycle live on dev machine (6.1s with cached sudo)
+- USER1 + USER4 fix: 10/10 mocked-Linux unit tests pass (idempotency,
+  preservation, replacement, unset)
+- 403 verify-account: 4/4 unit tests pass
+- Full test suite: 605 pass + 20 expected-fail + 27 fail (baseline)
+
+## Upgrade
+```
+npm install -g @sifxprime/krouter@latest
+```
+No data migration. Existing MITM cert, OAuth tokens, settings preserved.
 
 
 # v0.5.11 (2026-06-20) — CLI menu reliability + final 9router scrub
