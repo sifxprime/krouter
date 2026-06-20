@@ -45,6 +45,11 @@ export default function ModelSelectModal({
   const [providerNodes, setProviderNodes] = useState([]);
   const [customModels, setCustomModels] = useState([]);
   const [disabledModels, setDisabledModels] = useState({});
+  // Live-fetched models per provider id. Shape: { [providerId]: { loading, models, error, source } }
+  // Populated by an effect that fires when the modal opens. Used to fill in
+  // groups for providers that have no hardcoded models (passthroughModels: true)
+  // and to surface live OAuth-resolved catalogs (kiro per-account variants).
+  const [liveModels, setLiveModels] = useState({});
 
   const fetchCombos = async () => {
     try {
@@ -109,6 +114,69 @@ export default function ModelSelectModal({
   useEffect(() => {
     if (isOpen) fetchDisabledModels();
   }, [isOpen]);
+
+  // Live-fetch models for providers that don't have a hardcoded list (free
+  // providers with passthroughModels: true) AND for OAuth providers where the
+  // per-account model catalog can differ from the static one (kiro returns
+  // -thinking/-agentic variants tied to the connection). Each provider fetches
+  // in parallel so the modal stays responsive even with many connections.
+  //
+  // Manual refresh button per-group bypasses the 5min server cache via
+  // ?refresh=1. Failures degrade gracefully — group still shows hardcoded
+  // models (if any) and the user can type a model name as fallback.
+  const refreshLiveModels = async (providerId, connectionId, { refresh = false } = {}) => {
+    setLiveModels((prev) => ({
+      ...prev,
+      [providerId]: { ...(prev[providerId] || {}), loading: true, error: null },
+    }));
+    try {
+      const params = new URLSearchParams({ provider: providerId });
+      if (connectionId) params.set("connectionId", connectionId);
+      if (refresh) params.set("refresh", "1");
+      const res = await fetch(`/api/models/live?${params}`);
+      const data = await res.json();
+      setLiveModels((prev) => ({
+        ...prev,
+        [providerId]: {
+          loading: false,
+          models: Array.isArray(data.models) ? data.models : [],
+          error: data.error || (data.models?.length ? null : "No models returned"),
+          source: data.source,
+        },
+      }));
+    } catch (e) {
+      setLiveModels((prev) => ({
+        ...prev,
+        [providerId]: { loading: false, models: [], error: e.message },
+      }));
+    }
+  };
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const seen = new Set();
+    filteredActiveProviders.forEach((conn) => {
+      const info = AI_PROVIDERS[conn.provider];
+      if (!info) return;
+      // Two reasons to live-fetch:
+      //   - passthroughModels (free providers with live model catalogs)
+      //   - has modelsFetcher (any provider that explicitly opted in)
+      //   - is a known credential-based live resolver (kiro / qoder)
+      const KNOWN_RESOLVERS = new Set(["kiro", "qoder"]);
+      const shouldFetch =
+        info.passthroughModels === true ||
+        !!info.modelsFetcher ||
+        KNOWN_RESOLVERS.has(conn.provider);
+      if (!shouldFetch) return;
+      // Dedup per provider in case the user has multiple connections of the
+      // same provider (e.g. two Antigravity accounts) — one fetch covers all.
+      if (seen.has(conn.provider)) return;
+      seen.add(conn.provider);
+      refreshLiveModels(conn.provider, conn.id);
+    });
+    // We intentionally only re-run when the modal opens, not on every render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, filteredActiveProviders.length]);
 
   const allProviders = useMemo(() => ({ ...OAUTH_PROVIDERS, ...FREE_PROVIDERS, ...FREE_TIER_PROVIDERS, ...APIKEY_PROVIDERS }), []);
 
@@ -264,10 +332,24 @@ export default function ModelSelectModal({
           .filter((m) => m.providerAlias === alias && !hardcodedIds.has(m.id) && !customAliasIds.has(m.id))
           .map((m) => ({ id: m.id, name: m.name || m.id, value: `${alias}/${m.id}`, isCustom: true }));
 
+        // Live-fetched models (passthroughModels providers + OAuth resolvers).
+        // De-duped against hardcoded + custom IDs so we don't double-count when
+        // a model happens to appear in both surfaces.
+        const knownIds = new Set([
+          ...hardcodedIds,
+          ...customAliasModels.map(m => m.id),
+          ...customRegisteredModels.map(m => m.id),
+        ]);
+        const liveData = liveModels[providerId];
+        const liveFetchedModels = (liveData?.models || [])
+          .filter(m => m?.id && !knownIds.has(m.id))
+          .map(m => ({ id: m.id, name: m.name || m.id, value: `${alias}/${m.id}`, isLive: true }));
+
         const merged = [
           ...hardcodedModels.map((m) => ({ id: m.id, name: m.name, value: `${alias}/${m.id}`, type: m.type })),
           ...customAliasModels,
           ...customRegisteredModels,
+          ...liveFetchedModels,
         ];
         // Dedupe by value (alias may equal hardcoded id, causing React key collision)
         const seen = new Set();
@@ -286,12 +368,24 @@ export default function ModelSelectModal({
           }
         }
 
-        if (allModels.length > 0) {
+        // Render the group even when models list is empty IF we have an active
+        // live-fetch (loading state) OR a fetch error to surface. The header
+        // UI shows the spinner / retry / error so the user knows what's going
+        // on instead of seeing an unexplained blank section.
+        const showEmptyForStatus = allModels.length === 0
+          && (liveData?.loading || liveData?.error);
+        if (allModels.length > 0 || showEmptyForStatus) {
           groups[providerId] = {
             name: providerInfo.name,
             alias: alias,
             color: providerInfo.color,
             models: allModels,
+            liveStatus: liveData ? {
+              loading: !!liveData.loading,
+              error: liveData.error || null,
+              source: liveData.source,
+              liveCount: (liveData.models || []).length,
+            } : null,
           };
         }
       }
@@ -310,7 +404,7 @@ export default function ModelSelectModal({
     });
 
     return groups;
-  }, [filteredActiveProviders, modelAliases, allProviders, providerNodes, customModels, disabledModels, kindFilter, activeProviders]);
+  }, [filteredActiveProviders, modelAliases, allProviders, providerNodes, customModels, disabledModels, kindFilter, activeProviders, liveModels]);
 
   // Filter combos by search query (and hide combos when kindFilter is set — combos are LLM-only by design)
   const filteredCombos = useMemo(() => {
@@ -458,6 +552,43 @@ export default function ModelSelectModal({
               <span className="text-[10px] text-text-muted">
                 ({group.models.length})
               </span>
+              {/* Live-fetch status — only renders for providers we live-fetch */}
+              {group.liveStatus && (
+                <span className="flex items-center gap-1 ml-auto">
+                  {group.liveStatus.loading && (
+                    <span className="text-[10px] text-text-muted flex items-center gap-1">
+                      <span className="inline-block w-2 h-2 border border-text-muted border-t-transparent rounded-full animate-spin" />
+                      loading
+                    </span>
+                  )}
+                  {!group.liveStatus.loading && group.liveStatus.error && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const conn = filteredActiveProviders.find(p => p.provider === providerId);
+                        refreshLiveModels(providerId, conn?.id, { refresh: true });
+                      }}
+                      className="text-[10px] text-amber-500 hover:text-amber-400 cursor-pointer"
+                      title={group.liveStatus.error}
+                    >
+                      ⚠ retry
+                    </button>
+                  )}
+                  {!group.liveStatus.loading && !group.liveStatus.error && group.liveStatus.liveCount > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const conn = filteredActiveProviders.find(p => p.provider === providerId);
+                        refreshLiveModels(providerId, conn?.id, { refresh: true });
+                      }}
+                      className="text-[10px] text-text-muted hover:text-primary cursor-pointer"
+                      title={`${group.liveStatus.liveCount} live models • click to refresh`}
+                    >
+                      ↻
+                    </button>
+                  )}
+                </span>
+              )}
             </div>
 
             <div className="flex flex-wrap gap-1.5">
