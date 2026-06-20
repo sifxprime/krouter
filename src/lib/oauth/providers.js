@@ -7,6 +7,19 @@
 import "open-sse/index.js";
 import crypto from "crypto";
 
+// All OAuth token-endpoint fetches must include the MITM anti-loop header.
+// Without this, when the user has MITM intercept enabled for a hostname we
+// also OAuth against (api.anthropic.com is the current case via Claude
+// Desktop MITM), our own dev/runtime fetch hits 127.0.0.1:443 → MITM
+// returns self-signed cert → Node throws SELF_SIGNED_CERT_IN_CHAIN.
+// The MITM server's first dispatch step is "if x-request-source: local →
+// passthrough to real upstream", so this header makes our own OAuth calls
+// transparent to MITM.
+function oauthFetch(url, options = {}) {
+  const headers = { ...(options.headers || {}), "x-request-source": "local" };
+  return fetch(url, { ...options, headers });
+}
+
 import { generatePKCE, generateState } from "./utils/pkce";
 import {
   CLAUDE_CONFIG,
@@ -167,7 +180,7 @@ const PROVIDERS = {
         codeState = parts[1] || "";
       }
 
-      const response = await fetch(config.tokenUrl, {
+      const response = await oauthFetch(config.tokenUrl, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -220,7 +233,7 @@ const PROVIDERS = {
       return `${config.authorizeUrl}?${queryString}`;
     },
     exchangeToken: async (config, code, redirectUri, codeVerifier) => {
-      const response = await fetch(config.tokenUrl, {
+      const response = await oauthFetch(config.tokenUrl, {
         method: "POST",
         headers: {
           "Content-Type": "application/x-www-form-urlencoded",
@@ -298,7 +311,7 @@ const PROVIDERS = {
       return `${config.authorizeUrl}?${qs}`;
     },
     exchangeToken: async (config, code, redirectUri, codeVerifier) => {
-      const response = await fetch(config.tokenUrl, {
+      const response = await oauthFetch(config.tokenUrl, {
         method: "POST",
         headers: {
           "Content-Type": "application/x-www-form-urlencoded",
@@ -350,7 +363,7 @@ const PROVIDERS = {
       return `${config.authorizeUrl}?${params.toString()}`;
     },
     exchangeToken: async (config, code, redirectUri) => {
-      const response = await fetch(config.tokenUrl, {
+      const response = await oauthFetch(config.tokenUrl, {
         method: "POST",
         headers: {
           "Content-Type": "application/x-www-form-urlencoded",
@@ -432,7 +445,7 @@ const PROVIDERS = {
       return `${config.authorizeUrl}?${params.toString()}`;
     },
     exchangeToken: async (config, code, redirectUri) => {
-      const response = await fetch(config.tokenUrl, {
+      const response = await oauthFetch(config.tokenUrl, {
         method: "POST",
         headers: {
           "Content-Type": "application/x-www-form-urlencoded",
@@ -554,7 +567,7 @@ const PROVIDERS = {
         `${config.clientId}:${config.clientSecret}`
       ).toString("base64");
 
-      const response = await fetch(config.tokenUrl, {
+      const response = await oauthFetch(config.tokenUrl, {
         method: "POST",
         headers: {
           "Content-Type": "application/x-www-form-urlencoded",
@@ -748,7 +761,7 @@ const PROVIDERS = {
       return await response.json();
     },
     pollToken: async (config, deviceCode, codeVerifier) => {
-      const response = await fetch(config.tokenUrl, {
+      const response = await oauthFetch(config.tokenUrl, {
         method: "POST",
         headers: {
           "Content-Type": "application/x-www-form-urlencoded",
@@ -799,7 +812,7 @@ const PROVIDERS = {
       return await response.json();
     },
     pollToken: async (config, deviceCode) => {
-      const response = await fetch(config.tokenUrl, {
+      const response = await oauthFetch(config.tokenUrl, {
         method: "POST",
         headers: {
           "Content-Type": "application/x-www-form-urlencoded",
@@ -945,7 +958,7 @@ const PROVIDERS = {
       const region = extraData?._region || "us-east-1";
       assertValidAwsRegion(region);
       const tokenUrl = `https://oidc.${region}.amazonaws.com/token`;
-      const response = await fetch(tokenUrl, {
+      const response = await oauthFetch(tokenUrl, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -1056,7 +1069,7 @@ const PROVIDERS = {
       };
     },
     pollToken: async (config, deviceCode) => {
-      const response = await fetch(config.tokenUrl, {
+      const response = await oauthFetch(config.tokenUrl, {
         method: "POST",
         headers: { "Content-Type": "application/x-www-form-urlencoded", Accept: "application/json" },
         body: new URLSearchParams({
@@ -1293,7 +1306,7 @@ const PROVIDERS = {
       };
     },
     pollToken: async (config, deviceCode) => {
-      const response = await fetch(config.tokenUrl, {
+      const response = await oauthFetch(config.tokenUrl, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

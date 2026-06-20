@@ -552,8 +552,13 @@ export async function GET(request, { params }) {
       url += `?${config.authQuery}=${token}`;
     }
 
-    // Build headers
-    const headers = { ...config.headers };
+    // Build headers — include the MITM anti-loop header so when this dev/
+    // runtime process makes the call AND the user has MITM intercept enabled
+    // for the upstream hostname (e.g. api.anthropic.com via Claude Desktop
+    // MITM), our own outbound fetch doesn't hit our own MITM and get a
+    // SELF_SIGNED_CERT_IN_CHAIN error. MITM checks this header first and
+    // passthroughs to the real upstream.
+    const headers = { ...config.headers, "x-request-source": "local" };
     if (config.authHeader && !config.authQuery) {
       headers[config.authHeader] = (config.authPrefix || "") + token;
     }
