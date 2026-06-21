@@ -49,7 +49,14 @@ export function filterToOpenAIFormat(body) {
       if (filteredContent.length === 0) {
         filteredContent.push({ type: "text", text: "" });
       }
-      
+
+      // Flatten all-text arrays to a single string for OpenAI-compatible upstreams
+      // (some providers like Ollama reject array content for plain text messages).
+      const allText = filteredContent.every((b) => b.type === "text");
+      if (allText && filteredContent.length > 0) {
+        return { ...msg, content: filteredContent.map((b) => b.text).join("\n") };
+      }
+
       return { ...msg, content: filteredContent };
     }
     

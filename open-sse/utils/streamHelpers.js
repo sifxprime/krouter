@@ -17,6 +17,17 @@ export function parseSSELine(line, format = null) {
     return null;
   }
 
+  // Auto-detect NDJSON: raw JSON line without "data:" prefix (no format hint required).
+  // Lets callers handle Ollama/raw JSON streams without forcing them to pass FORMATS.OLLAMA.
+  if (!format && line.charCodeAt(0) === 123) { // '{' = 123
+    const trimmed = line.trim();
+    try {
+      return JSON.parse(trimmed);
+    } catch {
+      return null;
+    }
+  }
+
   // Standard SSE format: "data: {...}"
   if (line.charCodeAt(0) !== 100) return null; // 'd' = 100
 

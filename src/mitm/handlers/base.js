@@ -53,6 +53,19 @@ async function _readErrorMessage(routerRes) {
   try {
     const text = await routerRes.text();
     if (!text) return `Upstream ${routerRes.status}`;
+    const lower = text.toLowerCase();
+
+    // Friendly message for monthly quota exhaustion — Kiro / AWS Q Developer
+    // returns 402 with ServiceQuotaExceededException + MONTHLY_REQUEST_COUNT.
+    // The raw upstream message is unhelpful; replace it with actionable text.
+    if (
+      lower.includes("monthly_request_count") ||
+      lower.includes("servicequotaexceeded") ||
+      (routerRes.status === 402 && lower.includes("reached the limit"))
+    ) {
+      return "Monthly Kiro quota exhausted on this account. Add another Kiro connection in kRouter dashboard, or wait until next billing cycle. (Provider returned MONTHLY_REQUEST_COUNT.)";
+    }
+
     try {
       const j = JSON.parse(text);
       return j?.error?.message || j?.message || j?.error || text.slice(0, 500);

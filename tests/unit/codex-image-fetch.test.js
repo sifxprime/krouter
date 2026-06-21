@@ -9,6 +9,14 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+
+// Mock DNS resolution so SSRF-pinned image fetch resolves example.com to a
+// public-looking address. Implementation calls dns/promises.lookup({all:true})
+// and rejects private IPs — the mock returns a fake public one.
+vi.mock("node:dns/promises", () => ({
+  lookup: vi.fn(async () => [{ address: "203.0.113.10", family: 4 }]),
+}));
+
 import { CodexExecutor } from "../../open-sse/executors/codex.js";
 import * as proxyFetchModule from "../../open-sse/utils/proxyFetch.js";
 
@@ -23,10 +31,17 @@ function makeImageBuffer(sizeBytes) {
 }
 
 function mockImageFetch(sizeBytes, mimeType = "image/jpeg") {
+  const buf = new Uint8Array(makeImageBuffer(sizeBytes));
   return {
     ok: true,
     headers: { get: (k) => (k === "Content-Type" ? mimeType : null) },
-    arrayBuffer: async () => makeImageBuffer(sizeBytes),
+    arrayBuffer: async () => buf.buffer,
+    body: new ReadableStream({
+      start(controller) {
+        controller.enqueue(buf);
+        controller.close();
+      },
+    }),
   };
 }
 

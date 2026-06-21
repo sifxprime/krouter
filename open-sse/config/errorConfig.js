@@ -50,6 +50,12 @@ export const ACCOUNT_VERIFY_COOLDOWN_MS = 60 * 60 * 1000;
 const COOLDOWN = {
   long: 2 * 60 * 1000,
   short: 5 * 1000,
+  // Until-end-of-month: rough 30-day lockout for monthly quota exhaustion.
+  // Triggered by upstream-reported monthly billing-cycle errors (e.g. Kiro
+  // ServiceQuotaExceededException reason=MONTHLY_REQUEST_COUNT). Retrying
+  // before the next billing cycle just burns kRouter cycles and surfaces
+  // the same 402 to the user's IDE.
+  monthly: 30 * 24 * 60 * 60 * 1000,
 };
 
 /**
@@ -71,6 +77,12 @@ export const ERROR_RULES = [
   { text: "no credentials",            cooldownMs: COOLDOWN.long },
   { text: "request not allowed",       cooldownMs: COOLDOWN.short },
   { text: "improperly formed request", cooldownMs: COOLDOWN.long },
+  // Monthly quota exhaustion (Kiro/AWS Q Developer ServiceQuotaExceededException).
+  // Reason text "MONTHLY_REQUEST_COUNT" + user-facing "You have reached the limit"
+  // — both lock the WHOLE account for ~30 days until next billing cycle.
+  { text: "monthly_request_count",     cooldownMs: COOLDOWN.monthly, accountLock: true },
+  { text: "reached the limit",         cooldownMs: COOLDOWN.monthly, accountLock: true },
+  { text: "servicequotaexceeded",      cooldownMs: COOLDOWN.monthly, accountLock: true },
   { text: "rate limit",                backoff: true },
   { text: "too many requests",         backoff: true },
   { text: "quota exceeded",            backoff: true },

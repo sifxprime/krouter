@@ -18,8 +18,12 @@ function sanitizeFunctionName(name) {
 const MAX_RETRY_AFTER_MS = 10000;
 const MAX_ANTIGRAVITY_OUTPUT_TOKENS = 16384;
 
-// Fields Google generateContent rejects (e.g. Claude adaptive output_config) — stripped from antigravity request envelope
-const ANTIGRAVITY_REQUEST_BLACKLIST = ["output_config"];
+// Fields Google generateContent rejects (e.g. Claude adaptive output_config) — stripped from antigravity request envelope.
+// Includes Claude/OpenAI-native thinking fields that sit at top-level body when thinkingUnified.js sets them.
+// Also strips `stream` (Google encodes streaming in the URL path streamGenerateContent?alt=sse,
+// not a body field — our 0.5.16 chatCore stream-injection leaked it here).
+// Ports upstream PRs #1947 (output_config strip) + #1949 (thinking field expansion).
+const ANTIGRAVITY_REQUEST_BLACKLIST = ["output_config", "thinking", "reasoning_effort", "reasoning", "enable_thinking", "thinking_budget", "stream"];
 
 export class AntigravityExecutor extends BaseExecutor {
   constructor() {
@@ -100,6 +104,11 @@ export class AntigravityExecutor extends BaseExecutor {
       safetySettings: undefined,
       ...(tools?.length > 0 && { toolConfig: { functionCallingConfig: { mode: "VALIDATED" } } })
     };
+
+    // Strip blacklisted fields from top-level body too — thinkingUnified.js sets
+    // output_config / thinking / reasoning_effort at body root for claude-adaptive
+    // format, which sits OUTSIDE body.request and would otherwise leak to Google.
+    for (const key of ANTIGRAVITY_REQUEST_BLACKLIST) delete body[key];
 
     return {
       ...body,

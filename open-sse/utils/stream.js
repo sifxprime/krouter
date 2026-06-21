@@ -126,9 +126,12 @@ export function createSSEStream(options = {}) {
                 }
               }
 
-              if (!hasValuableContent(parsed, FORMATS.OPENAI)) {
-                continue;
-              }
+              // PASSTHROUGH means we trust the upstream's SSE schema; never silently
+              // drop a data: line because `hasValuableContent` doesn't recognize the
+              // delta shape (e.g. NVIDIA Kimi K2.6 emits role/content chunks the
+              // OpenAI-shape detector misclassifies as empty). Tracking only — do not
+              // skip emission.
+              hasValuableContent(parsed, FORMATS.OPENAI); // (kept for side-effect-free call; result intentionally ignored)
 
               const delta = parsed.choices?.[0]?.delta;
               const content = delta?.content;
@@ -176,6 +179,7 @@ export function createSSEStream(options = {}) {
 
           reqLogger?.appendConvertedChunk?.(output);
           controller.enqueue(sharedEncoder.encode(output));
+          if (output && output !== "\n") sseEmittedCount++;
           continue;
         }
 

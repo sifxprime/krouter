@@ -7,6 +7,9 @@ const ENDPOINTS = {
   recraft: "https://external.api.recraft.ai/v1/images/generations",
   "vercel-ai-gateway": "https://ai-gateway.vercel.sh/v1/images/generations",
   xai: "https://api.x.ai/v1/images/generations",
+  // SiliconFlow: OpenAI-compatible /v1/images/generations endpoint, supports FLUX.1-schnell,
+  // Stable Diffusion 3.5, and Kolors models. Free tier available.
+  siliconflow: "https://api.siliconflow.com/v1/images/generations",
 };
 
 export default function createOpenAIAdapter(providerId) {

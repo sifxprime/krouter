@@ -194,19 +194,20 @@ function convertClaudeMessage(msg) {
     if (toolCalls.length > 0) {
       const result = { role: "assistant" };
       if (parts.length > 0) {
-        result.content = parts.length === 1 && parts[0].type === "text" 
-          ? parts[0].text 
-          : parts;
+        const allText = parts.every((p) => p.type === "text");
+        result.content = allText ? parts.map((p) => p.text).join("\n") : parts;
       }
       result.tool_calls = toolCalls;
       return result;
     }
 
-    // Return content
+    // Return content — flatten all-text arrays into single string (string-safe for downstream
+    // OpenAI-compatible upstreams like Ollama that reject array content).
     if (parts.length > 0) {
+      const allText = parts.every((p) => p.type === "text");
       return {
         role,
-        content: parts.length === 1 && parts[0].type === "text" ? parts[0].text : parts
+        content: allText ? parts.map((p) => p.text).join("\n") : parts
       };
     }
     
