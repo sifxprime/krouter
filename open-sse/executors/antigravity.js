@@ -6,6 +6,17 @@ import { HTTP_STATUS } from "../config/runtimeConfig.js";
 import { deriveSessionId } from "../utils/sessionManager.js";
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
 import { cleanJSONSchemaForAntigravity } from "../translator/helpers/geminiHelper.js";
+// 0.5.29 — anti-fingerprinting + classification helpers
+import {
+  getAntigravitySessionId,
+  getAntigravityEnvelopeUserAgent,
+  generateAntigravityRequestId,
+} from "../services/antigravityIdentity.js";
+import { scrubProxyAndFingerprintHeaders } from "../services/antigravityHeaderScrub.js";
+import { applyFingerprint } from "../services/fingerprintRotator.js";
+import { generateSessionId as generateUserSessionId, touchSession } from "../services/sessionManager.js";
+import { obfuscateBodyStrings } from "../services/antigravityObfuscation.js";
+import { classify429, decide429, recordCreditsFailure } from "../services/antigravity429Engine.js";
 
 // Sanitize function name: Gemini requires [a-zA-Z_][a-zA-Z0-9_.:\-]{0,63}
 function sanitizeFunctionName(name) {
@@ -38,7 +49,7 @@ export class AntigravityExecutor extends BaseExecutor {
   }
 
   buildHeaders(credentials, stream = true, sessionId = null) {
-    return {
+    const headers = {
       "Content-Type": "application/json",
       "Authorization": `Bearer ${credentials.accessToken}`,
       "User-Agent": this.config.headers?.["User-Agent"] || ANTIGRAVITY_HEADERS["User-Agent"],
@@ -46,6 +57,14 @@ export class AntigravityExecutor extends BaseExecutor {
       ...(sessionId && { "X-Machine-Session-Id": sessionId }),
       "Accept": stream ? "text/event-stream" : "application/json"
     };
+    // 0.5.29 — apply per-account stable fingerprint (X-Client-Version,
+    // X-Build-Hash, sec-ch-ua-platform, sec-ch-ua-mobile) so each account
+    // looks consistent across requests but distinct from other accounts.
+    const accountKey = credentials?.email || credentials?.connectionId || "unknown";
+    const withFingerprint = applyFingerprint(headers, "antigravity", accountKey);
+    // Scrub any proxy-tracing / Stainless SDK / Sec-Ch-* leakage from
+    // this.config.headers. Native Antigravity never sends these.
+    return scrubProxyAndFingerprintHeaders(withFingerprint);
   }
 
   transformRequest(model, body, stream, credentials) {
@@ -95,12 +114,17 @@ export class AntigravityExecutor extends BaseExecutor {
       generationConfig.maxOutputTokens = MAX_ANTIGRAVITY_OUTPUT_TOKENS;
     }
 
+    // 0.5.29 — stable per-account session id (FNV-1a hash of email) instead
+    // of the generic deriveSessionId. Same account → same session id across
+    // requests, different accounts → different ids. Makes each account look
+    // like one persistent user.
+    const accountStableSessionId = getAntigravitySessionId(credentials, body.request?.sessionId);
     const transformedRequest = {
       ...requestWithoutTools,
       generationConfig,
       ...(contents && { contents }),
       ...(tools && { tools }),
-      sessionId: body.request?.sessionId || deriveSessionId(credentials?.email || credentials?.connectionId),
+      sessionId: accountStableSessionId,
       safetySettings: undefined,
       ...(tools?.length > 0 && { toolConfig: { functionCallingConfig: { mode: "VALIDATED" } } })
     };
@@ -110,14 +134,29 @@ export class AntigravityExecutor extends BaseExecutor {
     // format, which sits OUTSIDE body.request and would otherwise leak to Google.
     for (const key of ANTIGRAVITY_REQUEST_BLACKLIST) delete body[key];
 
+    // 0.5.29 — obfuscate sensitive client tool names in the request contents
+    // so Google's backend can't grep for "claude-code" / "cursor" etc. in
+    // logs. Visually identical (zero-width joiners), byte-different.
+    if (transformedRequest.contents) {
+      transformedRequest.contents = obfuscateBodyStrings(transformedRequest.contents);
+    }
+
+
+    // 0.5.29 — envelope user-agent now varies by account type:
+    //   gmail.com / googlemail.com → "antigravity" (consumer)
+    //   anything else → "jetski" (enterprise / workspace)
+    // Matches what the real Antigravity native client picks based on token.
+    const envelopeUA = getAntigravityEnvelopeUserAgent(credentials);
 
     return {
       ...body,
       project: projectId,
       model: model,
-      userAgent: "antigravity",
+      userAgent: envelopeUA,
       requestType: "agent",
-      requestId: `agent-${crypto.randomUUID()}`,
+      // 0.5.29 — request id format matches native ("agent/<ts>/<8-hex>")
+      // instead of UUID. Reduces fingerprint surface.
+      requestId: generateAntigravityRequestId(),
       request: transformedRequest
     };
   }
@@ -264,6 +303,19 @@ export class AntigravityExecutor extends BaseExecutor {
       retryMs = this.parseRetryFromErrorMessage(errorMessage);
     }
     const message = errorJson?.error?.message || errorJson?.message || bodyText || "";
+
+    // 0.5.29 — classify the 429 and let the decision engine recommend a
+    // cooldown when Google didn't send a retryDelay. Only applied when the
+    // classification has an actionable category (quota_exhausted, rate_limited,
+    // soft_rate_limit) — "unknown" stays null so the default short-cooldown
+    // path runs instead of overriding with a misleading 5s default.
+    if (!retryMs && response.status === HTTP_STATUS.RATE_LIMITED) {
+      const category = classify429(message);
+      if (category !== "unknown") {
+        const decision = decide429(category, null);
+        if (decision.retryAfterMs) retryMs = decision.retryAfterMs;
+      }
+    }
     return {
       status: response.status,
       message,

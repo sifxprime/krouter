@@ -12,6 +12,9 @@ import { HTTP_STATUS } from "../config/runtimeConfig.js";
 import { handleBypassRequest } from "../utils/bypassHandler.js";
 import { trackPendingRequest, appendRequestLog, saveRequestDetail } from "@/lib/usageDb.js";
 import { getExecutor } from "../executors/index.js";
+import { acquire as acquireAccountSlot, buildAccountSemaphoreKey, markBlocked as markAccountBlocked } from "../services/accountSemaphore.js";
+import { shouldUseEmergencyFallback, buildEmergencyFallbackConfig } from "../services/emergencyFallback.js";
+import { generateSessionId as deriveUserSessionId, touchSession } from "../services/sessionManager.js";
 import { buildRequestDetail, extractRequestConfig } from "./chatCore/requestDetail.js";
 import { handleForcedSSEToJson } from "./chatCore/sseToJsonHandler.js";
 import { handleNonStreamingResponse } from "./chatCore/nonStreamingHandler.js";
@@ -29,7 +32,7 @@ import { compressMessages, formatRtkLog } from "../rtk/index.js";
  * @param {object} options.credentials - Provider credentials
  * @param {string} options.sourceFormatOverride - Override detected source format (e.g. "openai-responses")
  */
-export async function handleChatCore({ body, modelInfo, credentials, log, onCredentialsRefreshed, onRequestSuccess, onDisconnect, clientRawRequest, connectionId, userAgent, apiKey, ccFilterNaming, rtkEnabled, cavemanEnabled, cavemanLevel, ponytailEnabled, ponytailLevel, sourceFormatOverride, providerThinking }) {
+export async function handleChatCore({ body, modelInfo, credentials, log, onCredentialsRefreshed, onRequestSuccess, onDisconnect, clientRawRequest, connectionId, userAgent, apiKey, ccFilterNaming, rtkEnabled, cavemanEnabled, cavemanLevel, ponytailEnabled, ponytailLevel, sourceFormatOverride, providerThinking, settings = null }) {
   const { provider, model } = modelInfo;
   const requestStartTime = Date.now();
 
@@ -196,8 +199,61 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
     log?.debug?.("PROXY", `${provider.toUpperCase()} | ${model} | conn=${connectionName} | no_proxy=${proxyOptions.connectionNoProxy}`);
   }
 
-  // Execute request
+  // Execute request — wrapped with account semaphore so parallel requests
+  // to the same (provider, account) don't all hammer it at once. Concurrency
+  // resolution order (lowest precedence first):
+  //   1. Global default per provider (HEAVY_RATE_LIMIT for free/quota-tight,
+  //      MODERATE for OAuth, BYPASS for paid API-key).
+  //   2. credentials.providerSpecificData.maxConcurrency override (per-account).
+  // Pass maxConcurrency<=0 / null to bypass entirely (no-op release).
+  const PROVIDER_CONCURRENCY_DEFAULTS = {
+    antigravity: 2, kiro: 2, claude: 3, codex: 3,
+    "mimo-free": 1, opencode: 1,
+    "gemini-cli": 2, qoder: 2,
+  };
+  const perAccountConcurrency = Number(credentials?.providerSpecificData?.maxConcurrency);
+  const concurrency = Number.isFinite(perAccountConcurrency) && perAccountConcurrency > 0
+    ? perAccountConcurrency
+    : PROVIDER_CONCURRENCY_DEFAULTS[provider] || 0; // 0 = bypass for unlisted providers
+  const semaphoreKey = buildAccountSemaphoreKey(provider, connectionId || "noauth");
+  let releaseSlot = () => {};
+  try {
+    releaseSlot = await acquireAccountSlot(semaphoreKey, {
+      maxConcurrency: concurrency,
+      timeoutMs: 30000,
+      signal: streamController.signal,
+    });
+  } catch (e) {
+    if (e?.code === "SEMAPHORE_QUEUE_FULL" || e?.code === "SEMAPHORE_TIMEOUT") {
+      log?.warn?.("AUTH", `${provider} | semaphore wait failed (${e.code}) for ${connectionId?.slice(0,8)}`);
+      trackPendingRequest(model, provider, connectionId, false, true);
+      return createErrorResult(HTTP_STATUS.TOO_MANY_REQUESTS, `Account ${connectionId?.slice(0,8)} concurrency wait timed out`);
+    }
+    throw e;
+  }
+
+  // Execute request — semaphore released via releaseOnce in every return path
+  // below. We don't wrap everything in a try/finally because streaming
+  // returns a still-flowing Response object whose stream is consumed by the
+  // caller, after which we can't easily hook a release.
   let providerResponse, providerUrl, providerHeaders, finalBody;
+  let slotReleased = false;
+  const releaseOnce = () => {
+    if (slotReleased) return;
+    slotReleased = true;
+    try { releaseSlot(); } catch { /* ignore */ }
+  };
+  // 0.5.29 — session tracker. Generates a deterministic id from
+  // (model, system, tools, first user msg, provider, connection) and
+  // touches the in-memory session pool. Same conversation continuing on
+  // the same account → same session id → enables sticky routing,
+  // prompt-cache continuity, and per-key concurrency tracking.
+  const userSessionId = deriveUserSessionId(translatedBody, { provider, connectionId });
+  if (userSessionId) {
+    touchSession(userSessionId, connectionId, apiKey);
+    log?.debug?.("SESSION", `sid=${userSessionId.slice(0, 12)} conn=${connectionId?.slice(0, 8) || "noauth"}`);
+  }
+
   try {
     const result = await executor.execute({ model, body: translatedBody, stream, credentials, signal: streamController.signal, log, proxyOptions });
     providerResponse = result.response;
@@ -206,6 +262,7 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
     finalBody = result.transformedBody;
     reqLogger.logTargetRequest(providerUrl, providerHeaders, finalBody);
   } catch (error) {
+    releaseOnce();
     trackPendingRequest(model, provider, connectionId, false, true);
     appendRequestLog({ model, provider, connectionId, status: `FAILED ${error.name === "AbortError" ? 499 : HTTP_STATUS.BAD_GATEWAY}` }).catch(() => { });
     saveRequestDetail(buildRequestDetail({
@@ -285,8 +342,34 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
     const errMsg = formatProviderError(new Error(message), provider, model, statusCode);
     console.log(`${COLORS.red}[ERROR] ${errMsg}${COLORS.reset}`);
     reqLogger.logError(new Error(message), finalBody || translatedBody);
-    return createErrorResult(statusCode, errMsg, resetsAtMs);
+    releaseOnce();
+
+    // Emergency fallback (0.5.28): on 402 / budget exhaustion, optionally
+    // attach a redirect hint so chat.js can re-route to a free model. The
+    // settings flag governs whether this is enabled; loop protection via
+    // body.__emergencyFallbackUsed (set in chat.js when honoring this hint).
+    let emergencyFallback;
+    if (!body?.__emergencyFallbackUsed) {
+      const requestHasTools = Array.isArray(body?.tools) && body.tools.length > 0;
+      const cfg = buildEmergencyFallbackConfig(settings);
+      const decision = shouldUseEmergencyFallback(statusCode, message || "", requestHasTools, cfg);
+      if (decision.shouldFallback) {
+        emergencyFallback = {
+          provider: decision.provider,
+          model: decision.model,
+          reason: decision.reason,
+          maxOutputTokens: decision.maxOutputTokens,
+        };
+        log?.info?.("EMERGENCY", `${provider}/${model} → ${decision.reason}`);
+      }
+    }
+    return createErrorResult(statusCode, errMsg, resetsAtMs, emergencyFallback ? { emergencyFallback } : {});
   }
+
+  // Success — release the semaphore slot before the downstream handler
+  // consumes the response (the upstream call itself is done; new requests
+  // to this account can begin in parallel with the stream the user receives).
+  releaseOnce();
 
   const sharedCtx = { provider, model, body, stream, translatedBody, finalBody, requestStartTime, connectionId, apiKey, clientRawRequest, onRequestSuccess };
   const appendLog = (extra) => appendRequestLog({ model, provider, connectionId, ...extra }).catch(() => { });

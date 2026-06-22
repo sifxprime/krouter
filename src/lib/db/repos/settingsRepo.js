@@ -40,6 +40,11 @@ const DEFAULT_SETTINGS = {
   ponytailLevel: "full",
   responseCacheEnabled: false,
   responseCacheTtlSec: 300,
+  // 0.5.28 — emergency fallback redirect on 402 / budget exhaustion
+  emergencyFallbackEnabled: false,
+  emergencyFallbackProvider: "nvidia",
+  emergencyFallbackModel: "openai/gpt-oss-120b",
+  emergencyFallbackSkipForTools: true,
 };
 
 async function readRaw() {

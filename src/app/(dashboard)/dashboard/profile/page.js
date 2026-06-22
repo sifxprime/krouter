@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { Card, Button, Toggle, Input } from "@/shared/components";
+import { Card, Button, Toggle, Input, Select } from "@/shared/components";
 import Modal, { ConfirmModal } from "@/shared/components/Modal";
 import LanguageSwitcher from "@/shared/components/LanguageSwitcher";
 import { useTheme } from "@/shared/hooks/useTheme";
@@ -241,6 +241,23 @@ export default function ProfilePage() {
       }
     } catch (err) {
       console.error("Failed to update settings:", err);
+    }
+  };
+
+  // Generic settings patch — used by emergency fallback fields and any
+  // other simple boolean / string / number setting added in the future.
+  const updateSetting = async (key, value) => {
+    try {
+      const res = await fetch("/api/settings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ [key]: value }),
+      });
+      if (res.ok) {
+        setSettings(prev => ({ ...prev, [key]: value }));
+      }
+    } catch (err) {
+      console.error(`Failed to update ${key}:`, err);
     }
   };
 
@@ -929,15 +946,22 @@ export default function ProfilePage() {
           <div className="flex flex-col gap-4">
             <div className="flex items-start sm:items-center justify-between gap-4">
               <div className="flex-1 min-w-0">
-                <p className="font-medium text-sm sm:text-base">Round Robin</p>
+                <p className="font-medium text-sm sm:text-base">Strategy</p>
                 <p className="text-xs sm:text-sm text-text-muted">
-                  Cycle through accounts to distribute load
+                  How kRouter picks the next available account
                 </p>
               </div>
-              <Toggle
-                checked={settings.fallbackStrategy === "round-robin"}
-                onChange={() => updateFallbackStrategy(settings.fallbackStrategy === "round-robin" ? "fill-first" : "round-robin")}
+              <Select
+                value={settings.fallbackStrategy || "fill-first"}
+                onChange={(e) => updateFallbackStrategy(e.target.value)}
                 disabled={loading}
+                className="w-44 sm:w-56 shrink-0"
+                options={[
+                  { value: "fill-first", label: "Fill First (default)" },
+                  { value: "round-robin", label: "Round Robin" },
+                  { value: "p2c", label: "P2C (Power of 2 Choices)" },
+                  { value: "random", label: "Random" },
+                ]}
               />
             </div>
 
@@ -1000,12 +1024,136 @@ export default function ProfilePage() {
 
             <p className="text-xs text-text-muted italic pt-2 border-t border-border/50">
               {settings.fallbackStrategy === "round-robin"
-                ? `Currently distributing requests across all available accounts with ${settings.stickyRoundRobinLimit || 3} calls per account.`
-                : "Currently using accounts in priority order (Fill First)."}
+                ? `Distributing requests across all available accounts with ${settings.stickyRoundRobinLimit || 3} calls per account.`
+                : settings.fallbackStrategy === "p2c"
+                ? "Picking the healthier of 2 random accounts on each request (good for load-balancing equal-tier accounts)."
+                : settings.fallbackStrategy === "random"
+                ? "Picking a uniformly random account on each request."
+                : "Using accounts in priority order (Fill First)."}
               {settings.comboStrategy === "round-robin"
                 ? ` Combos rotate after ${settings.comboStickyRoundRobinLimit || 1} call${(settings.comboStickyRoundRobinLimit || 1) === 1 ? "" : "s"} per model.`
                 : " Combos always start with their first model."}
             </p>
+          </div>
+        </Card>
+
+        {/* Task-Aware Routing (0.5.29) */}
+        <Card>
+          <div className="flex items-center gap-3 mb-4">
+            <div className="p-2 rounded-lg bg-purple-500/10 text-purple-500 shrink-0">
+              <span className="material-symbols-outlined text-[20px]">psychology</span>
+            </div>
+            <h3 className="text-base sm:text-lg font-semibold">Task-Aware Routing</h3>
+          </div>
+          <div className="flex flex-col gap-4">
+            <div className="flex items-start sm:items-center justify-between gap-4">
+              <div className="flex-1 min-w-0">
+                <p className="font-medium text-sm sm:text-base">Show intent suggestions in logs</p>
+                <p className="text-xs sm:text-sm text-text-muted">
+                  Classify every request as code / math / reasoning / creative / simple
+                  (9 languages) and log the suggested combo. Log-only; never overrides your chosen model.
+                </p>
+              </div>
+              <Toggle
+                checked={settings.routingIntelligenceEnabled !== false}
+                onChange={() => updateSetting("routingIntelligenceEnabled", settings.routingIntelligenceEnabled === false)}
+                disabled={loading}
+              />
+            </div>
+            {settings.routingIntelligenceEnabled !== false && (
+              <p className="text-xs text-text-muted italic pt-2 border-t border-border/50">
+                Active — check the dev console for <code>[ROUTING] intent=X complexity=Y score=N tier=Z</code> lines.
+                Custom intent→combo overrides via <code>taskAwareRouterMap</code> setting (JSON).
+              </p>
+            )}
+          </div>
+        </Card>
+
+        {/* Emergency Fallback (0.5.28) */}
+        <Card>
+          <div className="flex items-center gap-3 mb-4">
+            <div className="p-2 rounded-lg bg-amber-500/10 text-amber-500 shrink-0">
+              <span className="material-symbols-outlined text-[20px]">emergency</span>
+            </div>
+            <h3 className="text-base sm:text-lg font-semibold">Emergency Fallback</h3>
+          </div>
+          <div className="flex flex-col gap-4">
+            <div className="flex items-start sm:items-center justify-between gap-4">
+              <div className="flex-1 min-w-0">
+                <p className="font-medium text-sm sm:text-base">Redirect on budget exhaustion</p>
+                <p className="text-xs sm:text-sm text-text-muted">
+                  When an upstream returns 402 or "insufficient funds", transparently re-route the
+                  request to a free model so the user still gets a response.
+                </p>
+              </div>
+              <Toggle
+                checked={!!settings.emergencyFallbackEnabled}
+                onChange={() => updateSetting("emergencyFallbackEnabled", !settings.emergencyFallbackEnabled)}
+                disabled={loading}
+              />
+            </div>
+
+            {settings.emergencyFallbackEnabled && (
+              <>
+                <div className="flex items-start sm:items-center justify-between gap-4 pt-3 border-t border-border/50">
+                  <div className="flex-1 min-w-0">
+                    <p className="font-medium text-sm sm:text-base">Fallback provider</p>
+                    <p className="text-xs sm:text-sm text-text-muted">
+                      Provider ID used for the redirect (e.g. <code>nvidia</code>, <code>openrouter</code>, <code>opencode</code>)
+                    </p>
+                  </div>
+                  <Input
+                    type="text"
+                    value={settings.emergencyFallbackProvider || "nvidia"}
+                    onChange={(e) => updateSetting("emergencyFallbackProvider", e.target.value.trim())}
+                    disabled={loading}
+                    className="w-32 sm:w-44 text-center shrink-0"
+                    placeholder="nvidia"
+                  />
+                </div>
+
+                <div className="flex items-start sm:items-center justify-between gap-4 pt-3 border-t border-border/50">
+                  <div className="flex-1 min-w-0">
+                    <p className="font-medium text-sm sm:text-base">Fallback model</p>
+                    <p className="text-xs sm:text-sm text-text-muted">
+                      Model ID at that provider. Default <code>openai/gpt-oss-120b</code> is free on NVIDIA NIM.
+                    </p>
+                  </div>
+                  <Input
+                    type="text"
+                    value={settings.emergencyFallbackModel || "openai/gpt-oss-120b"}
+                    onChange={(e) => updateSetting("emergencyFallbackModel", e.target.value.trim())}
+                    disabled={loading}
+                    className="w-40 sm:w-56 text-center shrink-0"
+                    placeholder="openai/gpt-oss-120b"
+                  />
+                </div>
+
+                <div className="flex items-start sm:items-center justify-between gap-4 pt-3 border-t border-border/50">
+                  <div className="flex-1 min-w-0">
+                    <p className="font-medium text-sm sm:text-base">Skip for tool requests</p>
+                    <p className="text-xs sm:text-sm text-text-muted">
+                      Don't redirect when the request has tools — the free model may not support tool calling.
+                    </p>
+                  </div>
+                  <Toggle
+                    checked={settings.emergencyFallbackSkipForTools !== false}
+                    onChange={() => updateSetting("emergencyFallbackSkipForTools", settings.emergencyFallbackSkipForTools === false)}
+                    disabled={loading}
+                  />
+                </div>
+
+                <p className="text-xs text-text-muted italic pt-2 border-t border-border/50">
+                  Currently redirecting 402 / budget errors to{" "}
+                  <code>{settings.emergencyFallbackProvider || "nvidia"}/{settings.emergencyFallbackModel || "openai/gpt-oss-120b"}</code>.
+                </p>
+              </>
+            )}
+            {!settings.emergencyFallbackEnabled && (
+              <p className="text-xs text-text-muted italic pt-2 border-t border-border/50">
+                Disabled — 402 / budget errors are returned to the user as-is.
+              </p>
+            )}
           </div>
         </Card>
 

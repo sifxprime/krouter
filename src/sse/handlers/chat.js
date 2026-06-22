@@ -92,6 +92,28 @@ export async function handleChat(request, clientRawRequest = null) {
     return errorResponse(HTTP_STATUS.BAD_REQUEST, "Missing model");
   }
 
+  // Routing intelligence (0.5.29) — lightweight intent classification + complexity
+  // score, logged for the dashboard / debug, NOT used to override user routing.
+  // Opt-in display: settings.routingIntelligenceEnabled (default true, log-only).
+  try {
+    const { classifyPromptIntent } = await import("open-sse/services/intentClassifier.js");
+    const { classifyRequestComplexity } = await import("open-sse/services/complexityRouter.js");
+    const firstUserMsg = (body?.messages || []).find(m => m?.role === "user");
+    const promptText = typeof firstUserMsg?.content === "string"
+      ? firstUserMsg.content
+      : Array.isArray(firstUserMsg?.content)
+        ? (firstUserMsg.content.find(p => p?.text)?.text || "")
+        : "";
+    const systemMsg = (body?.messages || []).find(m => m?.role === "system");
+    const systemText = typeof systemMsg?.content === "string" ? systemMsg.content : "";
+    const intent = classifyPromptIntent(promptText, systemText);
+    const complexity = classifyRequestComplexity(body);
+    log.debug("ROUTING", `intent=${intent} | complexity=${complexity.level} score=${complexity.score} tier=${complexity.recommendedTier}${complexity.hasToolUse ? " tools=yes" : ""}`);
+  } catch (e) {
+    // fail-open: routing intelligence is purely advisory
+    log.debug("ROUTING", `classify failed: ${e?.message}`);
+  }
+
   // Bypass naming/warmup requests before combo rotation to avoid wasting rotation slots
   const userAgent = request?.headers?.get("user-agent") || "";
   const bypassResponse = handleBypassRequest(body, modelStr, userAgent, !!settings.ccFilterNaming);
@@ -280,6 +302,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
       ponytailEnabled: !!settings.ponytailEnabled,
       ponytailLevel: settings.ponytailLevel || "full",
       providerThinking,
+      settings, // for emergencyFallback config (0.5.28)
       // Detect source format by endpoint + body
       sourceFormatOverride: request?.url ? detectFormatByEndpoint(new URL(request.url).pathname, body) : null,
       onCredentialsRefreshed: async (newCreds) => {
@@ -322,6 +345,44 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
         } catch { /* clone failed — skip cache, return response */ }
       }
       return result.response;
+    }
+
+    // Emergency fallback (0.5.28): 402 / budget exhaustion → redirect to free model.
+    // Only fires when settings.emergencyFallbackEnabled is true; loop-protected by
+    // body.__emergencyFallbackUsed flag.
+    if (result.emergencyFallback && !body.__emergencyFallbackUsed) {
+      const fb = result.emergencyFallback;
+      log.info("EMERGENCY", `${provider}/${model} → ${fb.provider}/${fb.model} (${fb.reason})`);
+      try {
+        const fbCreds = await getProviderCredentials(fb.provider, new Set(), fb.model);
+        if (fbCreds && !fbCreds.allRateLimited) {
+          const fbBody = { ...body, __emergencyFallbackUsed: true, model: `${fb.provider}/${fb.model}` };
+          if (fb.maxOutputTokens) fbBody.max_tokens = Math.min(fbBody.max_tokens || fb.maxOutputTokens, fb.maxOutputTokens);
+          const fbResult = await handleChatCore({
+            body: fbBody,
+            modelInfo: { provider: fb.provider, model: fb.model },
+            credentials: fbCreds,
+            log, clientRawRequest, userAgent, apiKey,
+            connectionId: fbCreds.connectionId,
+            ccFilterNaming: !!settings.ccFilterNaming,
+            rtkEnabled: !!settings.rtkEnabled,
+            cavemanEnabled: !!settings.cavemanEnabled,
+            cavemanLevel: settings.cavemanLevel || "full",
+            ponytailEnabled: !!settings.ponytailEnabled,
+            ponytailLevel: settings.ponytailLevel || "full",
+            providerThinking: (settings.providerThinking || {})[fb.provider] || null,
+            sourceFormatOverride: request?.url ? detectFormatByEndpoint(new URL(request.url).pathname, body) : null,
+            settings,
+          });
+          if (fbResult.success) return fbResult.response;
+          // If the fallback also failed, fall through to normal error handling
+          log.warn("EMERGENCY", `fallback ${fb.provider}/${fb.model} also failed: ${fbResult.status}`);
+        } else {
+          log.warn("EMERGENCY", `no credentials for fallback ${fb.provider}, skipping`);
+        }
+      } catch (e) {
+        log.warn("EMERGENCY", `fallback path threw: ${e.message}`);
+      }
     }
 
     // Mark account unavailable (auto-calculates cooldown with exponential backoff, or precise resetsAtMs)

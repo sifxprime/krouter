@@ -9,6 +9,21 @@ import {
   isImageRejectionError,
   stripImagesFromBody,
 } from "../services/imageCapability.js";
+import {
+  isToolLimitError,
+  stripNonEssentialTools,
+} from "../services/toolLimitDetector.js";
+import {
+  isCircuitBreakerOpen,
+  recordProviderSuccess,
+  recordProviderFailure,
+} from "../../src/shared/utils/circuitBreaker.js";
+import {
+  getValidApiKey,
+  recordKeyFailure,
+  recordKeySuccess,
+  trackConnectionExtraKeys,
+} from "../services/apiKeyRotator.js";
 
 /**
  * BaseExecutor - Base class for provider executors
@@ -171,14 +186,38 @@ export class BaseExecutor {
       return true;
     };
 
+    // Provider-level circuit breaker (0.5.30): abort before making any request
+    // if this entire provider is known to be down (e.g. 10 consecutive 500s).
+    if (isCircuitBreakerOpen(this.provider)) {
+      log?.warn?.("BREAKER", `${this.provider} circuit breaker OPEN — skipping request`);
+      throw new Error(`Circuit breaker open for provider: ${this.provider}`);
+    }
+
     for (let urlIndex = 0; urlIndex < fallbackCount; urlIndex++) {
       const url = this.buildUrl(model, stream, urlIndex, credentials);
+
+      // API key rotation (0.5.28): if this connection has extraApiKeys[]
+      // configured, swap credentials.apiKey to the next rotated key for this
+      // attempt. Only meaningful for API-key auth (OAuth providers ignore
+      // apiKey). Per-key health tracking is recorded after the response.
+      let rotatedKeyId = null;
+      let effectiveCredentials = credentials;
+      const extraKeys = credentials?.providerSpecificData?.extraApiKeys;
+      if (Array.isArray(extraKeys) && extraKeys.length > 0 && credentials?.id) {
+        trackConnectionExtraKeys(credentials.id, extraKeys);
+        const rotated = getValidApiKey(credentials.id, credentials.apiKey, extraKeys);
+        if (rotated) {
+          rotatedKeyId = rotated.keyId;
+          effectiveCredentials = { ...credentials, apiKey: rotated.key };
+        }
+      }
+
       // Proactive image strip: if we've previously learned this model rejects
       // images, drop them before sending instead of paying a round trip.
       const cachedNoImages = hasNoImageSupport(this.provider, model);
       const sourceBody = cachedNoImages ? stripImagesFromBody(body) : body;
-      let transformedBody = this.transformRequest(model, sourceBody, stream, credentials);
-      const headers = this.buildHeaders(credentials, stream);
+      let transformedBody = this.transformRequest(model, sourceBody, stream, effectiveCredentials);
+      const headers = this.buildHeaders(effectiveCredentials, stream);
 
       if (!retryAttemptsByUrl[urlIndex]) retryAttemptsByUrl[urlIndex] = 0;
 
@@ -203,7 +242,45 @@ export class BaseExecutor {
         const cl = response.headers?.get?.("content-length") || "?";
         dbg("FETCH", `${this.provider.toUpperCase()} ← ${response.status} | ttft=${Date.now() - fetchT0}ms | ct=${ct} | cl=${cl}`);
 
+        // Record per-key health for apiKeyRotator (0.5.28). Only fires when
+        // a rotated key was actually used (rotatedKeyId set).
+        if (rotatedKeyId) {
+          if (response.status === 401 || response.status === 403) {
+            recordKeyFailure(credentials.id, rotatedKeyId);
+          } else if (response.status >= 200 && response.status < 300) {
+            recordKeySuccess(credentials.id, rotatedKeyId);
+          }
+        }
+
+        // Circuit breaker health tracking (0.5.30)
+        if (response.status >= 200 && response.status < 500 && response.status !== 429) {
+          // 429 is a rate limit, not a provider outage. 400 is user error.
+          recordProviderSuccess(this.provider);
+        } else if (response.status >= 500) {
+          const tripped = recordProviderFailure(this.provider, response.status);
+          if (tripped) log?.warn?.("BREAKER", `${this.provider} circuit breaker TRIPPED (too many 5xx errors)`);
+        }
+
         if (await tryRetry(urlIndex, response.status, `status ${response.status}`, response)) { urlIndex--; continue; }
+
+        // Tool limit self-healing (0.5.30): if the upstream returned 400
+        // because we sent too many tools, strip non-essential ones and retry.
+        if (response.status === 400) {
+          try {
+            const bodyText = await response.clone().text();
+            if (isToolLimitError(response.status, bodyText)) {
+              log?.info?.("TOOL_LIMIT", `${this.provider}/${model} → too many tools, stripping and retrying`);
+              const stripped = stripNonEssentialTools(sourceBody);
+              transformedBody = this.transformRequest(model, stripped, stream, effectiveCredentials);
+              const retryResponse = await proxyAwareFetch(url, {
+                method: "POST", headers, body: JSON.stringify(transformedBody), signal: mergedSignal
+              }, proxyOptions);
+              return { response: retryResponse, url, headers, transformedBody };
+            }
+          } catch (e) {
+            dbg("TOOL_LIMIT", `error inspecting 400 body: ${e.message}`);
+          }
+        }
 
         // Self-healing image-rejection retry: if the upstream returned 400
         // because the model can't handle images, learn it, strip images, and

@@ -12,6 +12,7 @@ import { unavailableResponse } from "../utils/error.js";
 import { getCapabilitiesForModel } from "../providers/capabilities.js";
 import { bestScoreForProviderModel } from "./quotaPreflight.js";
 import { parseModel } from "./model.js";
+import { getNextFamilyFallback, isModelUnavailableError } from "./modelFamilyFallback.js";
 
 // Quota-aware combo ordering (0.5.27).
 // Sort combo entries so the model with the highest remaining quota across
@@ -275,10 +276,22 @@ export async function handleComboChat({ body, models, handleSingleModel, log, co
   let lastError = null;
   let earliestRetryAfter = null;
   let lastStatus = null;
+  // Track every model we've tried (combo entries + family-fallback expansions)
+  // so the family lookup doesn't suggest something we already burned.
+  const triedModels = new Set();
 
   for (let i = 0; i < rotatedModels.length; i++) {
-    const modelStr = rotatedModels[i];
-    log.info("COMBO", `Trying model ${i + 1}/${rotatedModels.length}: ${modelStr}`);
+    let modelStr = rotatedModels[i];
+    let familyFallbackAttempts = 0;
+    const MAX_FAMILY_FALLBACK = 3; // bounded per combo entry
+
+    // Inner loop: same combo entry may swap to a sibling model if upstream
+    // says the model itself is unavailable (deleted, not enabled, etc.).
+    // We stay on this combo "slot" until either (a) we get a non-model-unavailable
+    // result, or (b) we've exhausted MAX_FAMILY_FALLBACK siblings.
+    while (true) {
+      log.info("COMBO", `Trying model ${i + 1}/${rotatedModels.length}: ${modelStr}${familyFallbackAttempts > 0 ? ` (family-fallback ${familyFallbackAttempts})` : ""}`);
+      triedModels.add(modelStr);
 
     try {
       const result = await handleSingleModel(body, modelStr);
@@ -320,6 +333,20 @@ export async function handleComboChat({ body, models, handleSingleModel, log, co
       // the first deleted model.
       const isModelNotFound = result.status === 404 && /not[\s_]?found|requested entity/i.test(errorText || "");
 
+      // Family fallback (0.5.28): if the model is unavailable (404 or 400/403
+      // with model-unavailable wording), try the next sibling in its family
+      // BEFORE moving to the next combo entry. Cheaper than advancing the combo
+      // because siblings share provider/account.
+      if (isModelUnavailableError(result.status, errorText) && familyFallbackAttempts < MAX_FAMILY_FALLBACK) {
+        const sibling = getNextFamilyFallback(modelStr, triedModels);
+        if (sibling) {
+          familyFallbackAttempts++;
+          log.info("COMBO", `Model ${modelStr} unavailable, family-fallback → ${sibling}`);
+          modelStr = sibling;
+          continue; // stay on this combo slot, try the sibling
+        }
+      }
+
       if (!shouldFallback && !isModelNotFound) {
         log.warn("COMBO", `Model ${modelStr} failed (no fallback)`, { status: result.status });
         return result;
@@ -338,12 +365,15 @@ export async function handleComboChat({ body, models, handleSingleModel, log, co
       lastError = errorText || String(result.status);
       if (!lastStatus) lastStatus = result.status;
       log.warn("COMBO", `Model ${modelStr} failed, trying next`, { status: result.status });
+      break; // exit family-fallback inner loop, advance to next combo entry
     } catch (error) {
       // Catch unexpected exceptions to ensure fallback continues
       lastError = error.message || String(error);
       if (!lastStatus) lastStatus = 500;
       log.warn("COMBO", `Model ${modelStr} threw error, trying next`, { error: lastError });
+      break; // exit family-fallback inner loop, advance to next combo entry
     }
+    } // end while(true) family-fallback inner loop
   }
 
   // All models failed

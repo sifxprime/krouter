@@ -2,6 +2,7 @@ import { getProviderConnections, validateApiKey, updateProviderConnection, updat
 import { resolveConnectionProxyConfig } from "@/lib/network/connectionProxy";
 import { formatRetryAfter, checkFallbackError, isModelLockActive, buildModelLockUpdate, getEarliestModelLockUntil } from "open-sse/services/accountFallback.js";
 import { isAccountAboveThreshold, warmQuotaCache, invalidateQuotaCache } from "open-sse/services/quotaPreflight.js";
+import { selectAccount, getRoundRobinState, setRoundRobinState } from "open-sse/services/accountSelector.js";
 import { rankConnections, scoreOf } from "@/shared/services/connectionHealth";
 import { MAX_RATE_LIMIT_COOLDOWN_MS } from "open-sse/config/errorConfig.js";
 import { resolveProviderId, FREE_PROVIDERS } from "@/shared/constants/providers.js";
@@ -132,6 +133,18 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
     }
     if (connection) {
       // skip strategy
+    } else if (strategy === "p2c" || strategy === "random") {
+      // 0.5.28 — pluggable strategies via accountSelector. P2C avoids the
+      // always-pick-the-same-top-account pattern of fill-first when accounts
+      // are at the same health tier. Random is a uniform sampler for testing.
+      const { account } = selectAccount(availableConnections, strategy, getRoundRobinState(providerId));
+      connection = account;
+      if (connection) {
+        await updateProviderConnection(connection.id, {
+          lastUsedAt: new Date().toISOString(),
+          consecutiveUseCount: 1,
+        });
+      }
     } else if (strategy === "round-robin") {
       const stickyLimit = providerOverride.stickyRoundRobinLimit || settings.stickyRoundRobinLimit || 3;
 

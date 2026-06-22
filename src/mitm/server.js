@@ -274,8 +274,19 @@ async function passthroughHttp2(req, res, bodyBuffer, headers, targetHost, onRes
       });
     });
     stream.once("error", (e) => {
-      err(`[mitm] http2 stream error: ${e.message}`);
-      if (dumper) { dumper.writeChunk(`\n[ERROR h2-stream] ${e.message}\n`); dumper.end(); }
+      // 0.5.30 streamRecovery: if Google load-balancer drops the stream
+      // (NGHTTP2_INTERNAL_ERROR) before headers are sent, silently retry
+      // via HTTP/1.1 instead of failing the user's request.
+      const msg = e.message || "";
+      if (!res.headersSent && (msg.includes("NGHTTP2") || msg.includes("Stream closed"))) {
+        log(`[mitm] http2 stream error (${msg}) — falling back to http/1.1 retry`);
+        try { client.close(); } catch {}
+        passthroughHttps(req, res, bodyBuffer, headers, targetHost, onResponse, dumper).then(resolve);
+        return;
+      }
+
+      err(`[mitm] http2 stream error: ${msg}`);
+      if (dumper) { dumper.writeChunk(`\n[ERROR h2-stream] ${msg}\n`); dumper.end(); }
       if (!res.headersSent) res.writeHead(502);
       if (!res.writableEnded) res.end();
       try { client.close(); } catch {}

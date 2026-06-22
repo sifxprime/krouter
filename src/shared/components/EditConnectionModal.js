@@ -21,6 +21,10 @@ export default function EditConnectionModal({ isOpen, connection, proxyPools, on
     organization: "",
   });
   const [cloudflareData, setCloudflareData] = useState({ accountId: "" });
+  // 0.5.28 — per-connection max concurrency override for accountSemaphore.
+  // Empty string = use provider default (Antigravity=2, Kiro=2, free=1, etc.).
+  const [maxConcurrency, setMaxConcurrency] = useState("");
+  const [extraApiKeysText, setExtraApiKeysText] = useState("");
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState(null);
   const [validating, setValidating] = useState(false);
@@ -46,6 +50,13 @@ export default function EditConnectionModal({ isOpen, connection, proxyPools, on
       if (connection.provider === "cloudflare-ai" && connection.providerSpecificData) {
         setCloudflareData({ accountId: connection.providerSpecificData.accountId || "" });
       }
+      // 0.5.28 — load advanced per-connection settings
+      const psd = connection.providerSpecificData || {};
+      const mc = Number(psd.maxConcurrency);
+      setMaxConcurrency(Number.isFinite(mc) && mc > 0 ? String(mc) : "");
+      setExtraApiKeysText(
+        Array.isArray(psd.extraApiKeys) ? psd.extraApiKeys.join("\n") : ""
+      );
       setTestResult(null);
       setValidationResult(null);
     }
@@ -150,7 +161,26 @@ export default function EditConnectionModal({ isOpen, connection, proxyPools, on
       if (isCloudflareAi) {
         updates.providerSpecificData = { accountId: cloudflareData.accountId };
       }
-      
+
+      // 0.5.28 — merge advanced per-connection settings (maxConcurrency,
+      // extraApiKeys) into providerSpecificData WITHOUT clobbering existing
+      // provider-specific fields like azureEndpoint / accountId.
+      const advancedPSD = { ...(connection.providerSpecificData || {}) };
+      // Preserve any provider-specific data already being set above (Azure/Cloudflare)
+      if (updates.providerSpecificData) Object.assign(advancedPSD, updates.providerSpecificData);
+      // Apply concurrency override (empty string → remove the key)
+      const mc = parseInt(maxConcurrency, 10);
+      if (Number.isFinite(mc) && mc > 0) advancedPSD.maxConcurrency = mc;
+      else delete advancedPSD.maxConcurrency;
+      // Apply extra API keys (split by newline, trim, drop empties)
+      const extras = extraApiKeysText
+        .split("\n")
+        .map(s => s.trim())
+        .filter(s => s.length > 0);
+      if (extras.length > 0) advancedPSD.extraApiKeys = extras;
+      else delete advancedPSD.extraApiKeys;
+      updates.providerSpecificData = advancedPSD;
+
       await onSave(updates);
     } finally {
       setSaving(false);
@@ -255,6 +285,40 @@ export default function EditConnectionModal({ isOpen, connection, proxyPools, on
             )}
           </div>
         )}
+
+        {/* Advanced — 0.5.28 */}
+        <details className="bg-sidebar/30 rounded-lg border border-border">
+          <summary className="cursor-pointer p-3 text-sm font-medium select-none">
+            Advanced
+          </summary>
+          <div className="p-3 pt-0 flex flex-col gap-3">
+            <Input
+              label="Max Concurrency"
+              type="number"
+              min="1"
+              max="20"
+              value={maxConcurrency}
+              onChange={(e) => setMaxConcurrency(e.target.value)}
+              placeholder="(provider default)"
+              hint="Cap parallel requests against this account. Leave blank to use the provider default (Antigravity/Kiro=2, free=1, paid keys=unlimited)."
+            />
+            {!isOAuth && (
+              <div>
+                <label className="block text-sm font-medium mb-1">Extra API Keys</label>
+                <textarea
+                  value={extraApiKeysText}
+                  onChange={(e) => setExtraApiKeysText(e.target.value)}
+                  placeholder={"One key per line — round-robins with the primary key.\nKeys that 401 twice get marked invalid and skipped."}
+                  rows={3}
+                  className="w-full text-sm font-mono bg-background border border-border rounded-md p-2 focus:outline-none focus:ring-2 focus:ring-accent/50"
+                />
+                <p className="text-xs text-text-muted mt-1">
+                  Rotation cycles through every healthy key. Failed keys are auto-recovered on the next successful call.
+                </p>
+              </div>
+            )}
+          </div>
+        </details>
 
         <div className="flex gap-2">
           <Button onClick={handleSubmit} fullWidth disabled={saving}>{saving ? "Saving..." : "Save"}</Button>
