@@ -18,10 +18,32 @@ const KNOWN_OFFENDING_FIELDS = [
 // Return the first known-offending field literally named in a 400 body, or null.
 // Used for reactive self-healing (if upstream complains about 'logprobs', strip
 // it and retry).
+//
+// Word-boundary match catches every real-world phrasing observed in upstream
+// 400 bodies:
+//   xAI       — `Parameter 'logprobs' not supported`            (single-quoted)
+//   Groq      — `Unknown parameter: logprobs`                    (bare)
+//   OpenRouter— `unrecognized field reasoning_content`           (bare)
+//   Anthropic — `Field \"presence_penalty\" invalid`             (escaped double quotes)
+//
+// The previous quote-only matcher missed the bare and escaped-quote cases. Over-
+// broad regex matches are safe here: the worst case is stripping a named field
+// that wasn't the actual cause, and the retry then resends without it.
+const FIELD_REGEX_CACHE = new Map();
+function fieldRegex(field) {
+  let re = FIELD_REGEX_CACHE.get(field);
+  if (!re) {
+    // \b is ASCII word boundary which works for these snake_case field names.
+    re = new RegExp(`\\b${field}\\b`);
+    FIELD_REGEX_CACHE.set(field, re);
+  }
+  return re;
+}
+
 export function findOffendingField(bodyText) {
   if (typeof bodyText !== "string" || !bodyText) return null;
   for (const field of KNOWN_OFFENDING_FIELDS) {
-    if (bodyText.includes(`'${field}'`) || bodyText.includes(`"${field}"`) || bodyText.includes(`\`${field}\``)) {
+    if (fieldRegex(field).test(bodyText)) {
       return field;
     }
   }

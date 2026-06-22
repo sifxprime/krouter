@@ -35,10 +35,37 @@ describe("modelDeprecation — resolveDeprecatedModel", () => {
 });
 
 describe("modelStrip — findOffendingField", () => {
-  it("finds known fields in 400 error bodies", () => {
+  it("finds known fields in 400 error bodies (quoted)", () => {
+    // single quotes — xAI style
     expect(findOffendingField('{"error": "Unsupported param \'logprobs\'"}')).toBe("logprobs");
+    // double quotes — unescaped
     expect(findOffendingField('Invalid field "reasoning_budget" provided')).toBe("reasoning_budget");
-    expect(findOffendingField('Unknown property `presence_penalty`')).toBe("presence_penalty");
+    // backticks
+    expect(findOffendingField("Unknown property `presence_penalty`")).toBe("presence_penalty");
+  });
+
+  it("finds bare unquoted field names (Groq / OpenRouter shape)", () => {
+    // Groq: bare field after colon
+    expect(findOffendingField('{"error":{"message":"Unknown parameter: logprobs"}}')).toBe("logprobs");
+    // OpenRouter: bare field after `field`
+    expect(findOffendingField('{"error":"unrecognized field reasoning_content"}')).toBe("reasoning_content");
+    // Bare in plain prose
+    expect(findOffendingField("frequency_penalty is not supported by this model")).toBe("frequency_penalty");
+  });
+
+  it("finds field names inside escaped-quote JSON bodies", () => {
+    // raw response body where the field appears inside an escaped double-quote
+    // (\"presence_penalty\") — common when upstream returns the field name
+    // embedded inside another JSON string field.
+    const escapedBody = '{"detail":"Field \\"presence_penalty\\" invalid"}';
+    expect(findOffendingField(escapedBody)).toBe("presence_penalty");
+  });
+
+  it("does NOT match when the field name is part of another word", () => {
+    // Word-boundary check should prevent over-matching. `xlogprobs` is not
+    // `logprobs`; `reasoning_budget_v2` is not `reasoning_budget`.
+    expect(findOffendingField("xlogprobs is fine")).toBeNull();
+    expect(findOffendingField("the reasoning_budget_v2 field passed")).toBeNull();
   });
 
   it("returns null if no known offending field is named", () => {
@@ -48,6 +75,8 @@ describe("modelStrip — findOffendingField", () => {
   it("handles non-string/missing body gracefully", () => {
     expect(findOffendingField(null)).toBeNull();
     expect(findOffendingField({})).toBeNull();
+    expect(findOffendingField("")).toBeNull();
+    expect(findOffendingField(undefined)).toBeNull();
   });
 });
 
