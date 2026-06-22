@@ -275,7 +275,14 @@ export class AntigravityExecutor extends BaseExecutor {
     const fallbackCount = this.getFallbackCount();
     let lastError = null;
     let lastStatus = 0;
-    const MAX_AUTO_RETRIES = 3;
+    // Auto-retry budget for 429s that arrive WITHOUT a retry-after hint.
+    // Lowered from 3 to 1 in 0.5.24: when Google omits retry-after, it's
+    // almost always a quota-exhausted 429 dressed up as a transient one.
+    // The previous 3-retry exponential backoff (2s + 4s + 8s = 14s) was
+    // pure waste on a locked account. One quick retry catches the truly
+    // transient case; everything else fast-fails to the next account.
+    const MAX_AUTO_RETRIES = 1;
+    const AUTO_RETRY_DELAY_MS = 1000;
     const MAX_RETRY_AFTER_RETRIES = 3;
     const retryAttemptsByUrl = {}; // Track retry attempts per URL
     const retryAfterAttemptsByUrl = {}; // Track Retry-After retries per URL
@@ -342,13 +349,12 @@ export class AntigravityExecutor extends BaseExecutor {
             return { response, url, headers, transformedBody };
           }
 
-          // Auto retry only for 429 when retryMs is short or undefined
+          // Auto retry only for 429 when retryMs is short or undefined.
+          // Single 1s retry — see MAX_AUTO_RETRIES comment above.
           if (response.status === HTTP_STATUS.RATE_LIMITED && (!retryMs || retryMs === 0) && retryAttemptsByUrl[urlIndex] < MAX_AUTO_RETRIES) {
             retryAttemptsByUrl[urlIndex]++;
-            // Exponential backoff: 2s, 4s, 8s...
-            const backoffMs = Math.min(1000 * (2 ** retryAttemptsByUrl[urlIndex]), MAX_RETRY_AFTER_MS);
-            log?.debug?.("RETRY", `429 auto retry ${retryAttemptsByUrl[urlIndex]}/${MAX_AUTO_RETRIES} after ${backoffMs / 1000}s`);
-            await new Promise(resolve => setTimeout(resolve, backoffMs));
+            log?.debug?.("RETRY", `429 auto retry ${retryAttemptsByUrl[urlIndex]}/${MAX_AUTO_RETRIES} after ${AUTO_RETRY_DELAY_MS / 1000}s`);
+            await new Promise(resolve => setTimeout(resolve, AUTO_RETRY_DELAY_MS));
             urlIndex--;
             continue;
           } else if (response.status === HTTP_STATUS.RATE_LIMITED || response.status === HTTP_STATUS.SERVICE_UNAVAILABLE) {

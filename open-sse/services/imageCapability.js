@@ -69,7 +69,12 @@ export function isImageRejectionError(status, bodyText) {
     lower.includes("does not support the image content") ||
     lower.includes("does not support image") ||
     // OpenAI-style: 'messages.0.content' must be a string when the model is text-only
-    /messages\.\d+\.content.*must be a string/.test(lower)
+    /messages\.\d+\.content.*must be a string/.test(lower) ||
+    // OpenCode-via-DeepSeek (added 0.5.24): Rust serde deserializer rejects
+    // the image_url variant on text-only DeepSeek models with:
+    //   "Failed to deserialize the JSON body into the target type:
+    //    messages[11]: unknown variant `image_url`, expected `text`"
+    /unknown variant.*image_url.*expected.*text/.test(lower)
   );
 }
 

@@ -50,6 +50,23 @@ describe("imageCapability — error pattern recognition", () => {
     expect(isImageRejectionError(400, undefined)).toBe(false);
     expect(isImageRejectionError(400, "")).toBe(false);
   });
+
+  it("recognizes OpenCode/DeepSeek 'unknown variant image_url' (0.5.24)", () => {
+    const body = JSON.stringify({
+      error: {
+        message: "Error from provider (DeepSeek): Failed to deserialize the JSON body into the target type: messages[11]: unknown variant `image_url`, expected `text` at line 1 column 91958",
+        type: "invalid_request_error",
+      },
+    });
+    expect(isImageRejectionError(400, body)).toBe(true);
+  });
+
+  it("recognizes the same DeepSeek wording at different message indices", () => {
+    const body = JSON.stringify({
+      error: { message: "messages[0]: unknown variant `image_url`, expected `text`" },
+    });
+    expect(isImageRejectionError(400, body)).toBe(true);
+  });
 });
 
 describe("imageCapability — cache", () => {
