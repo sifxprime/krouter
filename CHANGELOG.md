@@ -1,3 +1,37 @@
+# v0.5.33 (2026-06-23) — cacheControlMode toggle + quota freshness tracking
+
+User-visible: dashboard now exposes a Cache Control toggle (auto/always/never) that controls whether kRouter mutates `cache_control` markers on Claude-shape requests. Quota usage endpoint now reports cache freshness so the dashboard can show "last checked Xs ago" without a second round-trip, and a manual refresh endpoint forces a fresh upstream fetch on demand.
+
+## Cache Control mode toggle (Tier 3.A)
+- New setting `cacheControlMode` with three values:
+  - **`auto`** (default, preserves 0.5.32 behavior): skip `cache_control` mutations only on Claude direct passthrough (`clientTool==="claude" && provider==="claude"`).
+  - **`always`**: paranoid mode — skip mutations on any Claude-shape target including `anthropic-compatible-*` resellers and the explicit translator path (threaded via `prepareClaudeRequest(preserveCacheControl=true)`).
+  - **`never`**: legacy escape hatch (pre-0.5.32 strip-and-rewrite behavior).
+- New Cache Control card on `/dashboard/profile` with a `<select>` and live mode-aware explainer text.
+- Live-verified: dev log fires `[CACHE] mode=auto | token savers SKIPPED...` and `[CACHE] mode=always | token savers SKIPPED...` on real Claude traffic; `never` correctly suppresses the skip.
+
+## Quota tracker hardening (Tier 3.C)
+- `quotaPreflight` gains four new APIs:
+  - `getQuotaCacheInfo(provider, connId)` → freshness info (`hasData`, `isFresh`, `isStale`, `lastCheckedAt`, `lastCheckedAgoSec`, `modelCount`)
+  - `forceRefreshQuota(provider, connId, connection)` → drop cache + inFlight, refetch upstream
+  - `recordQuotaCacheHit(provider, connId)` → tracks last-used for background daemon
+  - `startBackgroundQuotaRefresh(connectionsProvider)` → 60s daemon that only refreshes accounts whose hot-path read was within the last 30 min
+- `GET /api/usage/[connectionId]` now returns `_cacheInfo` with the freshness fields (backward-compatible — added field, nothing removed).
+- `POST /api/usage/[connectionId]` is new — manual refresh endpoint that token-refreshes if OAuth, force-refreshes quota cache, returns `{ ...usage, _cacheInfo, _refreshed: true }`.
+- `sse/services/auth.js` records a cache hit after every successful account pick, so the daemon's "recently used" detection mirrors real production usage.
+- Daemon ticks confirmed live in isolated node process; in-app firing is timer-driven and survives HMR.
+
+## Test counts
+- Pre-release baseline: 983 passing / 20 expected-fail / 21 skipped
+- Post-release: **999 passing** / 20 expected-fail / 21 skipped (1040 total)
+- +16 new tests across 2 new test files: `cache-control-mode.test.js`, `quota-tracker-hardening.test.js`
+- Zero regressions
+
+## Intentionally NOT in this release
+- TaskAwareRouter wiring (Tier 3.B) — deferred at user request, same rationale as the skipped Tier 2.B combo intelligence wiring in 0.5.32. Existing routing is working and the user opted to leave it untouched.
+
+---
+
 # v0.5.32 (2026-06-23) — Claude Desktop token-burn fix + reliability hardening
 
 User-visible: long Claude Desktop / Claude Code sessions routed through kRouter MITM no longer pay 3-10x token cost vs running Claude direct. Anthropic's per-API-key prompt cache now stays warm across continuation turns.
