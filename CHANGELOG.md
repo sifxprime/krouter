@@ -1,3 +1,10 @@
+# v0.5.34 (2026-06-23) — Hotfix: Claude direct cache preservation
+
+Fixes an issue where C‍laude Code (the CLI) would receive `429 Rate Limit` errors on Anthropic Tier 1 accounts despite having sufficient credits.
+
+- **Bug:** `normalizeClaudePassthrough` was hoisting C‍laude Code's mid-conversation `role: "system"` messages to the top level. While semantically identical, this changed the JSON byte sequence, busting Anthropic's prompt cache. A 50k token prompt missing the cache immediately hits the 40k TPM limit on Tier 1.
+- **Fix:** `cacheControlMode="auto"` (and `"always"`) now strictly skips the normalizer and tool deduper. The outbound JSON body is now 100% byte-identical to the CLI's payload, allowing Anthropic's cache to hit and bypassing TPM rate limits on continuation turns.
+
 # v0.5.33 (2026-06-23) — cacheControlMode toggle + quota freshness tracking
 
 User-visible: dashboard now exposes a Cache Control toggle (auto/always/never) that controls whether kRouter mutates `cache_control` markers on Claude-shape requests. Quota usage endpoint now reports cache freshness so the dashboard can show "last checked Xs ago" without a second round-trip, and a manual refresh endpoint forces a fresh upstream fetch on demand.
