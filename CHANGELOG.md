@@ -1,3 +1,34 @@
+# v0.5.32 (2026-06-23) — Claude Desktop token-burn fix + reliability hardening
+
+User-visible: long Claude Desktop / Claude Code sessions routed through kRouter MITM no longer pay 3-10x token cost vs running Claude direct. Anthropic's per-API-key prompt cache now stays warm across continuation turns.
+
+## Cache preservation in Claude direct passthrough (Tier 1)
+- **Skip token-saver mutations for Claude direct passthrough.** When `clientTool === "claude" && provider === "claude"` and the request is in passthrough mode, kRouter no longer runs RTK / Caveman / Ponytail on the outbound body. Any byte change to system / tools / messages prefix busts Anthropic's prompt cache key; for a 50-turn Claude Desktop session that was 50 cache misses × 10× tokens on the cached prefix. Now the outbound body is byte-identical to what Claude Desktop sent and Anthropic's cache hits on every continuation turn.
+- **Session-sticky account binding.** `getSessionConnection()` infrastructure existed in `sessionManager.js` but was never called. Wired it: every chat request derives a `conversationFingerprint` (model + system + tools + first user message + provider, **without** connectionId) and resolves it to a sticky account via `getStickyConnection()`. Auth picker honours the binding via `preferredConnectionId`. On a successful turn we re-bind the fingerprint to the working account. Failed binding falls through to normal strategy (option a — drop stickiness rather than wait for recovery). For users with `stickyRoundRobinLimit:1`, this stops every-other-turn cache misses from per-key cache rotation.
+- **`preserveCacheControl` flag on `prepareClaudeRequest`** (port of OmniRoute's same-named flag). 4th param, default false. When true, skips all cache_control strip-and-rewrite passes on system blocks, message content, and last-assistant injection. Future translation paths (e.g. `anthropic-compatible-cc-*` resellers) can flip this on without touching chatCore.
+
+Live-verified end-to-end on real Anthropic traffic — 3 successful Claude direct turns through the same conversation fingerprint, all routed to the same account, `[AUTH] claude | pinned to <conn>` log line confirms sticky resolution on turn 3+.
+
+## Reactive 400-retry hardening (Tier 2.A + 2.C)
+- **`findOffendingField` word-boundary regex** (already shipped in 0.5.31 commit d20703c, included here). Catches bare-name 400 bodies that the previous quoted-only matcher missed: Groq (`Unknown parameter: logprobs`), OpenRouter (`unrecognized field reasoning_content`), Anthropic (`Field \"presence_penalty\" invalid`). Without this, the reactive self-heal silently never fired on the most common upstream error shapes.
+- **Verified the full retry chain end-to-end.** Six integration tests run the real `DefaultExecutor.execute()` flow with `proxyAwareFetch` mocked at the network boundary: 400 → `findOffendingField` matches → `delete sourceBody[offendingField]` → real `transformRequest` → real retry fetch → 200 returned. Tests confirm other body fields (temperature, messages, max_tokens) survive intact, unknown field names skip the retry (allowlist gating works), plain 400s with no field name don't retry, and a retry that ALSO 400s doesn't infinite-loop.
+
+## Dashboard console-log noise filter
+- The in-memory buffer that powers `/dashboard/console-log` was capturing every Next.js HTTP access line (`GET /api/version 200 in Xms`, `GET /api/settings ...`, `GET /manifest.webmanifest`, even the SSE stream that delivers the logs back to the UI). The dashboard's own polling flooded the buffer at ~1-2 req/sec and evicted real chat / auth / error traces via the maxLines cap. New `isAccessLogNoise()` filter drops the framework's specific access-log shape only when the path matches a known polling endpoint and the status is 2xx/3xx. Preserves everything that matters: any 4xx/5xx, all `[LEVEL]` tagged lines, POST/DELETE/PUT requests, Next.js startup banner, unknown future routes. Original stdout to the terminal is unchanged — only the dashboard buffer is filtered.
+
+## Test counts
+- Pre-release baseline: 947 passing / 20 expected-fail / 21 skipped (988 total)
+- Post-release: 983 passing / 20 expected-fail / 21 skipped (1024 total)
+- +36 new tests across 3 new test files: `cache-stickiness.test.js`, `console-log-filter.test.js`, `model-strip-reactive-retry.test.js`
+- Zero regressions
+
+## Intentionally NOT in this release
+- Combo intelligence wiring (Tier 2.B) — deferred. The wiring would have `intentClassifier` + `complexityRouter` outputs change combo slot selection per request. User chose to skip rather than risk disrupting working combo behavior.
+- Claude Code obfuscation stack (8 files in OmniRoute) — only worth porting if direct Anthropic accounts start getting throttled or you sign up for `anthropic-compatible-cc-*` reseller endpoints. Today's traffic routes through Claude direct (passthrough) and Antigravity (already obfuscated).
+- Full compression framework port (29 files in OmniRoute) — existing RTK works. Marginal gain not worth the 20-40 hour port cost.
+
+---
+
 # v0.5.14 (2026-06-21) — Combo fallback speed + MITM stability + Auth loop fixes
 
 Four major fixes addressing live user reports. Combos are now up to 15x
