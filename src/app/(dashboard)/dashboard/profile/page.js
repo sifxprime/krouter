@@ -1187,6 +1187,37 @@ export default function ProfilePage() {
               </select>
             </div>
 
+            {/* 0.5.34 — One-click 429 panic toggle. When users hit a fresh-turn
+                TPM ceiling, they need to flip to "never" so RTK trims the prompt,
+                then back to "auto" once the conversation is established. */}
+            <div className="flex items-start sm:items-center justify-between gap-4 pt-3 border-t border-border/50">
+              <div className="flex-1 min-w-0">
+                <p className="font-medium text-sm sm:text-base">Quick toggle</p>
+                <p className="text-xs sm:text-sm text-text-muted">
+                  Got a fresh-turn 429 because your prompt is bigger than your tier's TPM?
+                  Click once to switch into legacy trimming, send your first turn, then click again
+                  to return to cache-preserve mode.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => updateSetting(
+                  "cacheControlMode",
+                  (settings.cacheControlMode || "auto") === "never" ? "auto" : "never"
+                )}
+                disabled={loading}
+                className={`w-32 sm:w-44 px-3 py-2 text-sm font-medium rounded shrink-0 transition-colors ${
+                  (settings.cacheControlMode || "auto") === "never"
+                    ? "bg-amber-500/15 text-amber-600 border border-amber-500/40 hover:bg-amber-500/25"
+                    : "bg-cyan-500/15 text-cyan-600 border border-cyan-500/40 hover:bg-cyan-500/25"
+                }`}
+              >
+                {(settings.cacheControlMode || "auto") === "never"
+                  ? "Restore cache preserve"
+                  : "Emergency: trim prompt"}
+              </button>
+            </div>
+
             <p className="text-xs text-text-muted italic pt-2 border-t border-border/50">
               {(settings.cacheControlMode || "auto") === "auto" && (
                 <>Currently <strong>auto</strong>: preserves <code>cache_control</code> only on Claude Desktop / Claude Code passthrough (<code>clientTool==="claude"</code> &amp; <code>provider==="claude"</code>). All other paths mutate as before.</>
