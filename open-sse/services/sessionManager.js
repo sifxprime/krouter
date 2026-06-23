@@ -142,6 +142,57 @@ export function getSessionConnection(sessionId) {
   return getSessionInfo(sessionId)?.connectionId || null;
 }
 
+// 0.5.32 — Cross-account conversation stickiness
+// ----------------------------------------------
+// generateSessionId() bakes connectionId INTO the hash, which means switching
+// accounts mid-conversation produces a fresh sessionId — defeating the whole
+// point of sticky routing across account rotation. We need a separate
+// account-AGNOSTIC fingerprint so the auth picker can ask "which account did
+// this conversation use last time?" BEFORE picking the next one.
+//
+// Bound entries expire on the same SESSION_TTL_MS clock as the session pool.
+
+const fingerprintBindings = new Map(); // fingerprint -> { connectionId, lastUsed }
+
+// Same shape inputs as generateSessionId, but never includes connectionId in
+// the hash so multi-account conversations get a single stable fingerprint.
+export function generateConversationFingerprint(body, options = {}) {
+  if (!body || typeof body !== "object") return null;
+  // Reuse generateSessionId's hashing but drop the connectionId from options.
+  return generateSessionId(body, { provider: options.provider });
+}
+
+// Record which account handled this conversation. Called after a successful
+// upstream response so we only bind to accounts that actually worked.
+export function bindConversationConnection(fingerprint, connectionId) {
+  if (!fingerprint || !connectionId) return;
+  fingerprintBindings.set(fingerprint, { connectionId, lastUsed: Date.now() });
+}
+
+// Lookup the previously-bound account for this conversation, or null if
+// either the fingerprint has no binding or the binding has expired.
+export function getStickyConnection(fingerprint) {
+  if (!fingerprint) return null;
+  const entry = fingerprintBindings.get(fingerprint);
+  if (!entry) return null;
+  if (Date.now() - entry.lastUsed > SESSION_TTL_MS) {
+    fingerprintBindings.delete(fingerprint);
+    return null;
+  }
+  // Touch the binding so an active conversation keeps its account
+  entry.lastUsed = Date.now();
+  return entry.connectionId;
+}
+
+export function clearStickyConnection(fingerprint) {
+  if (!fingerprint) return;
+  fingerprintBindings.delete(fingerprint);
+}
+
+export function getStickyBindingCount() {
+  return fingerprintBindings.size;
+}
+
 export function getActiveSessionCount() {
   return sessions.size;
 }

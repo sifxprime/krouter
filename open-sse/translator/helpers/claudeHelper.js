@@ -125,20 +125,29 @@ export function normalizeClaudePassthrough(body, model = "") {
 const CLAUDE_FORMAT_PROVIDERS_WITHOUT_OUTPUT_CONFIG = new Set(["minimax", "minimax-cn"]);
 
 // Prepare request for Claude format endpoints
-// - Cleanup cache_control
+// - Cleanup cache_control (unless preserveCacheControl=true for cache-sensitive passthrough)
 // - Filter empty messages
 // - Add thinking block for Anthropic endpoint (provider === "claude")
 // - Fix tool_use/tool_result ordering
 // - Apply cloaking (billing header + fake user ID) for OAuth tokens
-export function prepareClaudeRequest(body, provider = null, apiKey = null, connectionId = null) {
+//
+// 0.5.32 — preserveCacheControl: skip ALL cache_control mutations when the
+// caller is in passthrough mode. Anthropic's prompt cache is keyed on the
+// exact byte sequence of the request body — any rewrite here busts the cache
+// and the user pays full tokens on the cached prefix every turn. Port of
+// OmniRoute's same-named flag (open-sse/translator/helpers/claudeHelper.ts).
+// Default false preserves existing behaviour for non-passthrough callers.
+export function prepareClaudeRequest(body, provider = null, apiKey = null, connectionId = null, preserveCacheControl = false) {
   // MiniMax exposes a Claude-compatible endpoint but rejects Anthropic's extended
   // structured output parameter with a generic 400 "invalid params" response.
   if (CLAUDE_FORMAT_PROVIDERS_WITHOUT_OUTPUT_CONFIG.has(provider)) {
     delete body.output_config;
   }
 
-  // 1. System: remove all cache_control, add only to last block with ttl 1h
-  if (body.system && Array.isArray(body.system)) {
+  // 1. System: remove all cache_control, add only to last block with ttl 1h.
+  //    Skipped when preserveCacheControl=true so the client's existing markers
+  //    survive byte-for-byte and Anthropic's prompt cache stays valid.
+  if (!preserveCacheControl && body.system && Array.isArray(body.system)) {
     body.system = body.system.map((block, i) => {
       const { cache_control, ...rest } = block;
       if (i === body.system.length - 1) {
@@ -153,12 +162,12 @@ export function prepareClaudeRequest(body, provider = null, apiKey = null, conne
     const len = body.messages.length;
     let filtered = [];
 
-    // Pass 1: remove cache_control + filter empty messages
+    // Pass 1: remove cache_control (unless preserving) + filter empty messages
     for (let i = 0; i < len; i++) {
       const msg = body.messages[i];
 
-      // Remove cache_control from content blocks
-      if (Array.isArray(msg.content)) {
+      // Remove cache_control from content blocks (skip when preserving)
+      if (!preserveCacheControl && Array.isArray(msg.content)) {
         for (const block of msg.content) {
           delete block.cache_control;
         }
@@ -182,7 +191,8 @@ export function prepareClaudeRequest(body, provider = null, apiKey = null, conne
     const lastMessageIsUser = lastMessage?.role === "user";
     const thinkingEnabled = body.thinking?.type === "enabled" && lastMessageIsUser;
 
-    // Pass 2 (reverse): add cache_control to last assistant + handle thinking for Anthropic
+    // Pass 2 (reverse): add cache_control to last assistant + handle thinking for Anthropic.
+    //    The cache_control mutation here is also gated by preserveCacheControl.
     let lastAssistantProcessed = false;
     for (let i = filtered.length - 1; i >= 0; i--) {
       const msg = filtered[i];
@@ -190,7 +200,7 @@ export function prepareClaudeRequest(body, provider = null, apiKey = null, conne
       if (msg.role === "assistant" && Array.isArray(msg.content)) {
         // Add cache_control to last non-thinking block of first (from end) assistant with content
         // thinking/redacted_thinking blocks do not support cache_control
-        if (!lastAssistantProcessed && msg.content.length > 0) {
+        if (!preserveCacheControl && !lastAssistantProcessed && msg.content.length > 0) {
           for (let j = msg.content.length - 1; j >= 0; j--) {
             const block = msg.content[j];
             if (block.type !== "thinking" && block.type !== "redacted_thinking") {

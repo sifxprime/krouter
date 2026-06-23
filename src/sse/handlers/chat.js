@@ -21,6 +21,11 @@ import { detectFormatByEndpoint } from "open-sse/translator/formats.js";
 import * as log from "../utils/logger.js";
 import { updateProviderCredentials, checkAndRefreshToken } from "../services/tokenRefresh.js";
 import { getProjectIdForConnection } from "open-sse/services/projectId.js";
+import {
+  generateConversationFingerprint,
+  getStickyConnection,
+  bindConversationConnection,
+} from "open-sse/services/sessionManager.js";
 
 // Combo can nest into another combo (e.g. user creates "coding" that points at
 // "coding2"). A misconfigured combo that references itself, or a cycle between
@@ -249,8 +254,25 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
   let lastError = null;
   let lastStatus = null;
 
+  // 0.5.32 — conversation stickiness across rotation. Compute a fingerprint
+  // that is stable across the whole conversation (same model+system+tools+
+  // first-user msg+provider) but does NOT include connectionId. If we've
+  // previously bound an account to this conversation, prefer it so Anthropic
+  // (and any other per-key-cached upstream) keeps serving from its warm
+  // prompt cache instead of paying full tokens on each rotation.
+  const conversationFingerprint = generateConversationFingerprint(body, { provider });
+  let stickyConnectionId = conversationFingerprint
+    ? getStickyConnection(conversationFingerprint)
+    : null;
+
   while (true) {
-    const credentials = await getProviderCredentials(provider, excludeConnectionIds, model, { bypassModelLock });
+    const credentials = await getProviderCredentials(provider, excludeConnectionIds, model, {
+      bypassModelLock,
+      // Only use sticky on the FIRST iteration. If the sticky account fails
+      // (returned in excludeConnectionIds on retry), fall through to normal
+      // selection — option (a): drop stickiness rather than wait for recovery.
+      preferredConnectionId: (stickyConnectionId && !excludeConnectionIds.has(stickyConnectionId)) ? stickyConnectionId : null,
+    });
 
     // All accounts unavailable
     if (!credentials || credentials.allRateLimited) {
@@ -323,6 +345,14 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
     recordOutcome(credentials.connectionId, !!result.success, Date.now() - requestStartedAtMs);
 
     if (result.success) {
+      // 0.5.32 — record the conversation→account binding so subsequent turns
+      // on this same conversation route back to the same account. Keeps
+      // upstream prompt cache warm. Only bind on success — failures shouldn't
+      // sticky the user to a misbehaving account.
+      if (conversationFingerprint && credentials.connectionId) {
+        bindConversationConnection(conversationFingerprint, credentials.connectionId);
+      }
+
       // Save to response cache (best-effort, async — non-blocking).
       // Only fires when caching is enabled AND request body is cacheable
       // (non-streaming + low temperature). Streaming responses are skipped

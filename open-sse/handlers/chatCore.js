@@ -130,31 +130,51 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
   // Covers both passthrough (source shape) and translated (target shape) flows
   const finalFormat = passthrough ? sourceFormat : targetFormat;
 
+  // 0.5.32 — Claude direct cache preservation
+  // When client is Claude Desktop / Claude Code talking to the real Anthropic
+  // API (clientTool === "claude" && provider === "claude"), every byte of the
+  // outbound request body is part of Anthropic's prompt cache key. Any
+  // mutation here (RTK trimming tool_results, Caveman injecting a system
+  // block, Ponytail injecting another, etc.) shifts the byte sequence, busts
+  // the cache, and the user is billed for full re-tokenisation of every cached
+  // prefix on every turn. On long sessions this is 3-10x the token cost vs
+  // running Claude Desktop directly.
+  //
+  // Solution: skip ALL token-saver mutations for this specific path. The
+  // user's Claude OAuth account on Anthropic still gets the legitimate
+  // cache hits for free, and we still preserve all the other benefits of
+  // routing through kRouter (account rotation, observability, fallback).
+  const isClaudeDirectCachePath = passthrough && clientTool === "claude" && provider === "claude";
+
   // TTS models don't support tool messages/function calling
   if (getModelType(alias, model) === "tts" && translatedBody.messages) {
     translatedBody.messages = translatedBody.messages.filter(msg => msg.role !== "tool");
     delete translatedBody.tools;
   }
 
-  // RTK: compress tool_result content
-  const rtkStats = compressMessages(translatedBody, rtkEnabled);
-  const rtkLine = formatRtkLog(rtkStats);
-  if (rtkLine) log?.debug?.("RTK", rtkLine);
+  if (isClaudeDirectCachePath) {
+    log?.debug?.("CACHE", `Claude direct passthrough — token savers SKIPPED to preserve Anthropic prompt cache`);
+  } else {
+    // RTK: compress tool_result content
+    const rtkStats = compressMessages(translatedBody, rtkEnabled);
+    const rtkLine = formatRtkLog(rtkStats);
+    if (rtkLine) log?.debug?.("RTK", rtkLine);
 
-  // Caveman: inject terse-style system prompt
-  if (cavemanEnabled && cavemanLevel) {
-    injectCaveman(translatedBody, finalFormat, cavemanLevel);
-    log?.debug?.("CAVEMAN", `${cavemanLevel} | ${finalFormat}`);
-  }
+    // Caveman: inject terse-style system prompt
+    if (cavemanEnabled && cavemanLevel) {
+      injectCaveman(translatedBody, finalFormat, cavemanLevel);
+      log?.debug?.("CAVEMAN", `${cavemanLevel} | ${finalFormat}`);
+    }
 
-  // Ponytail: inject "lazy senior dev" persona for minimal-code outputs.
-  // Sister feature to Caveman — same injection layer, different style.
-  // Caveman = terse outputs (general). Ponytail = minimal code (engineering).
-  // Both can be enabled together; ladder + persistence guidance compose
-  // because they target different aspects of the response.
-  if (ponytailEnabled && ponytailLevel) {
-    injectPonytail(translatedBody, finalFormat, ponytailLevel);
-    log?.debug?.("PONYTAIL", `${ponytailLevel} | ${finalFormat}`);
+    // Ponytail: inject "lazy senior dev" persona for minimal-code outputs.
+    // Sister feature to Caveman — same injection layer, different style.
+    // Caveman = terse outputs (general). Ponytail = minimal code (engineering).
+    // Both can be enabled together; ladder + persistence guidance compose
+    // because they target different aspects of the response.
+    if (ponytailEnabled && ponytailLevel) {
+      injectPonytail(translatedBody, finalFormat, ponytailLevel);
+      log?.debug?.("PONYTAIL", `${ponytailLevel} | ${finalFormat}`);
+    }
   }
 
   // Model Strip (0.5.31): proactively drop fields that break specific providers
