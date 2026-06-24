@@ -179,7 +179,9 @@ export class AntigravityExecutor extends BaseExecutor {
       if (!response.ok) return null;
 
       const tokens = await response.json();
-      log?.info?.("TOKEN", "Antigravity refreshed");
+      // 0.5.52 — demoted to debug. chatCore.js already emits one
+      // info-level "[TOKEN] ANTIGRAVITY | refreshed" line per refresh.
+      log?.debug?.("TOKEN", "Antigravity refreshed");
 
       return {
         accessToken: tokens.access_token,

@@ -72,6 +72,52 @@ const DEFAULT_HOST = "0.0.0.0";
 const MAX_PORT_ATTEMPTS = 10;
 const PROCESS_IDENTIFIERS = ['krouter'];
 
+// 0.5.52 — One-shot subcommand: `krouter backfill-tokens` rewrites old
+// requestDetails rows where tokens.prompt_tokens is 0 but the raw
+// providerResponse contains usageMetadata. Helps users with months of
+// 0/0 rows produced before the Antigravity token-extraction bug was
+// fixed in 0.5.51. Safe to re-run — only touches rows that actually
+// have something to lift.
+if (args[0] === "backfill-tokens") {
+  const candidates = [
+    path.join(process.env.HOME || "", ".krouter", "db", "data.sqlite"),
+    process.env.APPDATA ? path.join(process.env.APPDATA, "krouter", "db", "data.sqlite") : null,
+  ].filter(Boolean);
+  const dbPath = candidates.find(p => fs.existsSync(p));
+  if (!dbPath) {
+    console.error("No krouter database found at:", candidates.join(" or "));
+    process.exit(1);
+  }
+  console.log("DB:", dbPath);
+  const rows = JSON.parse(execSync(
+    `sqlite3 -json "${dbPath}" "SELECT id, data FROM requestDetails WHERE json_extract(data,'$.tokens.prompt_tokens')=0 AND (json_extract(data,'$.providerResponse.response.usageMetadata.promptTokenCount') IS NOT NULL OR json_extract(data,'$.providerResponse.usageMetadata.promptTokenCount') IS NOT NULL)"`,
+    { encoding: "utf8", maxBuffer: 512 * 1024 * 1024 }
+  ) || "[]");
+  console.log(`Candidates with extractable tokens: ${rows.length}`);
+  let updated = 0;
+  for (const row of rows) {
+    try {
+      const d = JSON.parse(row.data);
+      const um = d.providerResponse?.response?.usageMetadata || d.providerResponse?.usageMetadata;
+      if (!um) continue;
+      const promptTokens = um.promptTokenCount || 0;
+      const completionTokens = um.candidatesTokenCount || 0;
+      const reasoningTokens = um.thoughtsTokenCount;
+      if (promptTokens === 0 && completionTokens === 0) continue;
+      d.tokens = { ...(d.tokens || {}), prompt_tokens: promptTokens, completion_tokens: completionTokens };
+      if (reasoningTokens !== undefined) d.tokens.reasoning_tokens = reasoningTokens;
+      const newData = JSON.stringify(d).replace(/'/g, "''");
+      execSync(`sqlite3 "${dbPath}" "UPDATE requestDetails SET data='${newData}' WHERE id='${row.id}'"`);
+      updated++;
+      if (updated % 50 === 0) process.stdout.write(`  ...${updated}\r`);
+    } catch (e) {
+      console.error(`  row ${row.id} skipped: ${e.message}`);
+    }
+  }
+  console.log(`\nBackfilled ${updated} rows. Usage page totals will now reflect real token spend.`);
+  process.exit(0);
+}
+
 // Parse arguments
 let port = DEFAULT_PORT;
 let host = DEFAULT_HOST;

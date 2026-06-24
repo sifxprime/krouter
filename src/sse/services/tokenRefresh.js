@@ -194,7 +194,12 @@ export async function updateProviderCredentials(connectionId, newCredentials) {
     if (newCredentials.projectId)            updates.projectId = newCredentials.projectId;
 
     const result = await updateProviderConnection(connectionId, updates);
-    log.info("TOKEN_REFRESH", "Credentials updated in localDb", {
+    // 0.5.52 — demoted from info → debug. We already emit ONE info-level
+    // "[TOKEN] <PROVIDER> | refreshed" line in chatCore.js per refresh,
+    // which is what the user actually wants. The other two (executor-level
+    // "[TOKEN] Antigravity refreshed" + this DB-persist line) were 3 log
+    // lines for one event, drowning the rest of the console.
+    log.debug("TOKEN_REFRESH", "Credentials updated in localDb", {
       connectionId,
       success: !!result
     });
