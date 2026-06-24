@@ -39,6 +39,14 @@ const HEADERS_TO_REMOVE = new Set([
   "priority",
   // Encoding mismatch: Antigravity uses "gzip, deflate, br"; Electron adds "zstd"
   "accept-encoding",
+  // 0.5.47 — CRITICAL fingerprint leak. kRouter's internal MITM anti-loop
+  // header (x-request-source: local) was being forwarded to Google. The real
+  // Antigravity binary NEVER sends this header. Tokens that always carry
+  // x-request-source are a perfect signal for Google's anti-abuse classifier
+  // to learn "this token is driven by a proxy" → flag → 403 Verify on first
+  // request. This single missing entry in the scrub list is one of the most
+  // likely remaining causes of fresh-account bans. Strip it before outbound.
+  "x-request-source",
 ]);
 
 // Scrub headers + reorder so Authorization lands last (matches the native

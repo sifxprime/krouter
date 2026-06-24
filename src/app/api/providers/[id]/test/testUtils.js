@@ -697,6 +697,12 @@ export async function testSingleConnection(id) {
     }
     updateData.backoffLevel = 0;
     updateData.rateLimitedUntil = null;
+    // 0.5.47 — clear the permanent-ban marker too. If the user just
+    // verified at Google's URL and the live Test Connection now succeeds,
+    // the account is genuinely usable again and shouldn't keep the
+    // "banned" status.
+    updateData.isPermanentlyBanned = false;
+    updateData.bannedAt = null;
   }
 
   if (result.refreshed && result.newTokens) {

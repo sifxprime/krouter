@@ -282,13 +282,14 @@ export async function markAccountUnavailable(connectionId, status, errorText, pr
     const backoffLevel = existing?.backoffLevel || 0;
     connName = existing?.displayName || existing?.name || existing?.email || connName;
 
-    let shouldFallback, cooldownMs, newBackoffLevel, accountLock;
+    let shouldFallback, cooldownMs, newBackoffLevel, accountLock, permanent;
     if (resetsAtMs && resetsAtMs > Date.now()) {
       shouldFallback = true;
       cooldownMs = Math.min(resetsAtMs - Date.now(), MAX_RATE_LIMIT_COOLDOWN_MS);
       newBackoffLevel = 0;
+      permanent = false;
     } else {
-      ({ shouldFallback, cooldownMs, newBackoffLevel, accountLock } = checkFallbackError(status, errorText, backoffLevel));
+      ({ shouldFallback, cooldownMs, newBackoffLevel, accountLock, permanent } = checkFallbackError(status, errorText, backoffLevel));
     }
 
     // Even on shouldFallback:false, the rule may still set a cooldown so the same
@@ -310,11 +311,19 @@ export async function markAccountUnavailable(connectionId, status, errorText, pr
     // Preserve shouldFallback from the rule — deterministic upstream errors
     // (e.g. model 404 NOT_FOUND) set shouldFallback:false so chat.js exits the
     // fallback loop immediately instead of burning every other account.
-    outcome = { shouldFallback: shouldFallback === false ? false : true, cooldownMs, accountLock: accountLock || false };
+    outcome = { shouldFallback: shouldFallback === false ? false : true, cooldownMs, accountLock: accountLock || false, permanent: permanent || false };
+
+    // 0.5.47 — wire the permanent flag through. When the upstream signal
+    // is a permanent-ban text (verify your account, account suspended,
+    // service disabled), set testStatus to "banned" instead of the generic
+    // "unavailable". Connection card UI surfaces banned status as a hard
+    // red badge with "ACTION REQUIRED" instead of a cooldown countdown.
+    const testStatusValue = permanent ? "banned" : "unavailable";
 
     return {
       ...lockUpdate,
-      testStatus: "unavailable",
+      testStatus: testStatusValue,
+      ...(permanent ? { isPermanentlyBanned: true, bannedAt: new Date().toISOString() } : {}),
       // For Google "Verify your account" 403s, embed the clickable verification
       // URL right in lastError so the dashboard Connection card can render it
       // as a "Verify on Google" link. Without this the user just sees the
