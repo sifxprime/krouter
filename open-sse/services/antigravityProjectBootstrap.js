@@ -13,6 +13,7 @@
 // rate limit for the discovery endpoint.
 
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
+import { getOAuthClientMetadata } from "@/lib/oauth/constants/oauth.js";
 
 const LOAD_CODE_ASSIST_URLS = [
   "https://cloudcode-pa.googleapis.com/v1internal:loadCodeAssist",
@@ -68,12 +69,20 @@ export async function ensureAntigravityProject(accessToken, opts = {}) {
               "User-Agent": opts.userAgent || "antigravity",
               "x-request-source": "local",
             },
+            // 0.5.46 — CRITICAL fix for "Verify your account" 403 cascade.
+            // We were sending STRING enums (ideType:"VSCODE", pluginType:"GEMINI")
+            // here even though src/lib/oauth/services/antigravity.js correctly
+            // sends the NUMERIC enums (ideType:9, pluginType:2) that the real
+            // Antigravity desktop binary emits. Google's anti-abuse system
+            // correlates the OAuth token with these inconsistent fingerprints
+            // ("token was issued to client claiming ideType:9 but is now sending
+            // requests with ideType:VSCODE") and flags the account on its very
+            // first call. This was originally diagnosed in March 2026 on the
+            // decolua/9router upstream — issue persisted unpatched.
+            // Now we use getOAuthClientMetadata() for byte-exact parity with
+            // the OAuth-flow metadata, which restores trust.
             body: JSON.stringify({
-              metadata: {
-                ideType: "VSCODE",
-                platform: opts.platform || process.platform,
-                pluginType: "GEMINI",
-              },
+              metadata: getOAuthClientMetadata(),
             }),
             signal: AbortSignal.timeout(BOOTSTRAP_TIMEOUT_MS),
           }, opts.proxyOptions || null);

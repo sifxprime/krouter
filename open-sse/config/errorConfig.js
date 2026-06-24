@@ -69,11 +69,15 @@ const COOLDOWN = {
  */
 export const ERROR_RULES = [
   // --- Text-based rules (checked first, order = priority) ---
-  // "Verify your account" = Google anti-abuse 403. Lock the WHOLE account (all
-  // models) for 1hr — flagged by accountLock:true so auth.js uses modelLock___all
-  // instead of per-model lock. No point retrying any model on this account until
-  // the user clicks the verification link Google emailed them.
-  { text: "verify your account",       cooldownMs: ACCOUNT_VERIFY_COOLDOWN_MS, accountLock: true },
+  // "Verify your account" = Google anti-abuse 403. PERMANENT ban signal —
+  // ported from OmniRoute v3.8.35: this account will NEVER auto-recover.
+  // 0.5.46 raises cooldown 1h → 24h so we stop wasting requests retrying every
+  // hour. User must click Google's verification URL OR add a fresh account.
+  // Account is locked WHOLE (accountLock:true, modelLock___all).
+  { text: "verify your account",       cooldownMs: 24 * 60 * 60 * 1000, accountLock: true, permanent: true },
+  { text: "this service has been disabled in this account", cooldownMs: 24 * 60 * 60 * 1000, accountLock: true, permanent: true },
+  { text: "your account has been suspended", cooldownMs: 24 * 60 * 60 * 1000, accountLock: true, permanent: true },
+  { text: "this account is deactivated", cooldownMs: 24 * 60 * 60 * 1000, accountLock: true, permanent: true },
   { text: "no credentials",            cooldownMs: COOLDOWN.long },
   { text: "request not allowed",       cooldownMs: COOLDOWN.short },
   { text: "improperly formed request", cooldownMs: COOLDOWN.long },
