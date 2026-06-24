@@ -211,17 +211,40 @@ const PROVIDER_MODELS_CONFIG = {
     parseResponse: parseCodexModels
   },
   antigravity: {
-    // 0.5.45 — switched from the dead sandbox URL to the production fetch endpoint.
-    // The previous `daily-cloudcode-pa.sandbox.googleapis.com/v1internal:models`
-    // returned 404 (Google removed it). Use the same production endpoint that
-    // usage.js already uses for the quota fetcher.
-    url: "https://cloudcode-pa.googleapis.com/v1internal:fetchAvailableModels",
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    authHeader: "Authorization",
-    authPrefix: "Bearer ",
-    body: {},
-    parseResponse: (data) => data.models || []
+    // 0.5.50 — custom resolver. The fetchAvailableModels endpoint REQUIRES
+    // `{project: <projectId>}` in the body PLUS the Antigravity client headers,
+    // otherwise it returns 403 PERMISSION_DENIED. 0.5.45 sent {} and missing
+    // headers, producing the 403 flood the user reported.
+    customResolver: async (connection) => {
+      const accessToken = connection?.accessToken;
+      if (!accessToken) return { error: "No access token", status: 401 };
+      const projectId = connection?.projectId || connection?.providerSpecificData?.projectId;
+      try {
+        const res = await fetch("https://cloudcode-pa.googleapis.com/v1internal:fetchAvailableModels", {
+          method: "POST",
+          headers: {
+            "Authorization": `Bearer ${accessToken}`,
+            "Content-Type": "application/json",
+            "User-Agent": "antigravity/1.107.0",
+            "X-Client-Name": "antigravity",
+            "X-Client-Version": "1.107.0",
+            "x-request-source": "local",
+          },
+          body: JSON.stringify(projectId ? { project: projectId } : {}),
+        });
+        if (!res.ok) {
+          const errBody = await res.text().catch(() => "");
+          return { error: `Failed to fetch models: ${res.status} ${errBody.slice(0, 100)}`, status: res.status };
+        }
+        const data = await res.json();
+        // The quota endpoint returns { quotas: { modelId: {...} } } where each key is the modelId.
+        // Treat each quota key as an available model id so the dashboard can list them.
+        const modelsRaw = data.models || Object.keys(data.quotas || {}).map(id => ({ id, name: id }));
+        return { models: modelsRaw };
+      } catch (e) {
+        return { error: `fetchAvailableModels failed: ${e.message}`, status: 500 };
+      }
+    },
   },
   github: {
     url: "https://api.githubcopilot.com/models",
