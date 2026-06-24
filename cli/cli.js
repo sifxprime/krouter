@@ -95,6 +95,11 @@ if (args[0] === "backfill-tokens") {
   ) || "[]");
   console.log(`Candidates with extractable tokens: ${rows.length}`);
   let updated = 0;
+  // 0.5.53 — stream UPDATEs through stdin so SQLite parses each statement
+  // itself. Avoids the JSON-in-shell-quoted-SQL mangling that swallowed
+  // every row silently on the first attempt.
+  const tmpScript = path.join(os.tmpdir(), `krouter-backfill-${Date.now()}.sql`);
+  const sqlLines = ["BEGIN;"];
   for (const row of rows) {
     try {
       const d = JSON.parse(row.data);
@@ -106,15 +111,25 @@ if (args[0] === "backfill-tokens") {
       if (promptTokens === 0 && completionTokens === 0) continue;
       d.tokens = { ...(d.tokens || {}), prompt_tokens: promptTokens, completion_tokens: completionTokens };
       if (reasoningTokens !== undefined) d.tokens.reasoning_tokens = reasoningTokens;
-      const newData = JSON.stringify(d).replace(/'/g, "''");
-      execSync(`sqlite3 "${dbPath}" "UPDATE requestDetails SET data='${newData}' WHERE id='${row.id}'"`);
+      const escapedData = JSON.stringify(d).replace(/'/g, "''");
+      const escapedId = String(row.id).replace(/'/g, "''");
+      sqlLines.push(`UPDATE requestDetails SET data='${escapedData}' WHERE id='${escapedId}';`);
       updated++;
-      if (updated % 50 === 0) process.stdout.write(`  ...${updated}\r`);
     } catch (e) {
       console.error(`  row ${row.id} skipped: ${e.message}`);
     }
   }
-  console.log(`\nBackfilled ${updated} rows. Usage page totals will now reflect real token spend.`);
+  sqlLines.push("COMMIT;");
+  fs.writeFileSync(tmpScript, sqlLines.join("\n"));
+  try {
+    execSync(`sqlite3 "${dbPath}" < "${tmpScript}"`, { stdio: ["ignore", "pipe", "pipe"] });
+    console.log(`Backfilled ${updated} rows. Usage page totals will now reflect real token spend.`);
+  } catch (e) {
+    console.error(`Failed to apply: ${e.message?.split("\n")?.[0] || e}`);
+    console.error(`SQL script left at ${tmpScript} for inspection.`);
+    process.exit(2);
+  }
+  try { fs.unlinkSync(tmpScript); } catch { /* ignore */ }
   process.exit(0);
 }
 
