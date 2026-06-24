@@ -249,36 +249,52 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
   //      MODERATE for OAuth, BYPASS for paid API-key).
   //   2. credentials.providerSpecificData.maxConcurrency override (per-account).
   // Pass maxConcurrency<=0 / null to bypass entirely (no-op release).
+  // 0.5.42 — Bumped Kiro 2→4 and Claude 3→5 after a real user log showed
+  // an IDE Autopilot loop saturating all 12 Kiro slots (2 × 6 accounts) and
+  // every combo retry hitting a 5s semaphore timeout for ~25s total.
+  // Kiro requests take ~28s so 2 slots/account caps throughput at ~4 req/min
+  // per account — nowhere near enough for an IDE that fans out parallel.
   const PROVIDER_CONCURRENCY_DEFAULTS = {
-    antigravity: 2, kiro: 2, claude: 3, codex: 3,
+    antigravity: 2, kiro: 4, claude: 5, codex: 3,
     "mimo-free": 1, opencode: 1,
     "gemini-cli": 2, qoder: 2,
+  };
+  // 0.5.42 — Per-provider semaphore timeout. The 5s default in 0.5.41 was too
+  // short for providers whose typical request is 20-30s. When all slots are in
+  // flight on long requests, 5s always times out before one frees → cascade of
+  // 503 "busy" loops. Pick a value close to typical request duration so a
+  // freeing slot is actually catchable.
+  const SEMAPHORE_TIMEOUT_DEFAULTS = {
+    antigravity: 5_000,  // antigravity is fast (~2-5s typical)
+    kiro: 20_000,        // kiro is slow (~28s typical) — wait long enough to catch
+    claude: 15_000,      // claude is medium-slow
+    codex: 15_000,
+    "mimo-free": 10_000,
+    opencode: 10_000,
+    "gemini-cli": 10_000,
+    qoder: 10_000,
   };
   const perAccountConcurrency = Number(credentials?.providerSpecificData?.maxConcurrency);
   const concurrency = Number.isFinite(perAccountConcurrency) && perAccountConcurrency > 0
     ? perAccountConcurrency
     : PROVIDER_CONCURRENCY_DEFAULTS[provider] || 0; // 0 = bypass for unlisted providers
+  const semaphoreTimeoutMs = SEMAPHORE_TIMEOUT_DEFAULTS[provider] || 10_000;
   const semaphoreKey = buildAccountSemaphoreKey(provider, connectionId || "noauth");
   let releaseSlot = () => {};
   try {
-    // 0.5.41 — timeout dropped from 30s → 5s. The previous 30s stalled the
-    // combo for half a minute per busy account before falling through. 5s is
-    // plenty for a slot to free up if the account is healthy; if it doesn't,
-    // bail and let the combo pick a different account immediately.
     releaseSlot = await acquireAccountSlot(semaphoreKey, {
       maxConcurrency: concurrency,
-      timeoutMs: 5000,
+      timeoutMs: semaphoreTimeoutMs,
       signal: streamController.signal,
     });
   } catch (e) {
     if (e?.code === "SEMAPHORE_QUEUE_FULL" || e?.code === "SEMAPHORE_TIMEOUT") {
-      // 0.5.41 — Block this account briefly so the upstream picker skips it
-      // for the next 10s. Prevents the combo from re-selecting this same busy
-      // account on its next retry and re-queueing for another 5s timeout.
-      // 10s is short enough to clear quickly when the in-flight request
-      // finishes, long enough to let the combo cycle through other accounts.
-      markAccountBlocked(semaphoreKey, 10_000);
-      log?.warn?.("AUTH", `${provider} | account ${connectionId?.slice(0,8)} busy — blocked 10s, picker will skip`);
+      // Block this account briefly so the picker skips it on the very next
+      // retry — but only for a fraction of the timeout, since the in-flight
+      // request that owns the slot is likely about to finish.
+      const blockMs = Math.max(2_000, Math.round(semaphoreTimeoutMs / 2));
+      markAccountBlocked(semaphoreKey, blockMs);
+      log?.warn?.("AUTH", `${provider} | account ${connectionId?.slice(0,8)} busy — blocked ${blockMs}ms, picker will skip`);
       trackPendingRequest(model, provider, connectionId, false, true);
       return createErrorResult(HTTP_STATUS.SERVICE_UNAVAILABLE, `Account ${connectionId?.slice(0,8)} busy, try another`);
     }
