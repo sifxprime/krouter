@@ -1,3 +1,91 @@
+# v0.5.58 (2026-06-25) — Documentation + LICENSE attribution refresh
+
+Documentation-only release. No code changes. README adds a head-to-head comparison table (kRouter vs upstream 9router vs OmniRoute) and explicit "forked from" attribution. LICENSE updated to dual-copyright the fork (Kodelyth AI Infrastructure / Shofiqul Islam) alongside the upstream copyright (decolua and 9router contributors). CHANGELOG backfilled for the 0.5.35 → 0.5.57 rapid-iteration window with one-line summaries.
+
+# v0.5.57 (2026-06-25) — Preserve thinking intent across the Antigravity blacklist
+
+Kiro IDE through MITM (and other clients sending Claude/OpenAI-shape `thinking` config) were getting plain answers with no reasoning because the antigravity executor blacklist stripped `thinking`, `reasoning_effort`, `thinkingConfig`, etc. without translating them first. Now extracts Claude `{thinking.type=enabled, budget_tokens}` and OpenAI `reasoning_effort` BEFORE the strip and maps to Gemini-native `generationConfig.thinkingConfig`. Verified live: `reasoning_tokens` for gemini-pro-agent went 0 → 237 in end-to-end test.
+
+# v0.5.56 (2026-06-25) — Honest "Exhausted • awaiting reset" quota display
+
+Google's `fetchAvailableModels` omits `remainingFraction` entirely for quota-exhausted Claude models on the free Antigravity tier (3-day window). Our `|| 0` fallback painted these as fake 100%-used red bars. Now distinguishes "0% remaining" from "no number, only resetTime" and renders an amber `Exhausted • awaiting reset in X` bar in that case. UI matches what the official Antigravity desktop shows.
+
+# v0.5.55 (2026-06-25) — Revert: x-request-source scrub broke our own MITM
+
+Reverts the 0.5.47 addition of `x-request-source` to the antigravity header scrub list. Misdiagnosis — Google ignores unknown headers, but `src/mitm/server.js` uses `x-request-source: local` as the INTERNAL_REQUEST_HEADER anti-loop marker. Stripping it caused our outbound HTTPS to cloudcode-pa.googleapis.com to re-enter the MITM intercept and abort with `NGHTTP2_INTERNAL_ERROR` / `socket hang up`.
+
+# v0.5.54 (2026-06-25) — Auto-backfill historical Antigravity tokens on startup
+
+Replaces the manual `krouter backfill-tokens` subcommand with a silent one-shot run inside `initializeApp()`. Walks any `requestDetails` rows where `tokens.prompt_tokens=0` but `providerResponse.response.usageMetadata` carries the real Gemini-shape numbers, lifts them into the top-level `tokens` field. Idempotent on subsequent runs. Users no longer need to know the CLI subcommand exists.
+
+# v0.5.53 (2026-06-25) — Fix backfill SQL quoting
+
+0.5.52's backfill inlined `sqlite3 db UPDATE … data='<JSON>'` per row; embedded curly braces and quotes broke shell quoting so SQLite silently rejected every UPDATE. Now emits all UPDATEs to a temp SQL script and pipes through `sqlite3 db <script` inside a single BEGIN/COMMIT transaction. SQLite parses each statement itself so JSON survives.
+
+# v0.5.52 (2026-06-25) — `krouter backfill-tokens` CLI + log de-noise
+
+Two cleanups bundled. (1) New `krouter backfill-tokens` subcommand rewrites historical 0/0 Antigravity rows that the pre-0.5.51 extractor missed. (2) Demoted two of three token-refresh log lines from info → debug — each refresh used to emit a triplet (`[TOKEN] X refreshed`, `[TOKEN_REFRESH] Credentials updated`, `[TOKEN] X | refreshed`) and now just emits the third (most useful) one.
+
+# v0.5.51 (2026-06-25) — Extract Antigravity's wrapped `usageMetadata`
+
+Antigravity wraps the Gemini response in `{response: {...usageMetadata}}`, so the top-level usageMetadata check in `extractUsageFromResponse` missed it and every Antigravity row landed in DB with `tokens.prompt_tokens=0` even when Google billed thousands. Added a second branch that lifts `response.response.usageMetadata` when present. Verified live: 137 historical rows backfilled to non-zero token counts.
+
+# v0.5.50 (2026-06-25) — Antigravity models fetcher needs `{project}` + headers
+
+The 0.5.45 fix pointed the models endpoint at `cloudcode-pa.googleapis.com/v1internal:fetchAvailableModels` but sent `body: {}` with bare `Content-Type`, producing a flood of `403 PERMISSION_DENIED` HTML pages in the console. Now uses a customResolver that supplies the project ID, the User-Agent / X-Client-Name / X-Client-Version headers the real binary sends, and normalises the `{quotas: {modelId: …}}` response shape.
+
+# v0.5.49 (2026-06-25) — TPM rate-limit vs daily-quota disambiguation
+
+Google's chat endpoint returns the same 429 body (`"Individual quota reached"`) for daily-quota exhaustion AND per-minute TPM throttling. Was applying a 30-minute cooldown to both. Now checks the cached daily quota when a 429 fires: if daily quota is healthy (>10% remaining), reclassifies as TPM (90-second cooldown, account-lock false, lastError reads "TPM rate-limited"). Accounts hit by transient TPM bursts come back in 90s instead of being parked for half an hour.
+
+# v0.5.48 (2026-06-25) — Lazy-clear stale `unavailable` testStatus on read
+
+`clearAccountError` only cleaned expired locks when a request *succeeded* on an account. Idle accounts with all per-model locks expired sat with stale `testStatus: "unavailable"` and 6-hour-old `lastError` text. Now `GET /api/providers` computes an effective `testStatus` on read: if every `modelLock_*` has expired and `isPermanentlyBanned` is false, upgrade `unavailable` → `active` and drop the stale lastError. Dashboard matches reality.
+
+# v0.5.47 (2026-06-25) — Wire `permanent` ban flag through to UI
+
+0.5.46 added `permanent: true` to error rules but nothing read it. Wired through `checkFallbackError → markAccountUnavailable → DB`: permanent bans now set `testStatus: "banned"`, persist `isPermanentlyBanned: true` + `bannedAt: <ISO>`, and Test Connection clears these flags when the account is verifiably alive again. (Also temporarily added `x-request-source` to scrub list — reverted in 0.5.55 after MITM regression.)
+
+# v0.5.46 (2026-06-25) — Root-cause fix for "Verify your account" cascade
+
+Diagnosed in March 2026 on the decolua/9router upstream issue #270, never patched until now. `open-sse/services/antigravityProjectBootstrap.js` was sending STRING enums (`ideType:"VSCODE", pluginType:"GEMINI"`) in loadCodeAssist metadata, while the OAuth flow correctly sends NUMERIC enums (`ideType:9, pluginType:2`). Google's anti-abuse correlates token-vs-bootstrap mismatch and flags the account on its very first call. Bootstrap now uses `getOAuthClientMetadata()` for byte-exact parity. Also ports OmniRoute's permanent-ban classifier: `verify your account` and similar texts now lock the account for 24h with `permanent: true`.
+
+# v0.5.45 (2026-06-25) — Antigravity model-list endpoint + log truncation
+
+The dead `daily-cloudcode-pa.sandbox.googleapis.com/v1internal:models` URL returned a 5KB HTML 404 page on every dashboard load, dumped raw into the console. Switched to the production endpoint already used by `usage.js`. Also truncates upstream error bodies to 200 chars before logging so future 4xx pages don't flood logs.
+
+# v0.5.44 (2026-06-25) — Test Connection actually clears the account-wide lock
+
+When a user clicked Test Connection after verifying at Google's URL, kRouter cleared `testStatus` and `lastError` but **not** `modelLock___all`. The picker kept skipping the account for the rest of the 1h cooldown. Now Test Connection success clears every `modelLock_*` field, resets `backoffLevel` to 0, drops `rateLimitedUntil`, and clears `isPermanentlyBanned` so the account truly comes back into rotation.
+
+# v0.5.43 (2026-06-25) — Stop ZWJ obfuscator from corrupting base64 image data
+
+`obfuscateBodyStrings` walked every string in the request body and injected zero-width joiners into matches of "claude", "cursor", "kodelyth", etc. — to dodge Google's log-grep based fingerprinting. Problem: base64 image data is essentially random text that statistically *will* contain those byte sequences. ZWJ injection inside `inline_data.data` corrupted the base64, causing Google to 400 with `Base64 decoding failed`. Now skips known binary-data field names (`data`, `inline_data`, `bytes`, `b64_json`, etc.) and any string that looks like a `data:image/...;base64,...` URL.
+
+# v0.5.42 (2026-06-24) — Per-provider concurrency + adaptive semaphore timeout
+
+Bumped Kiro 2→4, Claude 3→5 concurrent slots per account. Per-provider semaphore timeouts replace the flat 5s (Kiro 20s, Claude/Codex 15s, Antigravity 5s). Block-on-busy duration scales with timeout. A "hello" prompt with IDE Autopilot used to spend 25s of 503 "busy" loops before the in-flight 28s Kiro requests cleared — now under 5s.
+
+# v0.5.41 (2026-06-24) — Combo fast-path + clearer account-lock logs
+
+Three fixes: (1) Semaphore timeout 30s → 5s. (2) Semaphore timeout now marks the account briefly blocked in memory and returns 503 (not 429) so the combo picker skips it instead of re-selecting. (3) The picker's diagnostic log now writes `ACCOUNT-LOCKED until <time>` when `modelLock___all` is active (previously always said `modelLocked(<one model>)`, misleading).
+
+# v0.5.40 (2026-06-24) — Stage the missing OmniRoute parity files
+
+0.5.37–0.5.39 amended the commit metadata but never staged the actual new files (accountSemaphore, apiKeyRotator, emergencyFallback, modelFamilyFallback, sessionManager, fingerprintRotator, intentClassifier, taskAwareRouter, toolLimitDetector, plus 11 unit-test files). 0.5.40 contains all 30+ files for real.
+
+# v0.5.37 (2026-06-24) — OmniRoute parity port — Fallback / Session / Tooling / MITM
+
+Major port from diegosouzapw/OmniRoute v3.8+. Account semaphore (concurrency cap per account). Emergency fallback on 402 → free model. Model family fallback (try sibling on 404). API key rotator. Session manager (deterministic SHA-256 session IDs). Fingerprint rotator. Header scrubber. ZWJ obfuscation. Tool limit detector (auto-strip non-essential tools on 400). Stream recovery (NGHTTP2 → HTTP/1.1 fallback). Circuit breaker.
+
+# v0.5.36 (2026-06-24) — Model deprecation auto-upgrade + format-specific param strip
+
+Ports modelDeprecation from OmniRoute: auto-upgrades retired/renamed models (e.g. `gemini-1.5-flash` → `gemini-2.5-flash`). Ports modelStrip: proactive + reactive stripping of unsupported parameters (drops `logprobs` for Groq/OSS, retries with `reasoning_budget` stripped if upstream complains).
+
+# v0.5.35 (2026-06-23) — One-click Cache Control panic toggle in Profile
+
+Adds an amber/cyan one-click toggle next to the existing Cache Control dropdown so users hitting fresh-turn 429s can flip between `auto` (cache-preserve) and `never` (RTK trims) without navigating the dropdown twice. Cyan = armed/preserve; amber = legacy trimming.
+
 # v0.5.34 (2026-06-23) — Hotfix: Claude direct cache preservation
 
 Fixes an issue where C‍laude Code (the CLI) would receive `429 Rate Limit` errors on Anthropic Tier 1 accounts despite having sufficient credits.

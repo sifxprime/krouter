@@ -39,6 +39,37 @@ Upstream features, providers, docs, and roadmap remain authoritative — credit 
 
 ---
 
+## ⚖️ kRouter vs 9router vs OmniRoute — what's actually different
+
+Honest head-to-head. All three projects share a common ancestor (CLIProxyAPI in Go); each takes the idea in a different direction.
+
+| Feature / Concern | **kRouter** (this fork) | 9router (upstream) | OmniRoute |
+|---|---|---|---|
+| **Origin** | Hardened fork of 9router | Original AI router & token saver | Independent fork lineage; large rewrite |
+| **Language** | Node.js / Next.js / React | Node.js / Next.js / React | TypeScript |
+| **Antigravity ban handling** | Bootstrap metadata uses numeric enums (matches real binary), `verify your account` classified as 24h permanent lock with UI badge, MITM anti-loop header preserved | Same upstream code path — string enums in bootstrap, generic 1h cooldown, no permanent-ban classifier | Permanent-ban classifier; broader stealth surface (fingerprint rotator, header scrub, ZWJ obfuscation) |
+| **Quota tracker accuracy** | Distinguishes "0% remaining" (red bar) from "no fraction reported" (amber "Exhausted • awaiting reset"). TPM vs daily-quota disambiguated on 429. | `\|\| 0` fallback paints exhausted Claude as fake 100%-used red bar | Similar to kRouter for exhausted handling; no TPM/daily disambiguation in core |
+| **Token usage analytics** | Extracts wrapped Antigravity `usageMetadata` (was 0/0 in upstream). Auto-backfills historical rows on `krouter` startup. | Records 0/0 tokens for all Antigravity rows (wrapped shape not handled) | Correct extraction; no historical backfill |
+| **Combo retry loop** | Per-provider concurrency (Kiro 4, Claude 5, Antigravity 2). Per-provider semaphore timeouts (Kiro 20s, Claude 15s, Antigravity 5s). Block-on-busy 503 routes to next account. | Flat concurrency, flat 30s semaphore timeout. IDE Autopilot floods → 25s "busy" cascades. | Tunable concurrency; account semaphore upstream of fallback |
+| **MITM stream layer** | Frame size + bounds-checked encoding, NGHTTP2 stream-recovery → HTTP/1.1 fallback, parseable Kiro `exception` frames on upstream errors | Stream errors surface as `Truncated event message received` | Different MITM stack — production-tuned but a different design (deno/edge focus) |
+| **Provider SSRF guards** | `baseUrl` validates: blocks cloud-metadata endpoints (AWS/GCP/Azure/Alibaba), non-`http(s)` schemes | No metadata-endpoint guard | Edge-runtime sandboxed; SSRF surface different |
+| **Auth race conditions** | Token refresh no longer mutates caller credentials concurrently. Atomic `backoffLevel` increment via SQLite transaction. | Race conditions present (concurrent failures lose backoff increments) | Different concurrency model |
+| **Image / vision support** | Skips ZWJ obfuscator on `inline_data.data`, `bytes`, `b64_json` (was corrupting base64 → 400 errors) | Obfuscator runs on all strings → corrupts large image payloads | Obfuscation off by default |
+| **Reasoning / thinking preservation** | Translates Claude `{thinking.type=enabled, budget_tokens}` and OpenAI `reasoning_effort` into Gemini `generationConfig.thinkingConfig` BEFORE the request blacklist runs | Blacklist strips `thinking` without translating → reasoning never runs | Translates at the format-converter level |
+| **License** | MIT, dual-copyright (upstream + fork) | MIT | MIT |
+| **Update cadence** | Tracks upstream, ships hardening fixes within 24-72h of report | Active feature development | Active independent development (v3.8+) |
+| **NPM** | `@sifxprime/krouter` | `9router` | `omniroute` |
+
+**Pick kRouter if:** you want the upstream feature surface plus production-hardening fixes specifically for MITM reliability, Antigravity ban handling, and honest quota tracking.
+
+**Pick 9router upstream if:** you want the latest upstream feature work and don't need the hardening layer (no MITM tunnel, low-concurrency single-user use).
+
+**Pick OmniRoute if:** you want an edge-runtime / Deno-friendly stack with a different architectural philosophy and broader stealth surface.
+
+All three are MIT-licensed forks of a common ancestor — choose by fit, not loyalty.
+
+---
+
 ## 🤔 Why kRouter?
 
 **Stop wasting money, tokens and hitting limits:**
@@ -1327,7 +1358,6 @@ Built on the shoulders of giants:
 
 - **[decolua/9router](https://github.com/decolua/9router)** — the upstream project this fork tracks. All core architecture, providers, dashboard, and ongoing feature work are authored upstream. kRouter only adds the security + stability hardening described in the [About this fork](#-about-this-fork--sifxprimekrouter) section.
 - **[CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI)** — original Go implementation that inspired the upstream JavaScript port.
-- **[CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI)** — original Go implementation that inspired this JavaScript port.
 - **[RTK](https://github.com/rtk-ai/rtk)** ![Stars](https://img.shields.io/github/stars/rtk-ai/rtk?style=flat&color=yellow) — Rust token-saver. kRouter ports its compression pipeline to JS → **−20-40% input tokens** on every request.
 - **[Caveman](https://github.com/JuliusBrussee/caveman)** ![Stars](https://img.shields.io/github/stars/JuliusBrussee/caveman?style=flat&color=yellow) by **[@JuliusBrussee](https://github.com/JuliusBrussee)** — viral *"why use many token when few token do trick"*. kRouter adapts its prompt → **−65% output tokens**.
 
