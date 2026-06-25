@@ -106,12 +106,42 @@ export class AntigravityExecutor extends BaseExecutor {
       tools = allDeclarations.length > 0 ? [{ functionDeclarations: allDeclarations }] : [];
     }
 
+    // 0.5.57 — preserve thinking intent across the blacklist. Some clients (Kiro
+    // IDE through MITM, Claude Code → Antigravity passthrough, claude-adaptive
+    // format users) put thinking config at the body root in Claude / OpenAI
+    // shape. The blacklist below strips ALL of those keys to prevent Google's
+    // generateContent from 400-ing on unknown top-level fields, but if we
+    // strip them without translating the intent is lost and the model returns
+    // direct answers with no reasoning. Map whatever shape we see into
+    // generationConfig.thinkingConfig (Gemini native) BEFORE the strip.
+    let extractedThinkingConfig = null;
+    const claudeThinking = body.thinking || body.request?.thinking;
+    const openaiReasoningEffort = body.reasoning_effort ?? body.reasoning?.effort
+      ?? body.request?.reasoning_effort ?? body.request?.reasoning?.effort;
+    if (claudeThinking?.type === "enabled") {
+      extractedThinkingConfig = { thinkingLevel: "high", includeThoughts: true };
+      if (typeof claudeThinking.budget_tokens === "number") {
+        extractedThinkingConfig.thinkingBudget = claudeThinking.budget_tokens;
+      }
+    } else if (claudeThinking?.type === "disabled") {
+      extractedThinkingConfig = { thinkingLevel: "minimal", includeThoughts: false };
+    } else if (openaiReasoningEffort) {
+      const eff = String(openaiReasoningEffort).toLowerCase().trim();
+      const level = (eff === "none" || eff === "off") ? "minimal" : eff;
+      extractedThinkingConfig = { thinkingLevel: level, includeThoughts: level !== "minimal" };
+    }
+
     // Strip tools/toolConfig (handled separately) and blacklisted fields that Google rejects
     const { tools: _originalTools, toolConfig: _originalToolConfig, ...requestWithoutTools } = body.request || {};
     for (const key of ANTIGRAVITY_REQUEST_BLACKLIST) delete requestWithoutTools[key];
     const generationConfig = { ...(requestWithoutTools.generationConfig || {}) };
     if (generationConfig.maxOutputTokens > MAX_ANTIGRAVITY_OUTPUT_TOKENS) {
       generationConfig.maxOutputTokens = MAX_ANTIGRAVITY_OUTPUT_TOKENS;
+    }
+    // Apply the extracted thinking config to generationConfig — only if the
+    // request didn't already specify thinkingConfig itself (don't clobber).
+    if (extractedThinkingConfig && !generationConfig.thinkingConfig) {
+      generationConfig.thinkingConfig = extractedThinkingConfig;
     }
 
     // 0.5.29 — stable per-account session id (FNV-1a hash of email) instead
