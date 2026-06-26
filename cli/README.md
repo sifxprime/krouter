@@ -42,6 +42,37 @@ Upstream features, providers, docs, and roadmap remain authoritative — credit 
 
 ---
 
+## ⚖️ kRouter vs 9router vs OmniRoute — what's actually different
+
+Honest head-to-head. All three projects share a common ancestor (CLIProxyAPI in Go); each takes the idea in a different direction.
+
+| Feature / Concern | **kRouter** (this fork) | 9router (upstream) | OmniRoute |
+|---|---|---|---|
+| **Origin** | Hardened fork of 9router | Original AI router & token saver | Independent fork lineage; large rewrite |
+| **Language** | Node.js / Next.js / React | Node.js / Next.js / React | TypeScript |
+| **Antigravity ban handling** | Bootstrap metadata uses numeric enums (matches real binary), `verify your account` classified as 24h permanent lock with UI badge, MITM anti-loop header preserved | Same upstream code path — string enums in bootstrap, generic 1h cooldown, no permanent-ban classifier | Permanent-ban classifier; broader stealth surface (fingerprint rotator, header scrub, ZWJ obfuscation) |
+| **Quota tracker accuracy** | Distinguishes "0% remaining" (red bar) from "no fraction reported" (amber "Exhausted • awaiting reset"). TPM vs daily-quota disambiguated on 429. | `\|\| 0` fallback paints exhausted Claude as fake 100%-used red bar | Similar to kRouter for exhausted handling; no TPM/daily disambiguation in core |
+| **Token usage analytics** | Extracts wrapped Antigravity `usageMetadata` (was 0/0 in upstream). Auto-backfills historical rows on `krouter` startup. | Records 0/0 tokens for all Antigravity rows (wrapped shape not handled) | Correct extraction; no historical backfill |
+| **Combo retry loop** | Per-provider concurrency (Kiro 4, Claude 5, Antigravity 2). Per-provider semaphore timeouts (Kiro 20s, Claude 15s, Antigravity 5s). Block-on-busy 503 routes to next account. | Flat concurrency, flat 30s semaphore timeout. IDE Autopilot floods → 25s "busy" cascades. | Tunable concurrency; account semaphore upstream of fallback |
+| **MITM stream layer** | Frame size + bounds-checked encoding, NGHTTP2 stream-recovery → HTTP/1.1 fallback, parseable Kiro `exception` frames on upstream errors | Stream errors surface as `Truncated event message received` | Different MITM stack — production-tuned but a different design (deno/edge focus) |
+| **Provider SSRF guards** | `baseUrl` validates: blocks cloud-metadata endpoints (AWS/GCP/Azure/Alibaba), non-`http(s)` schemes | No metadata-endpoint guard | Edge-runtime sandboxed; SSRF surface different |
+| **Auth race conditions** | Token refresh no longer mutates caller credentials concurrently. Atomic `backoffLevel` increment via SQLite transaction. | Race conditions present (concurrent failures lose backoff increments) | Different concurrency model |
+| **Image / vision support** | Skips ZWJ obfuscator on `inline_data.data`, `bytes`, `b64_json` (was corrupting base64 → 400 errors) | Obfuscator runs on all strings → corrupts large image payloads | Obfuscation off by default |
+| **Reasoning / thinking preservation** | Translates Claude `{thinking.type=enabled, budget_tokens}` and OpenAI `reasoning_effort` into Gemini `generationConfig.thinkingConfig` BEFORE the request blacklist runs | Blacklist strips `thinking` without translating → reasoning never runs | Translates at the format-converter level |
+| **License** | MIT, dual-copyright (upstream + fork) | MIT | MIT |
+| **Update cadence** | Tracks upstream, ships hardening fixes within 24-72h of report | Active feature development | Active independent development (v3.8+) |
+| **NPM** | `@sifxprime/krouter` | `9router` | `omniroute` |
+
+**Pick kRouter if:** you want the upstream feature surface plus production-hardening fixes specifically for MITM reliability, Antigravity ban handling, and honest quota tracking.
+
+**Pick 9router upstream if:** you want the latest upstream feature work and don't need the hardening layer (no MITM tunnel, low-concurrency single-user use).
+
+**Pick OmniRoute if:** you want an edge-runtime / Deno-friendly stack with a different architectural philosophy and broader stealth surface.
+
+All three are MIT-licensed forks of a common ancestor — choose by fit, not loyalty.
+
+---
+
 ## 🤔 Why kRouter?
 
 **Stop wasting money, tokens and hitting limits:**
@@ -90,83 +121,66 @@ Result: Never stop coding, minimal cost + 20-40% token savings via RTK
 
 ---
 
-## ⚡ Quick Start (this fork)
+## ⚡ Quick Start
 
-> The npm package `9router` and the Docker image `decolua/9router` are still the **upstream** project. To get this fork's hardening pass + Kiro Google/GitHub OAuth, install from source as shown below.
+There are two ways to install k‍Router: via **NPM** (recommended for most users) or via **Git** (for development).
 
-### TL;DR — run these four commands one at a time
+### Option 1: Install via NPM (Recommended)
 
-> Press **Enter after each line**. Windows CMD/PowerShell will not split a single pasted block into separate commands and will treat `git clone …\n cd 9router` as one — you'll see `Repository not found` because Git tries to clone a URL with `cd` appended.
+Requires Node.js 20+.
 
 ```bash
-git clone https://github.com/sifxprime/krouter.git
+npm install -g @sifxprime/k‍router
 ```
 
+Start the router in the background:
 ```bash
-cd krouter
+k‍router -t
+```
+Dashboard opens at **http://localhost:20128/dashboard**.
+
+**To upgrade later:**
+```bash
+npm install -g @sifxprime/k‍router@latest
+k‍router -t
 ```
 
+**To uninstall:**
 ```bash
+# 1. Stop the router if it's running (Right-click tray icon -> Quit, or pkill -f k‍router)
+# 2. Remove the package
+npm uninstall -g @sifxprime/k‍router
+# 3. Clean up the local database and settings (optional)
+rm -rf ~/.k‍router
+```
+
+### Option 2: Install via Git (For Development)
+
+If you want to modify the code or run the hot-reloading dev server:
+
+```bash
+git clone https://github.com/sifxprime/k‍router.git
+cd k‍router
 npm install
-```
-
-```bash
 npm run dev
 ```
 
-Dashboard opens at **http://localhost:20128/dashboard**.
-
-That's the whole install. The rest of this section breaks down what each step needs and the production-style run.
+For production-style standalone from source (smaller memory, no HMR):
+```bash
+npm run build:deploy   # one-time build + copy static assets
+npm run start          # standalone server on PORT=20128
+```
 
 ### Prerequisites
 
 | Tool | Minimum | Notes |
 |---|---|---|
-| **Node.js** | ≥ 20 (22 recommended) | `node -v` to check. macOS via Homebrew: `brew install node@22`. Linux: nvm or your distro's Node 22. Windows: nodejs.org installer. |
-| **Git** | any recent | `git --version` |
-| **A package manager** | npm (bundled with Node) | pnpm / yarn / bun also work — the project detects and uses whichever you ran install with. |
-| **Sudo / admin** | only if you enable MITM | Pure router mode (chat completions only) needs **no** privileges. MITM intercept for Kiro / Antigravity / Copilot / Cursor binds `:443` and edits `/etc/hosts`, which does. |
-
-### Step-by-step
-
-**1. Get the code**
-
-```bash
-git clone https://github.com/sifxprime/krouter.git
-cd krouter
-```
-
-**2. Install dependencies** (≈ 1–3 minutes)
-
-```bash
-npm install
-# or: pnpm install   /   yarn install   /   bun install
-```
-
-This pulls Next.js, React, the `better-sqlite3` native binding, and the rest. The SQLite binding compiles on install — on a fresh macOS you may be prompted for Xcode Command Line Tools (one-time `xcode-select --install`).
-
-**3. Start it**
-
-For day-to-day use:
-
-```bash
-npm run dev          # Next.js dev server, hot reload, port 20128
-```
-
-For production-style standalone (smaller memory, no HMR):
-
-```bash
-npm run build:deploy   # one-time build + copy static assets to standalone, ≈ 30s
-npm run start          # standalone server on PORT=20128
-```
-
-> Use `npm run build:deploy`, **not** plain `npm run build` — the standalone bundle that `npm run start` runs needs the static assets copied alongside it. The `:deploy` variant does both steps.
-
-Either way, open: **[http://localhost:20128/dashboard](http://localhost:20128/dashboard)**
-
-On first run the app creates `~/.krouter/` (SQLite DB, machine-id, MITM CA) — it's gitignored, per-user, and fully reset by deleting that folder. Upgrading from a pre-rename install? The legacy `~/.9router/` is auto-migrated to `~/.krouter/` on first launch, idempotent and lossless.
+| **Node.js** | ≥ 20 (22 recommended) | `node -v` to check. Windows: nodejs.org. macOS: `brew install node@22`. |
+| **Sudo / admin** | only if you enable MITM | Pure router mode (chat completions only) needs **no** privileges. MITM intercept for Kiro / Antigravity / C‍ursor binds `:443` and edits `/etc/hosts`, which requires admin rights. |
 
 ### What happens next (no reboot, no extra config)
+
+On first run the app creates `~/.k‍router/` (SQLite DB, machine-id, MITM CA) — it's per-user and fully reset by deleting that folder.
 
 1. **Dashboard → Providers** → pick any provider tile.
    - **Free, no signup needed**: MiMo Code Free, OpenCode Free → click [+] on the suggested model.
@@ -1330,7 +1344,6 @@ Built on the shoulders of giants:
 
 - **[decolua/9router](https://github.com/decolua/9router)** — the upstream project this fork tracks. All core architecture, providers, dashboard, and ongoing feature work are authored upstream. kRouter only adds the security + stability hardening described in the [About this fork](#-about-this-fork--sifxprimekrouter) section.
 - **[CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI)** — original Go implementation that inspired the upstream JavaScript port.
-- **[CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI)** — original Go implementation that inspired this JavaScript port.
 - **[RTK](https://github.com/rtk-ai/rtk)** ![Stars](https://img.shields.io/github/stars/rtk-ai/rtk?style=flat&color=yellow) — Rust token-saver. kRouter ports its compression pipeline to JS → **−20-40% input tokens** on every request.
 - **[Caveman](https://github.com/JuliusBrussee/caveman)** ![Stars](https://img.shields.io/github/stars/JuliusBrussee/caveman?style=flat&color=yellow) by **[@JuliusBrussee](https://github.com/JuliusBrussee)** — viral *"why use many token when few token do trick"*. kRouter adapts its prompt → **−65% output tokens**.
 

@@ -118,83 +118,66 @@ Result: Never stop coding, minimal cost + 20-40% token savings via RTK
 
 ---
 
-## ⚡ Quick Start (this fork)
+## ⚡ Quick Start
 
-> The npm package `9router` and the Docker image `decolua/9router` are still the **upstream** project. To get this fork's hardening pass + Kiro Google/GitHub OAuth, install from source as shown below.
+There are two ways to install k‍Router: via **NPM** (recommended for most users) or via **Git** (for development).
 
-### TL;DR — run these four commands one at a time
+### Option 1: Install via NPM (Recommended)
 
-> Press **Enter after each line**. Windows CMD/PowerShell will not split a single pasted block into separate commands and will treat `git clone …\n cd 9router` as one — you'll see `Repository not found` because Git tries to clone a URL with `cd` appended.
+Requires Node.js 20+.
 
 ```bash
-git clone https://github.com/sifxprime/krouter.git
+npm install -g @sifxprime/k‍router
 ```
 
+Start the router in the background:
 ```bash
-cd krouter
+k‍router -t
+```
+Dashboard opens at **http://localhost:20128/dashboard**.
+
+**To upgrade later:**
+```bash
+npm install -g @sifxprime/k‍router@latest
+k‍router -t
 ```
 
+**To uninstall:**
 ```bash
+# 1. Stop the router if it's running (Right-click tray icon -> Quit, or pkill -f k‍router)
+# 2. Remove the package
+npm uninstall -g @sifxprime/k‍router
+# 3. Clean up the local database and settings (optional)
+rm -rf ~/.k‍router
+```
+
+### Option 2: Install via Git (For Development)
+
+If you want to modify the code or run the hot-reloading dev server:
+
+```bash
+git clone https://github.com/sifxprime/k‍router.git
+cd k‍router
 npm install
-```
-
-```bash
 npm run dev
 ```
 
-Dashboard opens at **http://localhost:20128/dashboard**.
-
-That's the whole install. The rest of this section breaks down what each step needs and the production-style run.
+For production-style standalone from source (smaller memory, no HMR):
+```bash
+npm run build:deploy   # one-time build + copy static assets
+npm run start          # standalone server on PORT=20128
+```
 
 ### Prerequisites
 
 | Tool | Minimum | Notes |
 |---|---|---|
-| **Node.js** | ≥ 20 (22 recommended) | `node -v` to check. macOS via Homebrew: `brew install node@22`. Linux: nvm or your distro's Node 22. Windows: nodejs.org installer. |
-| **Git** | any recent | `git --version` |
-| **A package manager** | npm (bundled with Node) | pnpm / yarn / bun also work — the project detects and uses whichever you ran install with. |
-| **Sudo / admin** | only if you enable MITM | Pure router mode (chat completions only) needs **no** privileges. MITM intercept for Kiro / Antigravity / Copilot / Cursor binds `:443` and edits `/etc/hosts`, which does. |
-
-### Step-by-step
-
-**1. Get the code**
-
-```bash
-git clone https://github.com/sifxprime/krouter.git
-cd krouter
-```
-
-**2. Install dependencies** (≈ 1–3 minutes)
-
-```bash
-npm install
-# or: pnpm install   /   yarn install   /   bun install
-```
-
-This pulls Next.js, React, the `better-sqlite3` native binding, and the rest. The SQLite binding compiles on install — on a fresh macOS you may be prompted for Xcode Command Line Tools (one-time `xcode-select --install`).
-
-**3. Start it**
-
-For day-to-day use:
-
-```bash
-npm run dev          # Next.js dev server, hot reload, port 20128
-```
-
-For production-style standalone (smaller memory, no HMR):
-
-```bash
-npm run build:deploy   # one-time build + copy static assets to standalone, ≈ 30s
-npm run start          # standalone server on PORT=20128
-```
-
-> Use `npm run build:deploy`, **not** plain `npm run build` — the standalone bundle that `npm run start` runs needs the static assets copied alongside it. The `:deploy` variant does both steps.
-
-Either way, open: **[http://localhost:20128/dashboard](http://localhost:20128/dashboard)**
-
-On first run the app creates `~/.krouter/` (SQLite DB, machine-id, MITM CA) — it's gitignored, per-user, and fully reset by deleting that folder. Upgrading from a pre-rename install? The legacy `~/.9router/` is auto-migrated to `~/.krouter/` on first launch, idempotent and lossless.
+| **Node.js** | ≥ 20 (22 recommended) | `node -v` to check. Windows: nodejs.org. macOS: `brew install node@22`. |
+| **Sudo / admin** | only if you enable MITM | Pure router mode (chat completions only) needs **no** privileges. MITM intercept for Kiro / Antigravity / C‍ursor binds `:443` and edits `/etc/hosts`, which requires admin rights. |
 
 ### What happens next (no reboot, no extra config)
+
+On first run the app creates `~/.k‍router/` (SQLite DB, machine-id, MITM CA) — it's per-user and fully reset by deleting that folder.
 
 1. **Dashboard → Providers** → pick any provider tile.
    - **Free, no signup needed**: MiMo Code Free, OpenCode Free → click [+] on the suggested model.

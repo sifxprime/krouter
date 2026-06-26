@@ -1,3 +1,7 @@
+# v0.5.59 (2026-06-26) — Documentation update: NPM Install & Uninstall
+
+Documentation-only release. No code changes. README `Quick Start` section rewritten to prioritize NPM installation (`npm i -g @sifxprime/k‍router`) as the primary method for users, moving the Git clone instructions to an "Option 2 (For Development)" section. Added explicit upgrade and uninstallation commands, including how to clean up the `~/.k‍router/` directory.
+
 # v0.5.58 (2026-06-25) — Documentation + LICENSE attribution refresh
 
 Documentation-only release. No code changes. README adds a head-to-head comparison table (kRouter vs upstream 9router vs OmniRoute) and explicit "forked from" attribution. LICENSE updated to dual-copyright the fork (Kodelyth AI Infrastructure / Shofiqul Islam) alongside the upstream copyright (decolua and 9router contributors). CHANGELOG backfilled for the 0.5.35 → 0.5.57 rapid-iteration window with one-line summaries.
