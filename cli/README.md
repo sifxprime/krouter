@@ -171,6 +171,25 @@ npm run build:deploy   # one-time build + copy static assets
 npm run start          # standalone server on PORT=20128
 ```
 
+### Option 3: Install via Docker
+
+The official Docker image (`sifxprime/k‍router`) is published to both Docker Hub and GitHub Container Registry. It supports `linux/amd64` and `linux/arm64`.
+
+```bash
+docker run -d \
+  -p 20128:20128 \
+  -v "$HOME/.k‍router:/app/data" \
+  -e DATA_DIR=/app/data \
+  --name k‍router \
+  sifxprime/k‍router:latest
+```
+
+App listens on port `20128`. Open: http://localhost:20128/dashboard
+
+See [DOCKER.md](DOCKER.md) for full container management instructions.
+
+---
+
 ### Prerequisites
 
 | Tool | Minimum | Notes |
@@ -206,9 +225,9 @@ npm install          # only if package.json changed
 # restart dev/start
 ```
 
-### Don't need the hardening pass? Use upstream
+### Upstream Fallback
 
-If you don't need this fork's audit fixes or Kiro Google/GitHub login, the upstream npm/Docker artifacts still work — they just don't carry this fork's changes:
+If you don't need this fork's audit fixes, MITM reliability, or Kiro Google/GitHub login, the upstream NPM and Docker artifacts still work (though they lack this fork's changes):
 
 ```bash
 npm install -g 9router && 9router

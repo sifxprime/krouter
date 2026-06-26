@@ -1,6 +1,6 @@
 # Docker
 
-Run 9Router in a container. Published image: [`decolua/9router`](https://hub.docker.com/r/decolua/9router) — multi-platform `linux/amd64` + `linux/arm64`.
+Run k‍Router in a container. Published image: [`sifxprime/k‍router`](https://hub.docker.com/r/sifxprime/k‍router) — multi-platform `linux/amd64` + `linux/arm64`. Also available via GitHub Container Registry at `ghcr.io/sifxprime/k‍router:latest`.
 
 ---
 
@@ -11,31 +11,31 @@ Run 9Router in a container. Published image: [`decolua/9router`](https://hub.doc
 ```bash
 docker run -d \
   -p 20128:20128 \
-  -v "$HOME/.9router:/app/data" \
+  -v "$HOME/.k‍router:/app/data" \
   -e DATA_DIR=/app/data \
-  --name 9router \
-  decolua/9router:latest
+  --name k‍router \
+  sifxprime/k‍router:latest
 ```
 
-App listens on port `20128`. Open: http://localhost:20128
+App listens on port `20128`. Open: http://localhost:20128/dashboard
 
 ## Manage container
 
 ```bash
-docker logs -f 9router        # view logs
-docker stop 9router           # stop
-docker start 9router          # start again
-docker rm -f 9router          # remove
+docker logs -f k‍router        # view logs
+docker stop k‍router           # stop
+docker start k‍router          # start again
+docker rm -f k‍router          # remove
 ```
 
 ## Data persistence
 
 ```bash
--v "$HOME/.9router:/app/data" \
+-v "$HOME/.k‍router:/app/data" \
 -e DATA_DIR=/app/data
 ```
 
-Without `DATA_DIR`, the app falls back to `~/.9router/` (macOS/Linux) or `%APPDATA%\9router\` (Windows). In the container, `DATA_DIR=/app/data` makes the bind mount work.
+Without `DATA_DIR`, the app falls back to `~/.k‍router/` (macOS/Linux) or `%APPDATA%\k‍router\` (Windows). In the container, `DATA_DIR=/app/data` makes the bind mount work.
 
 Data layout under `$DATA_DIR/`:
 
@@ -47,28 +47,14 @@ $DATA_DIR/
 └── ...                   # certs, logs, runtime configs
 ```
 
-Host path: `$HOME/.9router/db/data.sqlite`
+Host path: `$HOME/.k‍router/db/data.sqlite`
 Container path: `/app/data/db/data.sqlite`
-
-## Optional env vars
-
-```bash
-docker run -d \
-  -p 20128:20128 \
-  -v "$HOME/.9router:/app/data" \
-  -e DATA_DIR=/app/data \
-  -e PORT=20128 \
-  -e HOSTNAME=0.0.0.0 \
-  -e DEBUG=true \
-  --name 9router \
-  decolua/9router:latest
-```
 
 ## Update to latest
 
 ```bash
-docker pull decolua/9router:latest
-docker rm -f 9router
+docker pull sifxprime/k‍router:latest
+docker rm -f k‍router
 # re-run the quick start command
 ```
 
@@ -79,26 +65,24 @@ docker rm -f 9router
 ## Build image locally (test)
 
 ```bash
-cd app && docker build -t 9router .
+docker build -t k‍router .
 
 docker run --rm -p 20128:20128 \
-  -v "$HOME/.9router:/app/data" \
+  -v "$HOME/.k‍router:/app/data" \
   -e DATA_DIR=/app/data \
-  9router
+  k‍router
 ```
 
 ## Publish (automatic via CI)
 
 Push a git tag `v*` → GitHub Actions builds multi-platform (amd64+arm64) and pushes to:
-- `ghcr.io/decolua/9router:v{version}` + `:latest`
-- `decolua/9router:v{version}` + `:latest`
+- `ghcr.io/sifxprime/k‍router:v{version}` + `:latest`
+- `sifxprime/k‍router:v{version}` + `:latest`
 
 ```bash
-# Use scripts/release.js (recommended)
-node scripts/release.js "Release title" "Notes"
-
-# Or manually
-git tag v0.4.x && git push origin v0.4.x
+git tag v0.5.61 && git push origin v0.5.61
 ```
 
-Workflow: `app/.github/workflows/docker-publish.yml`
+Workflow: `.github/workflows/docker-publish.yml`
+
+> **Note for CI setup:** To publish to Docker Hub, ensure `DOCKERHUB_USERNAME` and `DOCKERHUB_TOKEN` are set in the GitHub repository secrets.

@@ -1,3 +1,7 @@
+# v0.5.61 (2026-06-26) — Docker deployment parity: sifxprime/k‍router
+
+Configured GitHub Actions workflow to publish Docker container images to `sifxprime/k‍router` on Docker Hub (and `ghcr.io/sifxprime/k‍router` on GitHub Container Registry) instead of the old upstream decolua image. Updated README and DOCKER.md with official container execution commands using `sifxprime/k‍router:latest` and `~/.k‍router` data binding.
+
 # v0.5.59 (2026-06-26) — Documentation update: NPM Install & Uninstall
 
 Documentation-only release. No code changes. README `Quick Start` section rewritten to prioritize NPM installation (`npm i -g @sifxprime/k‍router`) as the primary method for users, moving the Git clone instructions to an "Option 2 (For Development)" section. Added explicit upgrade and uninstallation commands, including how to clean up the `~/.k‍router/` directory.
