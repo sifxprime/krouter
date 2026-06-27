@@ -402,8 +402,18 @@ export default function APIPageClient({ machineId }) {
   };
 
   const handleCavemanEnabled = (value) => {
+    // 0.5.65 — Caveman / Ponytail are mutually exclusive personas. Both prompts
+    // declare "ACTIVE EVERY RESPONSE" and contradict each other on tone
+    // (caveman = terse fragments, ponytail = lazy-dev ladder). Stacking them
+    // confused Gemini in particular. Turning one on flips the other off here
+    // AND in persistent settings so the runtime never sees both true together.
     setCavemanEnabled(value);
-    patchSetting({ cavemanEnabled: value });
+    if (value && ponytailEnabled) {
+      setPonytailEnabled(false);
+      patchSetting({ cavemanEnabled: value, ponytailEnabled: false });
+    } else {
+      patchSetting({ cavemanEnabled: value });
+    }
   };
 
   const handleCavemanLevel = (level) => {
@@ -412,8 +422,14 @@ export default function APIPageClient({ machineId }) {
   };
 
   const handlePonytailEnabled = (value) => {
+    // 0.5.65 — mirror of handleCavemanEnabled (see comment above).
     setPonytailEnabled(value);
-    patchSetting({ ponytailEnabled: value });
+    if (value && cavemanEnabled) {
+      setCavemanEnabled(false);
+      patchSetting({ ponytailEnabled: value, cavemanEnabled: false });
+    } else {
+      patchSetting({ ponytailEnabled: value });
+    }
   };
 
   const handlePonytailLevel = (level) => {

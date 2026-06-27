@@ -9,6 +9,10 @@ const NATIVE_PAIRS = {
   "gemini-cli": ["gemini-cli"],
   "antigravity": ["antigravity"],
   "codex": ["codex", "openai", "commandcode"],
+  // 0.5.65 — Kiro IDE -> Kiro provider. Native passthrough keeps the request
+  // body byte-for-byte identical (preserves AWS Bedrock prompt caching) and
+  // skips the 500-line openai-to-kiro translator entirely.
+  "kiro": ["kiro"],
 };
 
 /**
@@ -42,6 +46,21 @@ export function detectClientTool(headers = {}, body = {}) {
 
   // DeepSeek TUI
   if (ua.includes("deepseek-tui")) return "deepseek-tui";
+
+  // 0.5.65 — Kiro IDE detection. Kiro's desktop app and its CodeWhisperer
+  // backend identify themselves with multiple stable signals; checking
+  // any one of them is sufficient. We avoid relying on `aws-sdk-` alone
+  // because that header also appears on Bedrock SDK clients we don't want
+  // to passthrough.
+  if (
+    ua.includes("kiro") ||
+    headers["x-amzn-codewhisperer-source"] === "kiro" ||
+    headers["x-amz-target"]?.toLowerCase?.().startsWith("amazoncodewhispererservice.") ||
+    body?.userInputMessage !== undefined ||
+    body?.conversationState !== undefined
+  ) {
+    return "kiro";
+  }
 
   return null;
 }

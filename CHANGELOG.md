@@ -1,3 +1,17 @@
+# v0.5.65 (2026-06-28) — Kiro IDE first-class support + Caveman/Ponytail mutex
+
+Four bundled fixes from a full kRouter debug pass.
+
+A. Kiro native passthrough. Added `"kiro": ["kiro"]` to `NATIVE_PAIRS` and a Kiro IDE detection branch in `detectClientTool()` matching `user-agent: kiro`, `x-amzn-codewhisperer-source: kiro`, `x-amz-target: AmazonCodeWhispererService.*`, and request-body shape (`conversationState`/`userInputMessage` presence). When Kiro IDE talks to the Kiro provider through MITM, the body is now forwarded byte-perfect — AWS Bedrock prompt caching survives and we skip the 500-line openai-to-kiro translator entirely. Verified: `detectClientTool({user-agent: 'kiro/1.0'}) === 'kiro'` and `isNativePassthrough('kiro', 'kiro') === true`.
+
+B. Kiro persona-injection slot. `systemInject.js` and `caveman.js` previously fell through to OpenAI shape for Kiro — meaning persona prompts silently no-oped on Kiro requests. Added an explicit Kiro case that prepends the persona to `body.conversationState.currentMessage.userInputMessage.content` (Kiro's translator normalises system role into user content, so there is no separate system slot). Verified live: persona text now appears at the start of the Kiro request body.
+
+B(UI). Dashboard mutex. `EndpointPageClient.js`: turning Caveman on now auto-toggles Ponytail off and vice versa, both in React state and in the persisted setting. Users can pick one persona; choice is honoured for every subsequent request.
+
+C. Runtime guard against double persona injection. `chatCore.js` previously claimed Caveman and Ponytail "compose because they target different aspects". They don't — both prompts declare "ACTIVE EVERY RESPONSE" and contradict on tone (caveman = terse fragments; ponytail = lazy-dev ladder with 3-line output template). Gemini in particular went schizo. Now: if a legacy settings row still has both enabled, prefer Ponytail and log a `[PERSONA] Caveman + Ponytail both enabled — skipping Caveman` warning so the user sees it and can fix on the dashboard.
+
+D. Demoted `[Claude Usage] OAuth endpoint returned 403` from `warn` to opt-in debug. Anthropic deprecated the OAuth usage endpoint for some account tiers; the legacy fallback in `getClaudeUsageLegacy()` always works. The warning was firing every 30 seconds against a perfectly healthy dashboard.
+
 # v0.5.64 (2026-06-27) — Remove notify-krouter-web workflow
 
 The notify-krouter-web workflow (added in 5cc370f) pinged the krouter-web marketing site whenever providers / CHANGELOG / package.json changed. That repo isn't being used, so the workflow has just been failing with 404 on every push. Removed.

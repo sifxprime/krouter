@@ -187,18 +187,28 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
     const rtkLine = formatRtkLog(rtkStats);
     if (rtkLine) log?.debug?.("RTK", rtkLine);
 
+    // 0.5.65 — Caveman and Ponytail are MUTUALLY EXCLUSIVE personas. Both
+    // prompts declare "ACTIVE EVERY RESPONSE" and contradict each other
+    // on tone (caveman = terse fragments, ponytail = lazy-dev ladder with
+    // a 3-line output template). Stacking them confused Gemini in
+    // particular ("doesn't know how to be AI"). When a legacy settings
+    // row has both enabled, prefer Ponytail (more code-aware) and warn
+    // so the user can fix it on the dashboard.
+    const personaConflict = !!(cavemanEnabled && cavemanLevel && ponytailEnabled && ponytailLevel);
+    if (personaConflict) {
+      log?.warn?.("PERSONA", "Caveman + Ponytail both enabled - skipping Caveman; pick one on the dashboard");
+    }
+    const cavemanRuns = cavemanEnabled && cavemanLevel && !personaConflict;
+    const ponytailRuns = ponytailEnabled && ponytailLevel;
+
     // Caveman: inject terse-style system prompt
-    if (cavemanEnabled && cavemanLevel) {
+    if (cavemanRuns) {
       injectCaveman(translatedBody, finalFormat, cavemanLevel);
       log?.debug?.("CAVEMAN", `${cavemanLevel} | ${finalFormat}`);
     }
 
     // Ponytail: inject "lazy senior dev" persona for minimal-code outputs.
-    // Sister feature to Caveman — same injection layer, different style.
-    // Caveman = terse outputs (general). Ponytail = minimal code (engineering).
-    // Both can be enabled together; ladder + persistence guidance compose
-    // because they target different aspects of the response.
-    if (ponytailEnabled && ponytailLevel) {
+    if (ponytailRuns) {
       injectPonytail(translatedBody, finalFormat, ponytailLevel);
       log?.debug?.("PONYTAIL", `${ponytailLevel} | ${finalFormat}`);
     }

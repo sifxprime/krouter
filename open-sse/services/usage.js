@@ -625,7 +625,13 @@ export async function getClaudeUsage(accessToken, proxyOptions = null) {
     // Fallback: legacy settings + org usage endpoint. Carry the OAuth status so
     // the legacy handler can give an accurate reason if it also fails (429 vs
     // 401 vs admin-required are very different things to a user).
-    console.warn(`[Claude Usage] OAuth endpoint returned ${oauthResponse.status}, falling back to legacy`);
+    // 0.5.65 — demoted from warn -> debug. Anthropic deprecated the OAuth
+    // usage endpoint for some account tiers; the legacy fallback always
+    // works for those users, so the 403 line was harmless noise polluting
+    // the dev log every 30 seconds.
+    if (process.env.KROUTER_LOG_LEVEL === "debug") {
+      console.debug(`[Claude Usage] OAuth endpoint returned ${oauthResponse.status}, falling back to legacy`);
+    }
     return await getClaudeUsageLegacy(accessToken, proxyOptions, oauthResponse.status);
   } catch (error) {
     return { message: `Claude connected. Unable to fetch usage: ${error.message}` };

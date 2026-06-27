@@ -17,12 +17,31 @@ export function injectSystemPrompt(body, format, prompt) {
     case FORMATS.GEMINI_CLI:
     case FORMATS.VERTEX:
     case FORMATS.ANTIGRAVITY:
-      // Antigravity wraps Gemini shape in body.request → injectGeminiSystem handles it
+      // Antigravity wraps Gemini shape in body.request -> injectGeminiSystem handles it
       injectGeminiSystem(body, prompt);
       return;
+    case FORMATS.KIRO:
+      // 0.5.65 - Kiro AWS shape: body.conversationState.currentMessage.
+      // userInputMessage.content. Kiro's translator normalises system role
+      // into the user content during conversion, so there is no separate
+      // system slot - we prepend the persona to the current user message.
+      // Same target works for native passthrough (Kiro IDE sends this shape).
+      injectKiroSystem(body, prompt);
+      return;
     default:
-      // OpenAI and OpenAI-shaped formats (responses/codex/cursor/kiro/ollama)
+      // OpenAI and OpenAI-shaped formats (responses/codex/cursor/ollama)
       injectMessagesSystem(body, prompt);
+  }
+}
+
+// Kiro shape: body.conversationState.currentMessage.userInputMessage.content (string)
+function injectKiroSystem(body, prompt) {
+  const uim = body?.conversationState?.currentMessage?.userInputMessage;
+  if (!uim) return;
+  if (typeof uim.content === "string") {
+    uim.content = uim.content ? `${prompt}${SEP}${uim.content}` : prompt;
+  } else {
+    uim.content = prompt;
   }
 }
 
