@@ -1,3 +1,7 @@
+# v0.5.68 (2026-06-28) — Suppress false-positive MaxListeners warning
+
+Raised `process.setMaxListeners` from 20 to 50 to accommodate the HTTP/2 connection pool added in 0.5.67. Each pooled `http2.connect()` session attaches internal SIGTERM/exit/beforeExit listeners to `process`. With 6+ Antigravity accounts and parallel IDE requests, 21+ sessions can be alive before the 30s idle timeout fires, triggering Node's `MaxListenersExceededWarning`. Not a real memory leak — sessions are cleaned up on idle/error/GOAWAY. The warning is now silenced.
+
 # v0.5.66 (2026-06-28) — Fix Claude CLI Bash safety classifier (gpt-5.5) + CLI Tools connection status
 
 Two bug fixes based on user problem reports:

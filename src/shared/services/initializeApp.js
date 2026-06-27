@@ -32,7 +32,12 @@ import { startBackgroundQuotaRefresh } from "open-sse/services/quotaPreflight";
   try { initDbHooks(getSettings, updateSettings); } catch { /* ignore */ }
 })();
 
-process.setMaxListeners(20);
+// 0.5.68 — raised from 20 → 50. The HTTP/2 connection pool (0.5.67) keeps
+// multiplexed sessions alive for 30s of idle time. Each session attaches
+// SIGTERM + exit + beforeExit listeners to process. With 6+ Antigravity
+// accounts and parallel IDE requests, 20+ sessions can be alive at once
+// and Node's default limit triggers a false-positive memory-leak warning.
+process.setMaxListeners(50);
 
 // Survive Next.js hot reload
 const g = global.__appSingleton ??= {
