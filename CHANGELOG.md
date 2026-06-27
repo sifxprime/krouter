@@ -1,3 +1,7 @@
+# v0.5.64 (2026-06-27) — Remove notify-krouter-web workflow
+
+The notify-krouter-web workflow (added in 5cc370f) pinged the krouter-web marketing site whenever providers / CHANGELOG / package.json changed. That repo isn't being used, so the workflow has just been failing with 404 on every push. Removed.
+
 # v0.5.63 (2026-06-27) — Sanitize tool_use IDs on Claude passthrough (Google-to-Claude cross-IDE fix)
 
 User reported that switching IDEs mid-conversation between Google (Antigravity / Gemini) and Claude was failing. Root cause traced in logs: Anthropic returns `400 invalid_request_error` on `messages.N.content.M.tool_use.id` because Google emits tool_call IDs containing dots/colons/slashes, which violate Claude's required pattern `^[a-zA-Z0-9_-]+$`. The general translator path already calls `ensureToolCallIds()`, but the Claude direct passthrough path (and the cache-preserve branch) skipped it entirely — so a conversation that lived part of its life in Gemini and then continued via Claude direct would get rejected.
