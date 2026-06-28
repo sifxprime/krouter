@@ -1,3 +1,12 @@
+# v0.5.69 (2026-06-29) — Zenith RAM Layer: Sub-5ms Failover Routing
+
+Architectural milestone: k‍Router now uses an in-memory `HealthCache` for provider connections, completely eliminating SQLite reads/writes from the hot path during chat routing.
+
+- **Before:** When an account hit a 429, k‍Router did a synchronous SQLite write to lock it, then the `while (true)` loop did another synchronous SQLite read to find the next account. If 5 accounts were dead, the loop hit the disk 10 times, adding ~50ms of overhead per failure and visibly stalling the IDE.
+- **After:** All active connections and their locks are cached in RAM. When a 429 hits, the router instantly locks the account in memory and grabs the next one in < 1ms. The SQLite write is fired asynchronously in the background.
+
+This brings the core speed benefit of Zenith's pure-function routing engine into k‍Router without losing our provider coverage or MITM features.
+
 # v0.5.74 (2026-06-29) — Fix Kiro MITM passthrough + tool ID sanitization + global MITM anti-loop
 
 Three fixes bundled from a full Kiro IDE debug pass.

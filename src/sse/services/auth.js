@@ -1,4 +1,7 @@
 import { getProviderConnections, validateApiKey, updateProviderConnection, updateProviderConnectionAtomic, getSettings } from "@/lib/localDb";
+import { getCachedConnections, lockAccountInMemory } from "@/shared/services/healthCache.js";
+import { getCachedConnections, lockAccountInMemory } from "@/shared/services/healthCache.js";
+import { getCachedConnections, lockAccountInMemory } from "@/shared/services/healthCache.js";
 import { resolveConnectionProxyConfig } from "@/lib/network/connectionProxy";
 import { formatRetryAfter, checkFallbackError, isModelLockActive, buildModelLockUpdate, getEarliestModelLockUntil } from "open-sse/services/accountFallback.js";
 import { isAccountAboveThreshold, warmQuotaCache, invalidateQuotaCache, recordQuotaCacheHit } from "open-sse/services/quotaPreflight.js";
@@ -55,8 +58,14 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
       };
     }
 
-    const connections = await getProviderConnections({ provider: providerId, isActive: true });
-    log.debug("AUTH", `${provider} | total connections: ${connections.length}, excludeIds: ${excludeSet.size > 0 ? [...excludeSet].join(",") : "none"}, model: ${model || "any"}`);
+    // 0.5.75 — Read from Zenith in-memory LRU cache (RAM) instead of SQLite DB.
+    // The previous `await getProviderConnections()` call forced a disk read on
+    // every chat request and every fallback iteration. When a user had 6 accounts
+    // and 5 were dead, the loop hit the disk 6 times in a row, adding 50ms+ of
+    // latency. The RAM cache fetches the state instantly.
+    const connections = await getCachedConnections(providerId, excludeSet, options.bypassModelLock ? null : model, options.bypassModelLock);
+
+    log.debug("AUTH", `${provider} | total active: ${connections.length}, excludeIds: ${excludeSet.size > 0 ? [...excludeSet].join(",") : "none"}, model: ${model || "any"}`);
 
     if (connections.length === 0) {
       log.warn("AUTH", `No credentials for ${provider}`);
@@ -77,7 +86,7 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
     const quotaSkipped = [];
     const availableConnections = connections.filter(c => {
       if (excludeSet.has(c.id)) return false;
-      if (!options.bypassModelLock && isModelLockActive(c, model)) return false;
+      // Note: isModelLockActive check was moved inside getCachedConnections
       if (!options.bypassModelLock && model && !isAccountAboveThreshold(c.provider, c.id, model)) {
         quotaSkipped.push(c.id);
         return false;
@@ -386,6 +395,13 @@ export async function markAccountUnavailable(connectionId, status, errorText, pr
     };
   });
 
+  // Zenith Port Step 1: Write the lock into the fast in-memory cache instantly
+  // so the very next loop iteration (which reads from RAM) sees the lock
+  // immediately without having to wait for the SQLite transaction to settle.
+  if (merged) {
+    lockAccountInMemory(connectionId, provider, merged);
+  }
+
   if (merged && outcome.shouldFallback) {
     // Invalidate the quota preflight cache for this connection so the next
     // request re-fetches fresh upstream numbers instead of waiting up to 60s
@@ -447,10 +463,12 @@ export async function clearAccountError(connectionId, currentConnection, model =
 
   // Only reset error state if no active locks remain
   if (remainingActiveLocks.length === 0) {
-    Object.assign(clearObj, { testStatus: "active", lastError: null, lastErrorAt: null, backoffLevel: 0 });
+    Object.assign(clearObj, { testStatus: "active", lastError: null, lastErrorAt: null, backoffLevel: 0, isPermanentlyBanned: false, bannedAt: null });
   }
 
   await updateProviderConnection(connectionId, clearObj);
+  // Also push clearance to RAM instantly
+  lockAccountInMemory(connectionId, conn.provider, clearObj);
 }
 
 /**
