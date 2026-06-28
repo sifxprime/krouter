@@ -1,3 +1,7 @@
+# v0.5.66 (2026-06-27) — Fix Atomesus Connection Testing
+
+Fixed a bug introduced in 0.5.65 where Atomesus API keys would fail connection tests with "Provider test not supported". Added the correct test utility routing so the dashboard can validate keys via the `/v1/models` endpoint. Also added `atomesus` to the core provider router list.
+
 # v0.5.65 (2026-06-27) — Add Atomesus Provider
 
 Added Atomesus (api.atomesus.com) as a supported free-tier API Key provider.
