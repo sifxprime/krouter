@@ -423,6 +423,8 @@ export const PROVIDERS = {
   },
   "mimo-free": { baseUrl: "https://api.xiaomimimo.com/api/free-ai/openai/chat", format: "openai", noAuth: true },
   mmf: { baseUrl: "https://api.xiaomimimo.com/api/free-ai/openai/chat", format: "openai", noAuth: true },
+  atomesus: { baseUrl: "https://api.atomesus.com/v1/chat/completions", format: "openai" },
+  atms: { baseUrl: "https://api.atomesus.com/v1/chat/completions", format: "openai" },
   "xiaomi-tokenplan": {
     baseUrl: "https://token-plan-sgp.xiaomimimo.com/v1/chat/completions",
     format: "openai"

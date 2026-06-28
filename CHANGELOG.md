@@ -1,3 +1,11 @@
+# v0.5.65 (2026-06-27) — Add Atomesus Provider
+
+Added Atomesus (api.atomesus.com) as a supported free-tier API Key provider.
+- Added `atomesus` (`atms`) to the provider configuration.
+- Routes to OpenAI-compatible `/v1/chat/completions`.
+- Automatically fetches available models (including `cipher`) via `/v1/models`.
+- Includes custom dark theme logo for the dashboard UI.
+
 # v0.5.69 (2026-06-28) — Stop TPM downgrade from re-classifying daily Antigravity exhaustion
 
 User log audit showed two Antigravity accounts spamming the same 429 "Individual quota reached. Resets in 2h27m" error every 90 seconds. Root cause traced to 0.5.49 TPM disambiguation: the code re-classifies "quota reached" 429s as TPM when the cached daily-quota number says the account is healthy. But the quota cache lags behind reality, so real daily exhaustion got downgraded to a 90 s TPM cooldown, and the picker tried the dead account again 90 s later. Loop.

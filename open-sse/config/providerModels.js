@@ -840,6 +840,9 @@ export const PROVIDER_MODELS = {
     { id: "gen4_turbo", name: "Gen-4 Turbo", type: "video", params: [] },
     { id: "gen3a_turbo", name: "Gen-3 Alpha Turbo", type: "video", params: [] },
   ],
+  atomesus: [
+    { id: "cipher", name: "Cipher", type: "llm" },
+  ],
 };
 
 // Helper functions
@@ -915,6 +918,7 @@ const OAUTH_ALIASES = {
   "mimo-free": "mmf",
   vertex: "vertex",
   "vertex-partner": "vertex-partner",
+  atomesus: "atms",
 };
 
 // Derived from PROVIDERS — no need to maintain manually
