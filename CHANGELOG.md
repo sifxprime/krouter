@@ -1,3 +1,6 @@
+# v0.5.73 (2026-06-29) — MITM HTTP/2 Session Auto-Retry
+Fixes an issue where intermittent NGHTTP2_INTERNAL_ERROR drops (Google Cloud Load Balancer dropping stale multiplexed streams) caused the MITM proxy to fall back to HTTP/1.1, which Google's backend often rejects with a `socket hang up`. The proxy now immediately retries the request over a fresh HTTP/2 session before falling back to HTTP/1.1, eliminating the cascade of socket hang up errors.
+
 # v0.5.72 (2026-06-28) — Fix Atomesus tool crashing backend
 
 Fixed a bug where Atomesus API would return a 400 error (`"auto" tool choice requires --enable-auto-tool-choice and --tool-call-parser to be set`) when clients sent tools in the request. Atomesus's inference server does not support tools by default. k‍Router now proactively strips `tools` and `tool_choice` from all requests bound for Atomesus, gracefully degrading them to plain text chat completions.

@@ -246,7 +246,7 @@ async function getH2Client(targetHost, targetIP) {
 }
 
 // HTTP/2 passthrough using node:http2 native
-async function passthroughHttp2(req, res, bodyBuffer, headers, targetHost, onResponse, dumper) {
+async function passthroughHttp2(req, res, bodyBuffer, headers, targetHost, onResponse, dumper, isRetry = false) {
   const targetIP = await resolveTargetIP(targetHost);
   // HTTP/2 pseudo-headers required; strip HTTP/1.1-only headers
   const h2Headers = {};
@@ -293,7 +293,11 @@ async function passthroughHttp2(req, res, bodyBuffer, headers, targetHost, onRes
       // If request() throws (e.g. session was just closed by server), retry once with fresh connection
       cleanupStream();
       h2Pool.delete(targetHost);
-      log(`[mitm] http2 request failed on pooled session, retrying...`);
+      if (!isRetry) {
+        log(`[mitm] http2 request failed on pooled session, retrying on fresh H2 session...`);
+        return passthroughHttp2(req, res, bodyBuffer, headers, targetHost, onResponse, dumper, true).then(resolve);
+      }
+      log(`[mitm] http2 retry failed, falling back to HTTP/1.1...`);
       return passthroughHttps(req, res, bodyBuffer, headers, targetHost, onResponse, dumper).then(resolve);
     }
 
@@ -331,8 +335,13 @@ async function passthroughHttp2(req, res, bodyBuffer, headers, targetHost, onRes
       cleanupStream();
       const msg = e.message || "";
       if (!res.headersSent && (msg.includes("NGHTTP2") || msg.includes("Stream closed"))) {
-        log(`[mitm] http2 stream error (${msg}) — falling back to http/1.1 retry`);
         h2Pool.delete(targetHost); // Nuke the bad session
+        if (!isRetry) {
+          log(`[mitm] http2 stream error (${msg}) — retrying on fresh H2 session`);
+          passthroughHttp2(req, res, bodyBuffer, headers, targetHost, onResponse, dumper, true).then(resolve);
+          return;
+        }
+        log(`[mitm] http2 stream error (${msg}) — falling back to http/1.1 retry`);
         passthroughHttps(req, res, bodyBuffer, headers, targetHost, onResponse, dumper).then(resolve);
         return;
       }
