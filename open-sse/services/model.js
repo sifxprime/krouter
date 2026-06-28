@@ -69,6 +69,9 @@ const ALIAS_TO_PROVIDER_ID = {
   vertex: "vertex",
   vxp: "vertex-partner",
   "vertex-partner": "vertex-partner",
+  // 0.5.71 — Map new Atomesus provider
+  atms: "atomesus",
+  atomesus: "atomesus",
   // Web cookie providers
   gw: "grok-web",
   "grok-web": "grok-web",

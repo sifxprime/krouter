@@ -1,3 +1,7 @@
+# v0.5.71 (2026-06-28) — Fix Atomesus alias resolution
+
+Fixed a bug where requesting `atms/cipher` would fail with `No active credentials for provider: atms`. Added `atms` -> `atomesus` mapping to `ALIAS_TO_PROVIDER_ID` in `open-sse/services/model.js` so the router correctly matches the alias against saved `atomesus` API keys in the database.
+
 # v0.5.66 (2026-06-27) — Fix Atomesus Connection Testing
 
 Fixed a bug introduced in 0.5.65 where Atomesus API keys would fail connection tests with "Provider test not supported". Added the correct test utility routing so the dashboard can validate keys via the `/v1/models` endpoint. Also added `atomesus` to the core provider router list.
