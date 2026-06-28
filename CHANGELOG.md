@@ -1,3 +1,11 @@
+# v0.5.75 (2026-06-29) — Zenith Score Engine: Intelligent Failover Routing
+
+Architectural milestone: k‍Router now uses the `Zenith` scoring engine to intelligently rank and pick accounts.
+
+- **Before:** k‍Router used a 'dumb' fill-first or random loop. It would hammer an account until it hit a 429, then fall back to the next one, wasting precious milliseconds.
+- **After:** The new `Zenith` strategy evaluates every account based on live health data (TTFB latency, success rate) and quota headroom (remaining percentage). It mathematically pre-ranks accounts, heavily penalizing those under 30% quota, and selects the absolute best account to fulfill the request. This eliminates wasted rate-limited requests entirely.
+- Zenith is now the default routing strategy.
+
 # v0.5.69 (2026-06-29) — Zenith RAM Layer: Sub-5ms Failover Routing
 
 Architectural milestone: k‍Router now uses an in-memory `HealthCache` for provider connections, completely eliminating SQLite reads/writes from the hot path during chat routing.

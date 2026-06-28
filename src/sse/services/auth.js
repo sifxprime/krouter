@@ -154,7 +154,9 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
       // 0.5.28 — pluggable strategies via accountSelector. P2C avoids the
       // always-pick-the-same-top-account pattern of fill-first when accounts
       // are at the same health tier. Random is a uniform sampler for testing.
-      const { account } = selectAccount(availableConnections, strategy, getRoundRobinState(providerId));
+      // Zenith strategy: pre-computes scores (latency + success + remaining quota)
+      // for all available accounts and picks the absolute best one.
+      const { account } = selectAccount(availableConnections, strategy, getRoundRobinState(providerId), model);
       connection = account;
       if (connection) {
         await updateProviderConnection(connection.id, {
