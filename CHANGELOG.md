@@ -1,3 +1,7 @@
+# v0.5.79 (2026-06-29) — Test Suite Alias Fix
+
+Added `vitest.config.js` to correctly map Next.js (`@/`) and custom (`open-sse/`) path aliases in the testing environment. Previously, running the full test suite failed on 24 files with `ERR_MODULE_NOT_FOUND`. The entire test suite (1000+ tests) now passes cleanly.
+
 # v0.5.78 (2026-06-29) — Image URL Obfuscation Fix + Kiro Image Merging Fix
 
 Two fixes related to how k‍Router handles images:
