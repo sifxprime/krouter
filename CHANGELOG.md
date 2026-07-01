@@ -1,3 +1,7 @@
+# v0.5.81 (2026-07-01) — Fix Cloudflare Array Syntax
+
+Hotfix for a compilation error introduced in 0.5.80 where stripping the hardcoded Cloudflare LLM array left a dangling image array without an opening bracket, causing the Next.js build to fail.
+
 # v0.5.80 (2026-06-29) — Dynamic Model Fetching for Cloudflare Workers AI
 
 - **Cloudflare Models**: Removed the hardcoded list of Cloudflare models from k‍Router. It now automatically fetches the live catalog directly from your Cloudflare account, meaning newly added models (like Llama 3.1) are instantly available in the dashboard without requiring a k‍Router update.
