@@ -1,3 +1,8 @@
+# v0.5.80 (2026-06-29) — Dynamic Model Fetching for Cloudflare Workers AI
+
+- **Cloudflare Models**: Removed the hardcoded list of Cloudflare models from k‍Router. It now automatically fetches the live catalog directly from your Cloudflare account, meaning newly added models (like Llama 3.1) are instantly available in the dashboard without requiring a k‍Router update.
+- **Branding**: Added the official Cloudflare logo to the dashboard.
+
 # v0.5.79 (2026-06-29) — Test Suite Alias Fix
 
 Added `vitest.config.js` to correctly map Next.js (`@/`) and custom (`open-sse/`) path aliases in the testing environment. Previously, running the full test suite failed on 24 files with `ERR_MODULE_NOT_FOUND`. The entire test suite (1000+ tests) now passes cleanly.

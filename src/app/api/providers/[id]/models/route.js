@@ -276,6 +276,47 @@ const PROVIDER_MODELS_CONFIG = {
   openai: createOpenAIModelsConfig("https://api.openai.com/v1/models"),
   openrouter: createOpenAIModelsConfig("https://openrouter.ai/api/v1/models"),
   atomesus: createOpenAIModelsConfig("https://api.atomesus.com/v1/models"),
+  "cloudflare-ai": {
+    // 0.5.80 — Cloudflare Workers AI dynamic model fetching.
+    // Cloudflare requires the account ID in the URL to list available models.
+    customResolver: async (connection) => {
+      const accessToken = connection?.accessToken || connection?.apiKey;
+      if (!accessToken) return { error: "No access token", status: 401 };
+
+      const accountId = connection?.providerSpecificData?.accountId;
+      if (!accountId) return { error: "Missing Cloudflare Account ID", status: 400 };
+
+      try {
+        const res = await fetch(`https://api.cloudflare.com/client/v4/accounts/${accountId}/ai/models/search`, {
+          method: "GET",
+          headers: {
+            "Authorization": `Bearer ${accessToken}`,
+            "Content-Type": "application/json",
+            "x-request-source": "local",
+          },
+        });
+
+        if (!res.ok) {
+          const errBody = await res.text().catch(() => "");
+          return { error: `Failed to fetch models: ${res.status} ${errBody.slice(0, 100)}`, status: res.status };
+        }
+
+        const data = await res.json();
+        if (!data.success) {
+          return { error: `Cloudflare API error: ${JSON.stringify(data.errors || [])}`, status: 400 };
+        }
+
+        // Filter to Text Generation models and normalize shape
+        const models = (data.result || [])
+          .filter(m => m.task?.name === "Text Generation")
+          .map(m => ({ id: m.name, name: m.name }));
+
+        return { models };
+      } catch (e) {
+        return { error: `Cloudflare fetch models failed: ${e.message}`, status: 500 };
+      }
+    }
+  },
   anthropic: {
     url: "https://api.anthropic.com/v1/models",
     method: "GET",
