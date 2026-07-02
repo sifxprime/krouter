@@ -3,17 +3,18 @@
 
   # kRouter — Kodelyth AI Infrastructure
 
-  **Hardened FREE AI router & token saver — save 20-40% tokens with RTK + auto-fallback across 40+ AI providers.**
+  **The universal AI router that saves 20–40% tokens and never stops working.**
 
-  **Never stop coding. Save 20-40% tokens with RTK + auto-fallback to FREE & cheap AI models. Connect Claude Code, Cursor, Antigravity, Copilot, Codex, Gemini, OpenCode, Cline, Kiro, OpenClaw... to 40+ AI providers & 100+ models — through one local endpoint.**
+  Connect Claude Code, Cursor, Antigravity, Kiro, Copilot, Codex, OpenCode, Cline, OpenClaw, and any OpenAI-compatible client to **40+ AI providers and 100+ models** through a single local endpoint. Route intelligently. Fall back instantly. Save tokens automatically.
 
   [![npm](https://img.shields.io/npm/v/@sifxprime/krouter.svg)](https://www.npmjs.com/package/@sifxprime/krouter)
   [![GitHub](https://img.shields.io/badge/github-sifxprime%2Fkrouter-blue?logo=github)](https://github.com/sifxprime/krouter)
+  [![Website](https://img.shields.io/badge/website-krouter.kodelyht.com-orange)](https://krouter.kodelyht.com)
   [![License](https://img.shields.io/npm/l/@sifxprime/krouter.svg)](https://github.com/sifxprime/krouter/blob/main/LICENSE)
 
-  [🚀 Quick Start](#-quick-start) • [💡 Features](#-key-features) • [📖 Setup](#-setup-guide) • [🔧 About this fork](#-about-this-fork--sifxprimekrouter)
+  **[🌐 Website & Full Docs — krouter.kodelyht.com](https://krouter.kodelyht.com)**
 
-  [🇻🇳 Tiếng Việt](https://github.com/sifxprime/krouter/blob/main/i18n/README.vi.md) • [🇨🇳 中文](https://github.com/sifxprime/krouter/blob/main/i18n/README.zh-CN.md) • [🇯🇵 日本語](https://github.com/sifxprime/krouter/blob/main/i18n/README.ja-JP.md) • [🇷🇺 Русский](https://github.com/sifxprime/krouter/blob/main/i18n/README.ru.md)
+  [🚀 Quick Start](#-quick-start) • [💡 Features](#-features) • [📖 Setup](#-setup-guide) • [🌐 Supported Providers](#-supported-providers)
 </div>
 
 
@@ -21,74 +22,75 @@
 
 ---
 
-## 🔧 About this fork — `sifxprime/krouter`
+## 🚀 Quick Start
 
-This is a hardened fork of the upstream **[decolua/9router](https://github.com/decolua/9router)**, rebranded as **kRouter** by **Kodelyth AI Infrastructure** and maintained at **[sifxprime/krouter](https://github.com/sifxprime/krouter)**.
+```bash
+# Install globally from npm
+npm install -g @sifxprime/krouter
 
-It tracks upstream but adds an audited security + stability layer focused on production reliability when kRouter is exposed via tunnel (Cloudflare, Tailscale) or used under concurrent multi-agent load. **Eleven audit findings closed across nine atomic commits**, each with reproducing unit tests and live end-to-end verification before commit.
+# Run in background (tray mode)
+krouter -t
+```
 
-| Area | Hardening in this fork |
-|---|---|
-| MITM stream layer | Upstream HTTP error → parseable Kiro `exception` frame instead of `"Truncated event message received"`. Read-loop guarded against socket hang-up. EventStream encoder bounds-checked (name ≤ 255, value ≤ 65 535, frame ≤ 16 MiB) to prevent silent frame corruption. |
-| Auth & sessions | Token refresh no longer mutates caller credentials under concurrency. Post-refresh retry always adopts its own response (no stale-401 masking). Timing-safe CLI token compare. Per-IP brute-force lockout for API-key + CLI-token paths. |
-| Account fallback | `backoffLevel` read-modify-write made atomic via SQLite transaction — concurrent failures no longer lose increments and stall exponential backoff. |
-| Provider SSRF | `GET /api/providers/[id]/models` validates user-supplied `baseUrl`: blocks cloud metadata endpoints (169.254.169.254, ECS, GCP, Alibaba) + non-`http(s)` schemes. Loopback and private LAN ranges remain allowed for legitimate self-hosted LLMs. |
-| Combo routing | Recursion depth guard (max 3) prevents infinite loops on misconfigured combo-of-combo cycles. Single `getSettings()` DB read per request (was 2–3). |
+Dashboard opens at **[http://localhost:20128/dashboard](http://localhost:20128/dashboard)**.
 
-See [CHANGELOG.md](https://github.com/sifxprime/krouter/blob/main/CHANGELOG.md) entry `v0.4.80+sifxprime.1` for the full commit log with one-line summaries. Each finding's reproduction + verification approach is recorded in the commit body.
+Prefer running in the foreground with live logs? Just use `krouter` (no flag).
 
-Upstream features, providers, docs, and roadmap remain authoritative — credit and stars belong to **[@decolua](https://github.com/decolua)** and the upstream contributors.
+### CLI Options
 
----
+```bash
+krouter --help
 
-## ⚖️ kRouter vs 9router vs OmniRoute — what's actually different
+Options:
+  -p, --port <port>   Port to run the server (default: 20128)
+  -l, --log           Show server logs (default: hidden)
+  -t, --tray          Run in system tray mode (background)
+  --skip-update       Skip auto-update check
+  -h, --help          Show this help
+  -v, --version       Show version
+```
 
-Honest head-to-head. All three projects share a common ancestor (CLIProxyAPI in Go); each takes the idea in a different direction.
+### From Source (Contributors)
 
-| Feature / Concern | **kRouter** (this fork) | 9router (upstream) | OmniRoute |
-|---|---|---|---|
-| **Origin** | Hardened fork of 9router | Original AI router & token saver | Independent fork lineage; large rewrite |
-| **Language** | Node.js / Next.js / React | Node.js / Next.js / React | TypeScript |
-| **Antigravity ban handling** | Bootstrap metadata uses numeric enums (matches real binary), `verify your account` classified as 24h permanent lock with UI badge, MITM anti-loop header preserved | Same upstream code path — string enums in bootstrap, generic 1h cooldown, no permanent-ban classifier | Permanent-ban classifier; broader stealth surface (fingerprint rotator, header scrub, ZWJ obfuscation) |
-| **Quota tracker accuracy** | Distinguishes "0% remaining" (red bar) from "no fraction reported" (amber "Exhausted • awaiting reset"). TPM vs daily-quota disambiguated on 429. | `\|\| 0` fallback paints exhausted Claude as fake 100%-used red bar | Similar to kRouter for exhausted handling; no TPM/daily disambiguation in core |
-| **Token usage analytics** | Extracts wrapped Antigravity `usageMetadata` (was 0/0 in upstream). Auto-backfills historical rows on `krouter` startup. | Records 0/0 tokens for all Antigravity rows (wrapped shape not handled) | Correct extraction; no historical backfill |
-| **Combo retry loop** | Per-provider concurrency (Kiro 4, Claude 5, Antigravity 2). Per-provider semaphore timeouts (Kiro 20s, Claude 15s, Antigravity 5s). Block-on-busy 503 routes to next account. | Flat concurrency, flat 30s semaphore timeout. IDE Autopilot floods → 25s "busy" cascades. | Tunable concurrency; account semaphore upstream of fallback |
-| **MITM stream layer** | Frame size + bounds-checked encoding, NGHTTP2 stream-recovery → HTTP/1.1 fallback, parseable Kiro `exception` frames on upstream errors | Stream errors surface as `Truncated event message received` | Different MITM stack — production-tuned but a different design (deno/edge focus) |
-| **Provider SSRF guards** | `baseUrl` validates: blocks cloud-metadata endpoints (AWS/GCP/Azure/Alibaba), non-`http(s)` schemes | No metadata-endpoint guard | Edge-runtime sandboxed; SSRF surface different |
-| **Auth race conditions** | Token refresh no longer mutates caller credentials concurrently. Atomic `backoffLevel` increment via SQLite transaction. | Race conditions present (concurrent failures lose backoff increments) | Different concurrency model |
-| **Image / vision support** | Skips ZWJ obfuscator on `inline_data.data`, `bytes`, `b64_json` (was corrupting base64 → 400 errors) | Obfuscator runs on all strings → corrupts large image payloads | Obfuscation off by default |
-| **Reasoning / thinking preservation** | Translates Claude `{thinking.type=enabled, budget_tokens}` and OpenAI `reasoning_effort` into Gemini `generationConfig.thinkingConfig` BEFORE the request blacklist runs | Blacklist strips `thinking` without translating → reasoning never runs | Translates at the format-converter level |
-| **License** | MIT, dual-copyright (upstream + fork) | MIT | MIT |
-| **Update cadence** | Tracks upstream, ships hardening fixes within 24-72h of report | Active feature development | Active independent development (v3.8+) |
-| **NPM** | `@sifxprime/krouter` | `9router` | `omniroute` |
+```bash
+git clone https://github.com/sifxprime/krouter.git
+cd krouter
+npm install
+npm run dev
+```
 
-**Pick kRouter if:** you want the upstream feature surface plus production-hardening fixes specifically for MITM reliability, Antigravity ban handling, and honest quota tracking.
+### Docker
 
-**Pick 9router upstream if:** you want the latest upstream feature work and don't need the hardening layer (no MITM tunnel, low-concurrency single-user use).
+```bash
+docker run -d \
+  -p 20128:20128 \
+  -v "$HOME/.krouter:/app/data" \
+  --name krouter \
+  sifxprime/krouter:latest
+```
 
-**Pick OmniRoute if:** you want an edge-runtime / Deno-friendly stack with a different architectural philosophy and broader stealth surface.
-
-All three are MIT-licensed forks of a common ancestor — choose by fit, not loyalty.
+Then open **[http://localhost:20128/dashboard](http://localhost:20128/dashboard)**.
 
 ---
 
 ## 🤔 Why kRouter?
 
-**Stop wasting money, tokens and hitting limits:**
+Stop wasting money, tokens, and hitting limits:
 
 - ❌ Subscription quota expires unused every month
 - ❌ Rate limits stop you mid-coding
-- ❌ Tool outputs (git diff, grep, ls...) burn tokens fast
-- ❌ Expensive APIs ($20-50/month per provider)
-- ❌ Manual switching between providers
+- ❌ Tool outputs (git diff, grep, ls…) burn tokens fast
+- ❌ Expensive APIs cost $20–50/month per provider
+- ❌ Manually switching between providers
 
 **kRouter solves this:**
 
-- ✅ **RTK Token Saver** - Auto-compress tool_result content, save 20-40% tokens per request
-- ✅ **Maximize subscriptions** - Track quota, use every bit before reset
-- ✅ **Auto fallback** - Subscription → Cheap → Free, zero downtime
-- ✅ **Multi-account** - Round-robin between accounts per provider
-- ✅ **Universal** - Works with Claude Code, Codex, Cursor, Cline, any CLI tool
+- ✅ **RTK Token Saver** — auto-compress tool outputs, save 20–40% tokens per request
+- ✅ **Zenith intelligent routing** — instant sub-1ms failover, ranked by live quota + latency
+- ✅ **Multi-account rotation** — round-robin across accounts with real-time quota tracking
+- ✅ **Auto token refresh** — OAuth tokens refresh transparently
+- ✅ **Universal client support** — works with any OpenAI-compatible AI client
+- ✅ **MITM interception** — Kiro, Antigravity, Copilot, and Cursor natively supported
 
 ---
 
@@ -96,7 +98,7 @@ All three are MIT-licensed forks of a common ancestor — choose by fit, not loy
 
 ```
 ┌─────────────┐
-│  Your CLI   │  (Claude Code, Codex, OpenClaw, Cursor, Cline...)
+│  Your CLI   │  (Claude Code, Codex, OpenClaw, Cursor, Cline…)
 │   Tool      │
 └──────┬──────┘
        │ http://localhost:20128/v1
@@ -104,161 +106,50 @@ All three are MIT-licensed forks of a common ancestor — choose by fit, not loy
 ┌─────────────────────────────────────────────┐
 │           kRouter (Smart Router)            │
 │  • RTK Token Saver (cut tool_result tokens) │
+│  • Zenith Score Engine (sub-1ms routing)    │
 │  • Format translation (OpenAI ↔ Claude)     │
-│  • Quota tracking                           │
+│  • Live quota tracking                      │
 │  • Auto token refresh                       │
 └──────┬──────────────────────────────────────┘
        │
-       ├─→ [Tier 1: SUBSCRIPTION] Claude Code, Codex, GitHub Copilot
-       │   ↓ quota exhausted
-       ├─→ [Tier 2: CHEAP] GLM ($0.6/1M), MiniMax ($0.2/1M)
-       │   ↓ budget limit
-       └─→ [Tier 3: FREE] Kiro, OpenCode Free, Vertex ($300 credits)
-
-Result: Never stop coding, minimal cost + 20-40% token savings via RTK
+       ├─→ [SUBSCRIPTION] Claude Code · Codex · Copilot · Cursor
+       │
+       ├─→ [FREE TIER] Cloudflare · Vertex · Gemini · Ollama · OpenRouter
+       │
+       └─→ [FREE PROXY] Kiro · OpenCode · Atomesus · MiMo
 ```
+
+If one provider fails, kRouter instantly falls back through your entire pre-ranked stack — with zero manual intervention.
 
 ---
 
-## ⚡ Quick Start
+## 💡 Features
 
-There are two ways to install k‍Router: via **NPM** (recommended for most users) or via **Git** (for development).
+| Feature | What It Does | Why It Matters |
+|---------|--------------|----------------|
+| 🚀 **RTK Token Saver** | Auto-compress tool outputs (git diff, grep, ls, tree…) | Save **20–40% input tokens** on every request |
+| ⚡ **Zenith Routing** | Pre-ranks accounts by live health + quota in RAM | Instant sub-1ms failover, zero wasted 429s |
+| 🎯 **Smart Fallback** | Subscription → Free tier → Free proxy | Never stop coding |
+| 📊 **Real-Time Quota** | Live remaining %, reset countdown, exhaustion badge | Maximize every subscription |
+| 🔄 **Format Translation** | OpenAI ↔ Claude ↔ Gemini ↔ Cursor ↔ Kiro ↔ Vertex | Works with any CLI tool |
+| 👥 **Multi-Account** | Multiple accounts per provider with rotation strategies | Load balancing + redundancy |
+| 🔄 **Auto Token Refresh** | OAuth tokens refresh automatically | No manual re-login |
+| 🎨 **Custom Combos** | Unlimited model combinations with per-combo strategies | Tailor fallback to your workflow |
+| 🖥️ **System Tray** | Runs quietly in background with tray icon | Set-and-forget deployment |
+| 🐳 **Deploy Anywhere** | Localhost · VPS · Docker · Cloudflare Workers | Wherever you need it |
 
-### Option 1: Install via NPM (Recommended)
-
-Requires Node.js 20+.
-
-```bash
-npm install -g @sifxprime/k‍router
-```
-
-Start the router in the background:
-```bash
-k‍router -t
-```
-Dashboard opens at **http://localhost:20128/dashboard**.
-
-**To upgrade later:**
-```bash
-npm install -g @sifxprime/k‍router@latest
-k‍router -t
-```
-
-**To uninstall:**
-```bash
-# 1. Stop the router if it's running (Right-click tray icon -> Quit, or pkill -f k‍router)
-# 2. Remove the package
-npm uninstall -g @sifxprime/k‍router
-# 3. Clean up the local database and settings (optional)
-rm -rf ~/.k‍router
-```
-
-### Option 2: Install via Git (For Development)
-
-If you want to modify the code or run the hot-reloading dev server:
-
-```bash
-git clone https://github.com/sifxprime/k‍router.git
-cd k‍router
-npm install
-npm run dev
-```
-
-For production-style standalone from source (smaller memory, no HMR):
-```bash
-npm run build:deploy   # one-time build + copy static assets
-npm run start          # standalone server on PORT=20128
-```
-
-### Option 3: Install via Docker
-
-The official Docker image (`sifxprime/k‍router`) is published to both Docker Hub and GitHub Container Registry. It supports `linux/amd64` and `linux/arm64`.
-
-```bash
-docker run -d \
-  -p 20128:20128 \
-  -v "$HOME/.k‍router:/app/data" \
-  -e DATA_DIR=/app/data \
-  --name k‍router \
-  sifxprime/k‍router:latest
-```
-
-App listens on port `20128`. Open: http://localhost:20128/dashboard
-
-See [DOCKER.md](DOCKER.md) for full container management instructions.
-
----
-
-### Prerequisites
-
-| Tool | Minimum | Notes |
-|---|---|---|
-| **Node.js** | ≥ 20 (22 recommended) | `node -v` to check. Windows: nodejs.org. macOS: `brew install node@22`. |
-| **Sudo / admin** | only if you enable MITM | Pure router mode (chat completions only) needs **no** privileges. MITM intercept for Kiro / Antigravity / C‍ursor binds `:443` and edits `/etc/hosts`, which requires admin rights. |
-
-### What happens next (no reboot, no extra config)
-
-On first run the app creates `~/.k‍router/` (SQLite DB, machine-id, MITM CA) — it's per-user and fully reset by deleting that folder.
-
-1. **Dashboard → Providers** → pick any provider tile.
-   - **Free, no signup needed**: MiMo Code Free, OpenCode Free → click [+] on the suggested model.
-   - **Free, login required**: Kiro AI (AWS Builder ID **or** Google **or** GitHub thanks to this fork's device-code OAuth), Gemini CLI, Qoder.
-   - **API key**: OpenRouter, NVIDIA NIM, Anthropic, OpenAI, etc.
-2. **Dashboard → API Keys** → create one local API key (e.g. `sk-krouter-XXXX`).
-3. Point any AI tool at kRouter:
-
-   ```text
-   Endpoint:  http://localhost:20128/v1
-   API key:   sk-krouter-XXXX        (from step 2)
-   Model:     kr/claude-sonnet-4.5   (or whatever provider/model you connected)
-   ```
-
-   Works with Claude Code, Cursor, Antigravity, Copilot, Codex CLI, OpenCode, Cline, OpenClaw, any OpenAI-compatible client.
-
-### Updating to the latest fork commits
-
-```bash
-cd krouter
-git pull origin main
-npm install          # only if package.json changed
-# restart dev/start
-```
-
-### Default URLs
-
-- Dashboard: `http://localhost:20128/dashboard`
-- OpenAI-compatible API: `http://localhost:20128/v1`
-- Anthropic-compatible API: `http://localhost:20128/v1/messages`
-- Health probe: `http://localhost:20128/api/health`
-
-### Platform support — honest status
-
-This fork's changes are pure cross-platform JavaScript and re-use upstream's per-OS cert/DNS install code. Here is what is actually verified vs what should work but I haven't personally driven on every OS:
-
-| OS | Pure router mode (chat completions) | MITM mode (Kiro / Antigravity / Copilot IDE intercept) |
-|---|---|---|
-| **macOS** (Intel + Apple Silicon) | ✅ verified in development | ✅ Kiro driven live, end-to-end |
-| **Windows** 10 / 11 | ✅ verified by a fork user | ✅ confirmed by a fork user: Antigravity streamed `gemini-pro-agent` end-to-end through MITM, 10.6 s, complete, no errors. Cert install via elevated PowerShell + `certutil -addstore -f Root` works as upstream ships it. |
-| **Linux** (Debian / Ubuntu / Arch / Fedora / RHEL / openSUSE) | ✅ pure-JS, high confidence | ⚠️ untested as of now; upstream's distro-aware `update-ca-certificates` / `update-ca-trust` path is in place and the same JS runs everywhere |
-
-**MITM mode is confirmed on macOS and Windows** — Antigravity, Copilot, and Kiro share the same hardened pipe layer (`base.js`) that I verified live. Upstream already supports the Linux distro families above via the OS-aware code in `src/mitm/cert/install.js`. If MITM fails on Linux, the most likely cause is the OS-level cert-install flow (upstream territory), not anything this fork touched.
-
-**Windows note:** MITM requires an elevated process (binds `:443`, edits `C:\Windows\System32\drivers\etc\hosts`, installs the root CA). Launch your CMD or PowerShell as **Run as administrator**, then `cd` into the project and run `npm run dev`. The dashboard will hide the "Administrator required" banner once `net session` succeeds inside the dev server's Node process.
-
-If you hit anything OS-specific, [open an issue](https://github.com/sifxprime/krouter/issues) — I'll try to repro and patch.
+📖 **Full feature guide with screenshots → [krouter.kodelyht.com](https://krouter.kodelyht.com)**
 
 ---
 
 ## 🛠️ Supported CLI Tools
-
-kRouter works seamlessly with all major AI coding tools:
 
 <div align="center">
   <table>
     <tr>
       <td align="center" width="120">
         <img src="https://raw.githubusercontent.com/sifxprime/krouter/main/public/providers/claude.png" width="60" alt="Claude Code"/><br/>
-        <b>Claude-Code</b>
+        <b>Claude Code</b>
       </td>
       <td align="center" width="120">
         <img src="https://raw.githubusercontent.com/sifxprime/krouter/main/public/providers/openclaw.png" width="60" alt="OpenClaw"/><br/>
@@ -314,1017 +205,120 @@ kRouter works seamlessly with all major AI coding tools:
 
 ## 🌐 Supported Providers
 
-### 🔐 OAuth Providers
+### 🔐 OAuth (Bring Your Subscription)
 
-<div align="center">
-  <table>
-    <tr>
-      <td align="center" width="120">
-        <img src="https://raw.githubusercontent.com/sifxprime/krouter/main/public/providers/claude.png" width="60" alt="Claude Code"/><br/>
-        <b>Claude-Code</b>
-      </td>
-      <td align="center" width="120">
-        <img src="https://raw.githubusercontent.com/sifxprime/krouter/main/public/providers/antigravity.png" width="60" alt="Antigravity"/><br/>
-        <b>Antigravity</b>
-      </td>
-      <td align="center" width="120">
-        <img src="https://raw.githubusercontent.com/sifxprime/krouter/main/public/providers/codex.png" width="60" alt="Codex"/><br/>
-        <b>Codex</b>
-      </td>
-      <td align="center" width="120">
-        <img src="https://raw.githubusercontent.com/sifxprime/krouter/main/public/providers/github.png" width="60" alt="GitHub"/><br/>
-        <b>GitHub</b>
-      </td>
-      <td align="center" width="120">
-        <img src="https://raw.githubusercontent.com/sifxprime/krouter/main/public/providers/cursor.png" width="60" alt="Cursor"/><br/>
-        <b>Cursor</b>
-      </td>
-    </tr>
-  </table>
-</div>
+Claude Code · Antigravity · Codex · GitHub Copilot · Cursor · Kiro AI
 
-### 🆓 Free Providers
+### 🆓 Free Tier (with API key)
 
-<div align="center">
-  <table>
-    <tr>
-      <td align="center" width="150">
-        <img src="https://raw.githubusercontent.com/sifxprime/krouter/main/public/providers/kiro.png" width="70" alt="Kiro"/><br/>
-        <b>Kiro AI</b><br/>
-        <sub>Claude 4.5 + GLM-5 + MiniMax<br/>Unlimited FREE</sub>
-      </td>
-      <td align="center" width="150">
-        <img src="https://raw.githubusercontent.com/sifxprime/krouter/main/public/providers/opencode.png" width="70" alt="OpenCode Free"/><br/>
-        <b>OpenCode Free</b><br/>
-        <sub>No auth • Auto-fetch models<br/>Unlimited FREE</sub>
-      </td>
-      <td align="center" width="150">
-        <img src="https://raw.githubusercontent.com/sifxprime/krouter/main/public/providers/gemini.png" width="70" alt="Vertex AI"/><br/>
-        <b>Vertex AI</b><br/>
-        <sub>Gemini 3 Pro + GLM-5 + DeepSeek<br/>$300 credits free</sub>
-      </td>
-    </tr>
-  </table>
-</div>
+Cloudflare Workers AI · Vertex AI · Gemini · Ollama · OpenRouter · BytePlus · Atomesus · NVIDIA NIM
 
-> **Note:** iFlow, Qwen and Gemini CLI free tiers were discontinued in 2026. Use Kiro / OpenCode Free / Vertex instead.
+### 🆓 Free Proxy (no auth or included key)
+
+OpenCode Free · MiMo Free
 
 ### 🔑 API Key Providers (40+)
 
-<div align="center">
-  <table>
-    <tr>
-      <td align="center" width="100">
-        <img src="https://raw.githubusercontent.com/sifxprime/krouter/main/public/providers/openrouter.png" width="50" alt="OpenRouter"/><br/>
-        <sub>OpenRouter</sub>
-      </td>
-      <td align="center" width="100">
-        <img src="https://raw.githubusercontent.com/sifxprime/krouter/main/public/providers/glm.png" width="50" alt="GLM"/><br/>
-        <sub>GLM</sub>
-      </td>
-      <td align="center" width="100">
-        <img src="https://raw.githubusercontent.com/sifxprime/krouter/main/public/providers/kimi.png" width="50" alt="Kimi"/><br/>
-        <sub>Kimi</sub>
-      </td>
-      <td align="center" width="100">
-        <img src="https://raw.githubusercontent.com/sifxprime/krouter/main/public/providers/minimax.png" width="50" alt="MiniMax"/><br/>
-        <sub>MiniMax</sub>
-      </td>
-      <td align="center" width="100">
-        <img src="https://raw.githubusercontent.com/sifxprime/krouter/main/public/providers/openai.png" width="50" alt="OpenAI"/><br/>
-        <sub>OpenAI</sub>
-      </td>
-      <td align="center" width="100">
-        <img src="https://raw.githubusercontent.com/sifxprime/krouter/main/public/providers/anthropic.png" width="50" alt="Anthropic"/><br/>
-        <sub>Anthropic</sub>
-      </td>
-    </tr>
-    <tr>
-      <td align="center" width="100">
-        <img src="https://raw.githubusercontent.com/sifxprime/krouter/main/public/providers/gemini.png" width="50" alt="Gemini"/><br/>
-        <sub>Gemini</sub>
-      </td>
-      <td align="center" width="100">
-        <img src="https://raw.githubusercontent.com/sifxprime/krouter/main/public/providers/deepseek.png" width="50" alt="DeepSeek"/><br/>
-        <sub>DeepSeek</sub>
-      </td>
-      <td align="center" width="100">
-        <img src="https://raw.githubusercontent.com/sifxprime/krouter/main/public/providers/groq.png" width="50" alt="Groq"/><br/>
-        <sub>Groq</sub>
-      </td>
-      <td align="center" width="100">
-        <img src="https://raw.githubusercontent.com/sifxprime/krouter/main/public/providers/xai.png" width="50" alt="xAI"/><br/>
-        <sub>xAI</sub>
-      </td>
-      <td align="center" width="100">
-        <img src="https://raw.githubusercontent.com/sifxprime/krouter/main/public/providers/mistral.png" width="50" alt="Mistral"/><br/>
-        <sub>Mistral</sub>
-      </td>
-      <td align="center" width="100">
-        <img src="https://raw.githubusercontent.com/sifxprime/krouter/main/public/providers/perplexity.png" width="50" alt="Perplexity"/><br/>
-        <sub>Perplexity</sub>
-      </td>
-    </tr>
-    <tr>
-      <td align="center" width="100">
-        <img src="https://raw.githubusercontent.com/sifxprime/krouter/main/public/providers/together.png" width="50" alt="Together"/><br/>
-        <sub>Together AI</sub>
-      </td>
-      <td align="center" width="100">
-        <img src="https://raw.githubusercontent.com/sifxprime/krouter/main/public/providers/fireworks.png" width="50" alt="Fireworks"/><br/>
-        <sub>Fireworks</sub>
-      </td>
-      <td align="center" width="100">
-        <img src="https://raw.githubusercontent.com/sifxprime/krouter/main/public/providers/cerebras.png" width="50" alt="Cerebras"/><br/>
-        <sub>Cerebras</sub>
-      </td>
-      <td align="center" width="100">
-        <img src="https://raw.githubusercontent.com/sifxprime/krouter/main/public/providers/cohere.png" width="50" alt="Cohere"/><br/>
-        <sub>Cohere</sub>
-      </td>
-      <td align="center" width="100">
-        <img src="https://raw.githubusercontent.com/sifxprime/krouter/main/public/providers/nvidia.png" width="50" alt="NVIDIA"/><br/>
-        <sub>NVIDIA</sub>
-      </td>
-      <td align="center" width="100">
-        <img src="https://raw.githubusercontent.com/sifxprime/krouter/main/public/providers/siliconflow.png" width="50" alt="SiliconFlow"/><br/>
-        <sub>SiliconFlow</sub>
-      </td>
-    </tr>
-  </table>
-  <p><i>...and 20+ more providers including Nebius, Chutes, Hyperbolic, and custom OpenAI/Anthropic compatible endpoints</i></p>
-</div>
+OpenAI · Anthropic · GLM · Kimi · MiniMax · DeepSeek · Groq · xAI · Mistral · Perplexity · Together AI · Fireworks · Cerebras · Cohere · SiliconFlow · Hyperbolic · Nebius · Chutes · and 20+ more
 
----
-
-## 💡 Key Features
-
-| Feature | What It Does | Why It Matters |
-|---------|--------------|----------------|
-| 🚀 **RTK Token Saver** ([RTK](https://github.com/rtk-ai/rtk) ⭐40K) | Compress tool outputs (`git diff`, `grep`, `ls`, `tree`...) before sending to LLM | Save **20-40% input tokens** per request |
-| 🪨 **Caveman Mode** ([Caveman](https://github.com/JuliusBrussee/caveman) ⭐52K) | Inject caveman-speak prompt → LLM replies terse, technical substance preserved | Save **up to 65% output tokens** |
-| 🎯 **Smart 3-Tier Fallback** | Auto-route: Subscription → Cheap → Free | Never stop coding, zero downtime |
-| 📊 **Real-Time Quota Tracking** | Live token count + reset countdown | Maximize subscription value |
-| 🔄 **Format Translation** | OpenAI ↔ Claude ↔ Gemini ↔ Cursor ↔ Kiro ↔ Vertex | Works with any CLI tool |
-| 👥 **Multi-Account Support** | Multiple accounts per provider | Load balancing + redundancy |
-| 🔄 **Auto Token Refresh** | OAuth tokens refresh automatically | No manual re-login needed |
-| 🎨 **Custom Combos** | Create unlimited model combinations | Tailor fallback to your needs |
-| 📝 **Request Logging** | Debug mode with full request/response logs | Troubleshoot issues easily |
-| 💾 **Cloud Sync** | Sync config across devices | Same setup everywhere |
-| 📊 **Usage Analytics** | Track tokens, cost, trends over time | Optimize spending |
-| 🌐 **Deploy Anywhere** | Localhost, VPS, Docker, Cloudflare Workers | Flexible deployment options |
-
-<details>
-<summary><b>📖 Feature Details</b></summary>
-
-### 🚀 RTK Token Saver
-
-Tool outputs (`git diff`, `grep`, `find`, `ls`, `tree`, log dumps...) often eat 30-50% of your prompt budget. RTK detects them and applies smart, lossless compression **before** the request hits the LLM:
-
-- **Filters:** `git-diff`, `git-status`, `grep`, `find`, `ls`, `tree`, `dedup-log`, `smart-truncate`, `read-numbered`, `search-list`
-- **Auto-detect:** No config needed — RTK peeks the first 1KB of each `tool_result` and picks the right filter.
-- **Safe by design:** If a filter fails, throws, or makes output bigger, RTK silently keeps the original text. Errors never break your request.
-- **Universal:** Works across all formats (OpenAI, Claude, Gemini, Cursor, Kiro, OpenAI Responses) because it runs **before** any format translation.
-- **Default ON:** Toggle anytime in Dashboard → Endpoint settings.
-
-```
-Without RTK: 47K tokens sent to LLM
-With RTK:    28K tokens sent to LLM   (40% saved · same context · same answer)
-```
-
-### 🎯 Smart 3-Tier Fallback
-
-Create combos with automatic fallback:
-
-```
-Combo: "my-coding-stack"
-  1. cc/claude-opus-4-6        (your subscription)
-  2. glm/glm-4.7               (cheap backup, $0.6/1M)
-  3. if/kimi-k2-thinking       (free fallback)
-
-→ Auto switches when quota runs out or errors occur
-```
-
-### 📊 Real-Time Quota Tracking
-
-- Token consumption per provider
-- Reset countdown (5-hour, daily, weekly)
-- Cost estimation for paid tiers
-- Monthly spending reports
-
-### 🔄 Format Translation
-
-Seamless translation between formats:
-- **OpenAI** ↔ **Claude** ↔ **Gemini** ↔ **Cursor** ↔ **Kiro** ↔ **Vertex** ↔ **Antigravity** ↔ **Ollama** ↔ **OpenAI Responses**
-- Your CLI tool sends OpenAI format → kRouter translates → Provider receives native format
-- Works with any tool that supports custom OpenAI endpoints
-
-### 👥 Multi-Account Support
-
-- Add multiple accounts per provider
-- Auto round-robin or priority-based routing
-- Fallback to next account when one hits quota
-
-### 🔄 Auto Token Refresh
-
-- OAuth tokens automatically refresh before expiration
-- No manual re-authentication needed
-- Seamless experience across all providers
-
-### 🎨 Custom Combos
-
-- Create unlimited model combinations
-- Mix subscription, cheap, and free tiers
-- Name your combos for easy access
-- Share combos across devices with Cloud Sync
-
-### 📝 Request Logging
-
-- Enable debug mode for full request/response logs
-- Track API calls, headers, and payloads
-- Troubleshoot integration issues
-- Export logs for analysis
-
-### 💾 Cloud Sync
-
-- Sync providers, combos, and settings across devices
-- Automatic background sync
-- Secure encrypted storage
-- Access your setup from anywhere
-
-#### Cloud Runtime Notes
-
-- Prefer server-side cloud variables in production:
-  - `BASE_URL` (internal callback URL used by sync scheduler)
-  - `CLOUD_URL` (cloud sync endpoint base)
-- `NEXT_PUBLIC_BASE_URL` and `NEXT_PUBLIC_CLOUD_URL` are still supported for compatibility/UI, but server runtime now prioritizes `BASE_URL`/`CLOUD_URL`.
-- Cloud sync requests now use timeout + fail-fast behavior to avoid UI hanging when cloud DNS/network is unavailable.
-
-### 📊 Usage Analytics
-
-- Track token usage per provider and model
-- Cost estimation and spending trends
-- Monthly reports and insights
-- Optimize your AI spending
-
-> **💡 IMPORTANT - Understanding Dashboard Costs:**
-> 
-> The "cost" displayed in Usage Analytics is **for tracking and comparison purposes only**. 
-> kRouter itself **never charges** you anything. You only pay providers directly (if using paid services).
-> 
-> **Example:** If your dashboard shows "$290 total cost" while using iFlow models, this represents 
-> what you would have paid using paid APIs directly. Your actual cost = **$0** (iFlow is free unlimited).
-> 
-> Think of it as a "savings tracker" showing how much you're saving by using free models or 
-> routing through kRouter!
-
-### 🌐 Deploy Anywhere
-
-- 💻 **Localhost** - Default, works offline
-- ☁️ **VPS/Cloud** - Share across devices
-- 🐳 **Docker** - One-command deployment
-- 🚀 **Cloudflare Workers** - Global edge network
-
-</details>
-
----
-
-## 💰 Pricing at a Glance
-
-| Tier | Provider | Cost | Quota Reset | Best For |
-|------|----------|------|-------------|----------|
-| **🚀 TOKEN SAVER** | **RTK (built-in)** | **FREE** | Always on | **Save 20-40% tokens on EVERY request** |
-| **💳 SUBSCRIPTION** | Claude Code (Pro/Max) | $20-200/mo | 5h + weekly | Already subscribed |
-| | Codex (Plus/Pro) | $20-200/mo | 5h + weekly | OpenAI users |
-| | GitHub Copilot | $10-19/mo | Monthly | GitHub users |
-| | Cursor IDE | $20/mo | Monthly | Cursor users |
-| **💰 CHEAP** | GLM-5.1 / GLM-4.7 | $0.6/1M | Daily 10AM | Budget backup |
-| | MiniMax M2.7 | $0.2/1M | 5-hour rolling | Cheapest option |
-| | Kimi K2.5 | $9/mo flat | 10M tokens/mo | Predictable cost |
-| **🆓 FREE** | Kiro AI | $0 | Unlimited | Claude 4.5 + GLM-5 + MiniMax free |
-| | OpenCode Free | $0 | Unlimited | No auth, auto-fetch models |
-| | Vertex AI | $300 credits | New GCP accounts | Gemini 3 Pro + DeepSeek + GLM-5 |
-
-**💡 Pro Tip:** RTK + Kiro AI + OpenCode Free combo = **$0 cost + 20-40% token savings**!
-
----
-
-### 📊 Understanding kRouter Costs & Billing
-
-**kRouter Billing Reality:**
-
-✅ **kRouter software = FREE forever** (open source, never charges)  
-✅ **Dashboard "costs" = Display/tracking only** (not actual bills)  
-✅ **You pay providers directly** (subscriptions or API fees)  
-✅ **FREE providers stay FREE** (iFlow, Kiro, Qwen = $0 unlimited)  
-❌ **kRouter never sends invoices** or charges your card
-
-**How Cost Display Works:**
-
-The dashboard shows **estimated costs** as if you were using paid APIs directly. This is **not billing** - it's a comparison tool to show your savings.
-
-**Example Scenario:**
-```
-Dashboard Display:
-• Total Requests: 1,662
-• Total Tokens: 47M
-• Display Cost: $290
-
-Reality Check:
-• Provider: iFlow (FREE unlimited)
-• Actual Payment: $0.00
-• What $290 Means: Amount you SAVED by using free models!
-```
-
-**Payment Rules:**
-- **Subscription providers** (Claude Code, Codex): Pay them directly via their websites
-- **Cheap providers** (GLM, MiniMax): Pay them directly, kRouter just routes
-- **FREE providers** (iFlow, Kiro, Qwen): Genuinely free forever, no hidden charges
-- **kRouter**: Never charges anything, ever
-
----
-
-## 🎯 Use Cases
-
-### Case 1: "I have Claude Pro subscription"
-
-**Problem:** Quota expires unused, rate limits during heavy coding
-
-**Solution:**
-```
-Combo: "maximize-claude"
-  1. cc/claude-opus-4-7        (use subscription fully)
-  2. glm/glm-5.1               (cheap backup when quota out)
-  3. kr/claude-sonnet-4.5      (free emergency fallback)
-
-Monthly cost: $20 (subscription) + ~$5 (backup) = $25 total
-vs. $20 + hitting limits = frustration
-```
-
-### Case 2: "I want zero cost"
-
-**Problem:** Can't afford subscriptions, need reliable AI coding
-
-**Solution:**
-```
-Combo: "free-forever"
-  1. kr/claude-sonnet-4.5      (Claude 4.5 free unlimited)
-  2. kr/glm-5                  (GLM-5 free via Kiro)
-  3. oc/<auto>                 (OpenCode Free, no auth)
-
-Monthly cost: $0
-Quality: Production-ready models + RTK saves 20-40% tokens
-```
-
-### Case 3: "I need 24/7 coding, no interruptions"
-
-**Problem:** Deadlines, can't afford downtime
-
-**Solution:**
-```
-Combo: "always-on"
-  1. cc/claude-opus-4-7        (best quality)
-  2. cx/gpt-5.5                (second subscription)
-  3. glm/glm-5.1               (cheap, resets daily)
-  4. minimax/MiniMax-M2.7      (cheapest, 5h reset)
-  5. kr/claude-sonnet-4.5      (free unlimited)
-
-Result: 5 layers of fallback = zero downtime
-Monthly cost: $20-200 (subscriptions) + $10-20 (backup)
-```
-
-### Case 4: "I want FREE AI in OpenClaw"
-
-**Problem:** Need AI assistant in messaging apps (WhatsApp, Telegram, Slack...), completely free
-
-**Solution:**
-```
-Combo: "openclaw-free"
-  1. kr/claude-sonnet-4.5      (Claude 4.5 free)
-  2. kr/glm-5                  (GLM-5 free)
-  3. kr/MiniMax-M2.5           (MiniMax free)
-
-Monthly cost: $0
-Access via: WhatsApp, Telegram, Slack, Discord, iMessage, Signal...
-```
-
----
-
-## ❓ Frequently Asked Questions
-
-<details>
-<summary><b>📊 Why does my dashboard show high costs?</b></summary>
-
-The dashboard tracks your token usage and displays **estimated costs** as if you were using paid APIs directly. This is **not actual billing** - it's a reference to show how much you're saving by using free models or existing subscriptions through kRouter.
-
-**Example:**
-- **Dashboard shows:** "$290 total cost"
-- **Reality:** You're using iFlow (FREE unlimited)
-- **Your actual cost:** **$0.00**
-- **What $290 means:** Amount you **saved** by using free models instead of paid APIs!
-
-The cost display is a "savings tracker" to help you understand your usage patterns and optimization opportunities.
-
-</details>
-
-<details>
-<summary><b>💳 Will I be charged by kRouter?</b></summary>
-
-**No.** kRouter is free, open-source software that runs on your own computer. It never charges you anything.
-
-**You only pay:**
-- ✅ **Subscription providers** (Claude Code $20/mo, Codex $20-200/mo) → Pay them directly on their websites
-- ✅ **Cheap providers** (GLM, MiniMax) → Pay them directly, kRouter just routes your requests
-- ❌ **kRouter itself** → **Never charges anything, ever**
-
-kRouter is a local proxy/router. It doesn't have your credit card, can't send invoices, and has no billing system. It's completely free software.
-
-</details>
-
-<details>
-<summary><b>🆓 Are FREE providers really unlimited?</b></summary>
-
-**Yes!** The current FREE providers (Kiro, OpenCode Free, Vertex) are genuinely free with **no hidden charges**.
-
-These are free services offered by those respective companies:
-- **Kiro AI**: Free unlimited Claude 4.5 + GLM-5 + MiniMax via AWS Builder ID / Google / GitHub OAuth
-- **OpenCode Free**: No-auth passthrough proxy, models auto-fetched from `opencode.ai/zen/v1/models`
-- **Vertex AI**: $300 free credits for new Google Cloud accounts (90 days)
-
-kRouter just routes your requests to them - there's no "catch" or future billing. They're truly free services, and kRouter makes them easy to use with fallback support.
-
-**Discontinued free tiers (no longer recommended):**
-- ❌ **iFlow**: Was free unlimited, now changed to paid (2026)
-- ❌ **Qwen Code**: Free OAuth tier discontinued by Alibaba on 2026-04-15
-- ❌ **Gemini CLI**: Still works, but using it with non-CLI tools (Claude, Codex, Cursor...) may result in account bans — only use if you stick to Gemini CLI itself
-
-</details>
-
-<details>
-<summary><b>💰 How do I minimize my actual AI costs?</b></summary>
-
-**Free-First Strategy:**
-
-1. **Start with 100% free combo:**
-   ```
-   1. gc/gemini-3-flash (180K/month free from Google)
-   2. if/kimi-k2-thinking (unlimited free from iFlow)
-   3. qw/qwen3-coder-plus (unlimited free from Qwen)
-   ```
-   **Cost: $0/month**
-
-2. **Add cheap backup** only if you need it:
-   ```
-   4. glm/glm-4.7 ($0.6/1M tokens)
-   ```
-   **Additional cost: Only pay for what you actually use**
-
-3. **Use subscription providers last:**
-   - Only if you already have them
-   - kRouter helps maximize their value through quota tracking
-
-**Result:** Most users can operate at $0/month using only free tiers!
-
-</details>
-
-<details>
-<summary><b>📈 What if my usage suddenly spikes?</b></summary>
-
-kRouter's smart fallback prevents surprise charges:
-
-**Scenario:** You're on a coding sprint and blow through your quotas
-
-**Without kRouter:**
-- ❌ Hit rate limit → Work stops → Frustration
-- ❌ Or: Accidentally rack up huge API bills
-
-**With kRouter:**
-- ✅ Subscription hits limit → Auto-fallback to cheap tier
-- ✅ Cheap tier gets expensive → Auto-fallback to free tier
-- ✅ Never stop coding → Predictable costs
-
-**You're in control:** Set spending limits per provider in dashboard, and kRouter respects them.
-
-</details>
+📖 **Full provider setup guide → [krouter.kodelyht.com](https://krouter.kodelyht.com)**
 
 ---
 
 ## 📖 Setup Guide
 
-<details>
-<summary><b>🔐 Subscription Providers (Maximize Value)</b></summary>
-
-### Claude Code (Pro/Max)
+### Step 1 · Install
 
 ```bash
-Dashboard → Providers → Connect Claude Code
-→ OAuth login → Auto token refresh
-→ 5-hour + weekly quota tracking
-
-Models:
-  cc/claude-opus-4-7
-  cc/claude-opus-4-6
-  cc/claude-sonnet-4-6
-  cc/claude-haiku-4-5-20251001
+npm install -g @sifxprime/krouter
 ```
 
-**Pro Tip:** Use Opus for complex tasks, Sonnet for speed. kRouter tracks quota per model!
-
-### OpenAI Codex (Plus/Pro)
+### Step 2 · Start in Background
 
 ```bash
-Dashboard → Providers → Connect Codex
-→ OAuth login (port 1455)
-→ 5-hour + weekly reset
-
-Models:
-  cx/gpt-5.5
-  cx/gpt-5.4
-  cx/gpt-5.3-codex
-  cx/gpt-5.2-codex
+krouter -t
 ```
 
-### GitHub Copilot
+You'll see a tray icon in your menu bar. Right-click for **Open Dashboard** or **Quit**.
+
+### Step 3 · Add a Provider
+
+1. Open **[http://localhost:20128/dashboard](http://localhost:20128/dashboard)**
+2. Click **Providers → Add** and choose one (Cloudflare Workers AI is a great free start)
+3. Paste your API key or OAuth login
+4. Click **Test Connection** → done!
+
+### Step 4 · Point Your AI Tool at kRouter
+
+```text
+Endpoint:  http://localhost:20128/v1
+API Key:   sk-krouter-XXXX   (from Dashboard → API Keys)
+Model:     kr/claude-sonnet-4.5   (or any provider/model)
+```
+
+Works with any OpenAI-compatible client.
+
+📖 **Detailed integration guide (Claude Code, Cursor, Cline, and more) → [krouter.kodelyht.com](https://krouter.kodelyht.com)**
+
+---
+
+## ⚙️ Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `PORT` | `20128` | Server port |
+| `HOSTNAME` | `127.0.0.1` | Bind host |
+| `DATA_DIR` | `~/.krouter` | Data directory (SQLite, certs, cache) |
+| `NODE_ENV` | `production` | Runtime mode |
+| `REQUIRE_API_KEY` | `false` | Enforce Bearer API key on `/v1/*` (recommended for public deploys) |
+| `AUTH_COOKIE_SECURE` | `false` | Force `Secure` cookie (set behind HTTPS reverse proxy) |
+| `HTTP_PROXY` / `HTTPS_PROXY` / `NO_PROXY` | — | Outbound proxy config |
+
+Full env reference → **[krouter.kodelyht.com](https://krouter.kodelyht.com)**
+
+---
+
+## 🚢 Deployment
+
+### VPS
 
 ```bash
-Dashboard → Providers → Connect GitHub
-→ OAuth via GitHub
-→ Monthly reset (1st of month)
-
-Models:
-  gh/gpt-5.4
-  gh/claude-opus-4.7
-  gh/claude-sonnet-4.6
-  gh/gemini-3.1-pro-preview
-  gh/grok-code-fast-1
+npm install -g @sifxprime/krouter
+export PORT=20128 HOSTNAME=0.0.0.0
+krouter --skip-update
 ```
 
-### Cursor IDE
+Behind Nginx / Caddy + Cloudflare Tunnel for HTTPS.
+
+### Docker
 
 ```bash
-Dashboard → Providers → Connect Cursor
-→ OAuth login
-→ Monthly subscription
-
-Models:
-  cu/claude-4.6-opus-max
-  cu/claude-4.5-sonnet-thinking
-  cu/gpt-5.3-codex
+docker run -d -p 20128:20128 -v "$HOME/.krouter:/app/data" --name krouter sifxprime/krouter:latest
 ```
 
-</details>
-
-<details>
-<summary><b>💰 Cheap Providers (Backup)</b></summary>
-
-### GLM-5.1 / GLM-4.7 (Daily reset, $0.6/1M)
-
-1. Sign up: [Zhipu AI](https://open.bigmodel.cn/)
-2. Get API key from Coding Plan
-3. Dashboard → Add API Key:
-   - Provider: `glm`
-   - API Key: `your-key`
-
-**Use:** `glm/glm-5.1`, `glm/glm-5`, `glm/glm-4.7`
-
-**Pro Tip:** Coding Plan offers 3× quota at 1/7 cost! Reset daily 10:00 AM.
-
-### MiniMax M2.7 (5h reset, $0.20/1M)
-
-1. Sign up: [MiniMax](https://www.minimax.io/)
-2. Get API key
-3. Dashboard → Add API Key
-
-**Use:** `minimax/MiniMax-M2.7`, `minimax/MiniMax-M2.5`
-
-**Pro Tip:** Cheapest option for long context (1M tokens)!
-
-### Kimi K2.5 ($9/month flat)
-
-1. Subscribe: [Moonshot AI](https://platform.moonshot.ai/)
-2. Get API key
-3. Dashboard → Add API Key
-
-**Use:** `kimi/kimi-k2.5`, `kimi/kimi-k2.5-thinking`
-
-**Pro Tip:** Fixed $9/month for 10M tokens = $0.90/1M effective cost!
-
-</details>
-
-<details>
-<summary><b>🆓 FREE Providers (Recommended)</b></summary>
-
-### Kiro AI (Claude 4.5 + GLM-5 + MiniMax FREE)
+### PM2
 
 ```bash
-Dashboard → Connect Kiro
-→ AWS Builder ID, AWS IAM Identity Center, Google, or GitHub
-→ Unlimited usage
-
-Models:
-  kr/claude-sonnet-4.5
-  kr/claude-haiku-4.5
-  kr/glm-5
-  kr/MiniMax-M2.5
-  kr/qwen3-coder-next
-  kr/deepseek-3.2
-```
-
-**Pro Tip:** Best free option for Claude. No API key, no payment, fully unlimited.
-
-### OpenCode Free (No auth, auto-fetch models)
-
-```bash
-Dashboard → Connect OpenCode Free
-→ No login required (passthrough proxy)
-→ Models auto-fetched from opencode.ai/zen/v1/models
-```
-
-**Pro Tip:** Fastest setup. Just connect and start coding.
-
-### Vertex AI ($300 free credits for new GCP accounts)
-
-```bash
-Dashboard → Connect Vertex AI
-→ Upload Google Cloud Service Account JSON
-→ Enable Vertex AI API in your GCP project
-
-Models:
-  vertex/gemini-3.1-pro-preview
-  vertex/gemini-3-flash-preview
-  vertex/gemini-2.5-flash
-
-Vertex Partner (Anthropic / DeepSeek / GLM / Qwen via Vertex):
-  vertex-partner/glm-5-maas
-  vertex-partner/deepseek-v3.2-maas
-  vertex-partner/qwen3-next-80b-a3b-thinking-maas
-```
-
-**Pro Tip:** New Google Cloud accounts get $300 credits free for 90 days. Plenty for daily coding.
-
-</details>
-
-<details>
-<summary><b>🎨 Create Combos</b></summary>
-
-### Example 1: Maximize Subscription → Cheap Backup
-
-```
-Dashboard → Combos → Create New
-
-Name: premium-coding
-Models:
-  1. cc/claude-opus-4-7 (Subscription primary)
-  2. glm/glm-5.1 (Cheap backup, $0.6/1M)
-  3. minimax/MiniMax-M2.7 (Cheapest fallback, $0.20/1M)
-
-Use in CLI: premium-coding
-
-Monthly cost example (100M tokens):
-  80M via Claude (subscription): $0 extra
-  15M via GLM: $9
-  5M via MiniMax: $1
-  Total: $10 + your subscription
-```
-
-### Example 2: Free-Only (Zero Cost)
-
-```
-Name: free-combo
-Models:
-  1. kr/claude-sonnet-4.5 (Claude 4.5 free unlimited)
-  2. kr/glm-5 (GLM-5 free via Kiro)
-  3. vertex/gemini-3.1-pro-preview ($300 free credits)
-
-Cost: $0 forever (+ 20-40% token savings via RTK)!
-```
-
-</details>
-
-<details>
-<summary><b>🔧 CLI Integration</b></summary>
-
-### Cursor IDE
-
-```
-Settings → Models → Advanced:
-  OpenAI API Base URL: http://localhost:20128/v1
-  OpenAI API Key: [from 9router dashboard]
-  Model: cc/claude-opus-4-7
-```
-
-Or use combo: `premium-coding`
-
-### Claude Code
-
-Edit `~/.claude/config.json`:
-
-```json
-{
-  "anthropic_api_base": "http://localhost:20128/v1",
-  "anthropic_api_key": "your-9router-api-key"
-}
-```
-
-### Codex CLI
-
-```bash
-export OPENAI_BASE_URL="http://localhost:20128"
-export OPENAI_API_KEY="your-9router-api-key"
-
-codex "your prompt"
-```
-
-### OpenClaw
-
-**Option 1 — Dashboard (recommended):**
-
-```
-Dashboard → CLI Tools → OpenClaw → Select Model → Apply
-```
-
-**Option 2 — Manual:** Edit `~/.openclaw/openclaw.json`:
-
-```json
-{
-  "agents": {
-    "defaults": {
-      "model": {
-        "primary": "krouter/kr/claude-sonnet-4.5"
-      }
-    }
-  },
-  "models": {
-    "providers": {
-      "krouter": {
-        "baseUrl": "http://127.0.0.1:20128/v1",
-        "apiKey": "sk_krouter",
-        "api": "openai-completions",
-        "models": [
-          {
-            "id": "kr/claude-sonnet-4.5",
-            "name": "Claude Sonnet 4.5 (Kiro Free)"
-          }
-        ]
-      }
-    }
-  }
-}
-```
-
-> **Note:** OpenClaw only works with local kRouter. Use `127.0.0.1` instead of `localhost` to avoid IPv6 resolution issues.
-
-### Cline / Continue / RooCode
-
-```
-Provider: OpenAI Compatible
-Base URL: http://localhost:20128/v1
-API Key: [from dashboard]
-Model: cc/claude-opus-4-7
-```
-
-</details>
-
-<details>
-<summary><b>🚀 Deployment</b></summary>
-
-### VPS Deployment
-
-```bash
-# Clone and install
-git clone https://github.com/decolua/9router.git
-cd krouter
-npm install
-npm run build
-
-# Configure
-export JWT_SECRET="your-secure-secret-change-this"
-export INITIAL_PASSWORD="your-password"
-export DATA_DIR="/var/lib/9router"
-export PORT="20128"
-export HOSTNAME="0.0.0.0"
-export NODE_ENV="production"
-export NEXT_PUBLIC_BASE_URL="http://localhost:20128"
-export NEXT_PUBLIC_CLOUD_URL="https://9router.com"
-export API_KEY_SECRET="endpoint-proxy-api-key-secret"
-export MACHINE_ID_SALT="endpoint-proxy-salt"
-
-# Start
-npm run start
-
-# Or use PM2
-npm install -g pm2
-pm2 start npm --name 9router -- start
+npm install -g @sifxprime/krouter pm2
+pm2 start krouter --name krouter -- --skip-update
 pm2 save
 pm2 startup
 ```
 
-### Docker
-
-Published images (multi-platform `linux/amd64` + `linux/arm64`):
-- Docker Hub: [`decolua/9router`](https://hub.docker.com/r/decolua/9router)
-- GHCR: [`ghcr.io/decolua/9router`](https://github.com/decolua/9router/pkgs/container/9router)
-
-**Quick start (use published image):**
-
-```bash
-docker run -d \
-  --name 9router \
-  -p 20128:20128 \
-  -v "$HOME/.9router:/app/data" \
-  -e DATA_DIR=/app/data \
-  decolua/9router:latest
-```
-
-→ Open http://localhost:20128
-
-**Build from source (dev):**
-
-```bash
-git clone https://github.com/decolua/9router.git
-cd 9router/app
-docker build -t 9router .
-docker run -d --name 9router -p 20128:20128 \
-  -v "$HOME/.9router:/app/data" -e DATA_DIR=/app/data 9router
-```
-
-**Container defaults:**
-- `PORT=20128`
-- `HOSTNAME=0.0.0.0`
-
-**Useful commands:**
-
-```bash
-docker logs -f 9router
-docker restart 9router
-docker stop 9router && docker rm 9router
-docker pull decolua/9router:latest   # update to latest
-```
-
-**Data persistence:** `$HOME/.9router/db/data.sqlite` on host ↔ `/app/data/db/data.sqlite` in container.
-
-### Environment Variables
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `JWT_SECRET` | Auto-generated (`~/.krouter/jwt-secret`) | JWT signing secret for dashboard auth cookie (override to share across instances) |
-| `INITIAL_PASSWORD` | `123456` | First login password when no saved hash exists |
-| `DATA_DIR` | `~/.krouter` | Main app data location (SQLite at `$DATA_DIR/db/data.sqlite`) |
-| `PORT` | framework default | Service port (`20128` in examples) |
-| `HOSTNAME` | framework default | Bind host (Docker defaults to `0.0.0.0`) |
-| `NODE_ENV` | runtime default | Set `production` for deploy |
-| `BASE_URL` | `http://localhost:20128` | Server-side internal base URL used by cloud sync jobs |
-| `CLOUD_URL` | `https://9router.com` | Server-side cloud sync endpoint base URL |
-| `NEXT_PUBLIC_BASE_URL` | `http://localhost:3000` | Backward-compatible/public base URL (prefer `BASE_URL` for server runtime) |
-| `NEXT_PUBLIC_CLOUD_URL` | `https://9router.com` | Backward-compatible/public cloud URL (prefer `CLOUD_URL` for server runtime) |
-| `API_KEY_SECRET` | `endpoint-proxy-api-key-secret` | HMAC secret for generated API keys |
-| `MACHINE_ID_SALT` | `endpoint-proxy-salt` | Salt for stable machine ID hashing |
-| `ENABLE_REQUEST_LOGS` | `false` | Enables request/response logs under `logs/` |
-| `AUTH_COOKIE_SECURE` | `false` | Force `Secure` auth cookie (set `true` behind HTTPS reverse proxy) |
-| `REQUIRE_API_KEY` | `false` | Enforce Bearer API key on `/v1/*` routes (recommended for internet-exposed deploys) |
-| `HTTP_PROXY`, `HTTPS_PROXY`, `ALL_PROXY`, `NO_PROXY` | empty | Optional outbound proxy for upstream provider calls |
-
-Notes:
-- Lowercase proxy variables are also supported: `http_proxy`, `https_proxy`, `all_proxy`, `no_proxy`.
-- `.env` is not baked into Docker image (`.dockerignore`); inject runtime config with `--env-file` or `-e`.
-- On Windows, `APPDATA` can be used for local storage path resolution.
-- `INSTANCE_NAME` appears in older docs/env templates, but is currently not used at runtime.
-
-### Runtime Files and Storage
-
-- Main app state: `${DATA_DIR}/db/data.sqlite` (SQLite — providers, combos, aliases, keys, settings, usage history)
-- Auto backups: `${DATA_DIR}/db/backups/`
-- Optional request/translator logs: `<repo>/logs/...` when `ENABLE_REQUEST_LOGS=true`
-- Both `${DATA_DIR}` and `~/.9router` resolve to the same location in a Docker container — the symlink `/root/.9router -> /app/data` is created at build time.
-
-</details>
-
 ---
 
-## 📊 Available Models
-
-<details>
-<summary><b>View all available models</b></summary>
-
-**Claude Code (`cc/`)** - Pro/Max:
-- `cc/claude-opus-4-7`
-- `cc/claude-opus-4-6`
-- `cc/claude-sonnet-4-6`
-- `cc/claude-sonnet-4-5-20250929`
-- `cc/claude-haiku-4-5-20251001`
-
-**Codex (`cx/`)** - Plus/Pro:
-- `cx/gpt-5.5`
-- `cx/gpt-5.4`
-- `cx/gpt-5.3-codex`
-- `cx/gpt-5.2-codex`
-- `cx/gpt-5.1-codex-max`
-
-**GitHub Copilot (`gh/`)**:
-- `gh/gpt-5.4`
-- `gh/claude-opus-4.7`
-- `gh/claude-sonnet-4.6`
-- `gh/gemini-3.1-pro-preview`
-- `gh/grok-code-fast-1`
-
-**Cursor (`cu/`)** - Subscription:
-- `cu/claude-4.6-opus-max`
-- `cu/claude-4.5-sonnet-thinking`
-- `cu/gpt-5.3-codex`
-- `cu/kimi-k2.5`
-
-**GLM (`glm/`)** - $0.6/1M:
-- `glm/glm-5.1`
-- `glm/glm-5`
-- `glm/glm-4.7`
-
-**MiniMax (`minimax/`)** - $0.2/1M:
-- `minimax/MiniMax-M2.7`
-- `minimax/MiniMax-M2.5`
-
-**Kimi (`kimi/`)** - $9/mo flat:
-- `kimi/kimi-k2.5`
-- `kimi/kimi-k2.5-thinking`
-
-**Kiro (`kr/`)** - FREE unlimited:
-- `kr/claude-sonnet-4.5`
-- `kr/claude-haiku-4.5`
-- `kr/glm-5`
-- `kr/MiniMax-M2.5`
-- `kr/qwen3-coder-next`
-- `kr/deepseek-3.2`
-
-**OpenCode Free (`oc/`)** - FREE no-auth:
-- Auto-fetched from `opencode.ai/zen/v1/models`
-
-**Vertex AI (`vertex/`)** - $300 free credits:
-- `vertex/gemini-3.1-pro-preview`
-- `vertex/gemini-3-flash-preview`
-- `vertex/gemini-2.5-flash`
-- `vertex-partner/glm-5-maas`
-- `vertex-partner/deepseek-v3.2-maas`
-
-</details>
-
----
-
-## 🐛 Troubleshooting
-
-**"Language model did not provide messages"**
-- Provider quota exhausted → Check dashboard quota tracker
-- Solution: Use combo fallback or switch to cheaper tier
-
-**Rate limiting**
-- Subscription quota out → Fallback to GLM/MiniMax
-- Add combo: `cc/claude-opus-4-7 → glm/glm-5.1 → kr/claude-sonnet-4.5`
-
-**OAuth token expired**
-- Auto-refreshed by kRouter
-- If issues persist: Dashboard → Provider → Reconnect
-
-**High costs**
-- Enable RTK in Dashboard → Endpoint settings (default ON, saves 20-40% tokens)
-- Check usage stats in Dashboard
-- Switch primary model to GLM/MiniMax
-- Use free tier (Kiro, OpenCode Free, Vertex) for non-critical tasks
-
-**Dashboard opens on wrong port**
-- Set `PORT=20128` and `NEXT_PUBLIC_BASE_URL=http://localhost:20128`
-
-**First login not working**
-- Check `INITIAL_PASSWORD` in `.env`
-- If unset, fallback password is `123456`
-
-**No request logs under `logs/`**
-- Set `ENABLE_REQUEST_LOGS=true`
-
----
-
-## 🛠️ Tech Stack
-
-- **Runtime**: Node.js 20+
-- **Framework**: Next.js 16
-- **UI**: React 19 + Tailwind CSS 4
-- **Database**: SQLite (better-sqlite3 / node:sqlite / sql.js fallback)
-- **Streaming**: Server-Sent Events (SSE)
-- **Auth**: OAuth 2.0 (PKCE) + JWT + API Keys
-
----
-
-## 📝 API Reference
+## 📡 API
 
 ### Chat Completions
 
 ```bash
 POST http://localhost:20128/v1/chat/completions
-Authorization: Bearer your-api-key
+Authorization: Bearer <your-api-key>
 Content-Type: application/json
 
 {
-  "model": "cc/claude-opus-4-6",
-  "messages": [
-    {"role": "user", "content": "Write a function to..."}
-  ],
+  "model": "kr/claude-sonnet-4.5",
+  "messages": [{"role": "user", "content": "Hello"}],
   "stream": true
 }
 ```
@@ -1333,38 +327,69 @@ Content-Type: application/json
 
 ```bash
 GET http://localhost:20128/v1/models
-Authorization: Bearer your-api-key
-
-→ Returns all models + combos in OpenAI format
+Authorization: Bearer <your-api-key>
 ```
 
-## 📧 Support
-
-- **GitHub**: [github.com/sifxprime/krouter](https://github.com/sifxprime/krouter)
-- **Issues**: [github.com/sifxprime/krouter/issues](https://github.com/sifxprime/krouter/issues)
-- **npm**: [`@sifxprime/krouter`](https://www.npmjs.com/package/@sifxprime/krouter)
+Returns every configured provider + custom combo in OpenAI format.
 
 ---
 
-## 🙏 Acknowledgments
+## 🗑️ Uninstall
 
-Built on the shoulders of giants:
+```bash
+# Stop kRouter (right-click tray → Quit, or pkill -f krouter)
+npm uninstall -g @sifxprime/krouter
+rm -rf ~/.krouter   # optional: wipe database + certs
+```
 
-- **[decolua/9router](https://github.com/decolua/9router)** — the upstream project this fork tracks. All core architecture, providers, dashboard, and ongoing feature work are authored upstream. kRouter only adds the security + stability hardening described in the [About this fork](#-about-this-fork--sifxprimekrouter) section.
-- **[CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI)** — original Go implementation that inspired the upstream JavaScript port.
-- **[RTK](https://github.com/rtk-ai/rtk)** ![Stars](https://img.shields.io/github/stars/rtk-ai/rtk?style=flat&color=yellow) — Rust token-saver. kRouter ports its compression pipeline to JS → **−20-40% input tokens** on every request.
-- **[Caveman](https://github.com/JuliusBrussee/caveman)** ![Stars](https://img.shields.io/github/stars/JuliusBrussee/caveman?style=flat&color=yellow) by **[@JuliusBrussee](https://github.com/JuliusBrussee)** — viral *"why use many token when few token do trick"*. kRouter adapts its prompt → **−65% output tokens**.
+---
 
-Huge thanks to these authors — without their work, kRouter's token-saving features wouldn't exist. ⭐ them on GitHub!
+## 🐛 Troubleshooting
+
+**"No active credentials for provider"** — Add or reconnect the provider in Dashboard → Providers.
+
+**Rate limited** — kRouter's Zenith engine will auto-fall back. To speed it up, add more accounts or configure a combo.
+
+**MITM cert errors** — Reinstall the root CA from Dashboard → CLI Tools → MITM.
+
+**Dashboard on wrong port** — `PORT=20128 krouter -t`
+
+**Full troubleshooting guide → [krouter.kodelyht.com](https://krouter.kodelyht.com)**
+
+---
+
+## 🛠️ Tech Stack
+
+- **Runtime:** Node.js 20+
+- **Framework:** Next.js 16
+- **UI:** React 19 + Tailwind CSS 4
+- **Database:** SQLite (better-sqlite3 / node:sqlite / sql.js)
+- **Streaming:** Server-Sent Events (SSE)
+- **Auth:** OAuth 2.0 (PKCE) + JWT + API Keys
+
+---
+
+## 📧 Links
+
+- **Website:** [krouter.kodelyht.com](https://krouter.kodelyht.com)
+- **GitHub:** [github.com/sifxprime/krouter](https://github.com/sifxprime/krouter)
+- **Issues:** [github.com/sifxprime/krouter/issues](https://github.com/sifxprime/krouter/issues)
+- **npm:** [`@sifxprime/krouter`](https://www.npmjs.com/package/@sifxprime/krouter)
+
+---
+
+## 🙏 Credits
+
+kRouter is a hardened fork of the upstream **[decolua/9router](https://github.com/decolua/9router)**. Huge thanks to [@decolua](https://github.com/decolua) and the 9router contributors for the original project. ⭐ them on GitHub.
 
 ---
 
 ## 📄 License
 
-MIT License - see [LICENSE](LICENSE) for details.
+MIT License — see [LICENSE](LICENSE) for details.
 
 ---
 
 <div align="center">
-  <sub>Built with ❤️ for developers who code 24/7</sub>
+  <sub>Built with ❤️ by <a href="https://krouter.kodelyht.com">Kodelyth AI Infrastructure</a></sub>
 </div>
