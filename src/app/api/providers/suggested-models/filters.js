@@ -1,6 +1,3 @@
-// Free OpenCode models that don't use the "-free" id suffix
-const KNOWN_FREE_OPENCODE_MODELS = ["big-pickle"];
-
 export const FILTERS = {
   "openrouter-free": (models) =>
     models
@@ -13,10 +10,15 @@ export const FILTERS = {
       .map((m) => ({ id: m.id, name: m.name, contextLength: m.context_length }))
       .sort((a, b) => b.contextLength - a.contextLength),
 
+  // 0.5.82 — OpenCode's free-tier endpoint (opencode.ai/zen/v1/models) now
+  // returns ALL free models with clean IDs (no more "-free" suffix). The old
+  // filter was matching zero of the 50 upstream models. Show everything the
+  // endpoint returns; if a model is on this endpoint at all, it's free.
   "opencode-free": (models) =>
-    models
-      .filter((m) => m.id?.endsWith("-free") || KNOWN_FREE_OPENCODE_MODELS.includes(m.id))
-      .map((m) => ({ id: m.id, name: m.id })),
+    (Array.isArray(models) ? models : []).map((m) => ({
+      id: m.id,
+      name: m.name || m.id,
+    })),
 
   // Xiaomi's free-ai endpoint currently only accepts the "mimo-auto" alias —
   // the other mimo-* names (mimo-v2.5-pro, mimo-v2-omni, mimo-v2-flash, etc.)

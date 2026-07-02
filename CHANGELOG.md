@@ -1,3 +1,9 @@
+# v0.5.82 (2026-07-01) — Fix OpenCode Free-Tier Model Discovery
+
+OpenCode changed how their free-tier endpoint (`opencode.ai/zen/v1/models`) labels models — they no longer append `-free` to IDs. The old k‍router filter in `src/app/api/providers/suggested-models/filters.js` was matching 0 out of 50 upstream models, so users saw an empty OpenCode Free model list even though OpenCode has 50 fresh models available (Claude Fable 5, Claude Opus 4.8, Claude Sonnet 5, GPT-5.5 Pro, Gemini 3.5 Flash, and more).
+
+Fix: The filter now surfaces every model returned by the endpoint. If OpenCode publishes a model on the free-tier endpoint at all, it's free by definition. New models (like Claude Fable 5) will now appear in the dashboard automatically the moment OpenCode adds them upstream.
+
 # v0.5.81 (2026-07-01) — Fix Cloudflare Array Syntax
 
 Hotfix for a compilation error introduced in 0.5.80 where stripping the hardcoded Cloudflare LLM array left a dangling image array without an opening bracket, causing the Next.js build to fail.
