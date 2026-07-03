@@ -342,7 +342,14 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
     // Record health observation for this connection (used by the auth picker's
     // smart re-rank). Counts a successful upstream response and tracks the
     // wall-clock latency so consistently-fast accounts float to the top.
-    recordOutcome(credentials.connectionId, !!result.success, Date.now() - requestStartedAtMs);
+    // 0.5.92 — Also emit into the Zenith routing decision log for the dashboard's
+    // visibility panel. `meta` is optional in recordOutcome; safe to pass here.
+    recordOutcome(
+      credentials.connectionId,
+      !!result.success,
+      Date.now() - requestStartedAtMs,
+      { provider, model, strategy: "zenith" },
+    );
 
     if (result.success) {
       // 0.5.32 — record the conversation→account binding so subsequent turns
