@@ -18,6 +18,9 @@ import AddApiKeyModal from "./AddApiKeyModal";
 import EditCompatibleNodeModal from "./EditCompatibleNodeModal";
 import AddCustomModelModal from "./AddCustomModelModal";
 import BulkImportCodexModal from "./BulkImportCodexModal";
+import ProviderHero from "./ProviderHero";
+import ConnectKit from "./ConnectKit";
+import { getProviderCapabilities } from "@/shared/constants/providerCapabilities";
 
 const ONE_BY_ONE_DELAY_MS = 1000;
 
@@ -132,6 +135,8 @@ export default function ProviderDetailPage() {
         type: providerNode.type,
       }
     : (OAUTH_PROVIDERS[providerId] || APIKEY_PROVIDERS[providerId] || FREE_PROVIDERS[providerId] || FREE_TIER_PROVIDERS[providerId] || WEB_COOKIE_PROVIDERS[providerId]);
+  // 0.5.85 — Unified capability manifest (null for compatible-node pages).
+  const capabilities = providerNode ? null : getProviderCapabilities(providerId);
   const authModes = providerInfo?.authModes || [];
   const isOAuth = !!OAUTH_PROVIDERS[providerId] || !!FREE_PROVIDERS[providerId] || authModes.includes("oauth");
   const supportsApiKeyAuth = !!APIKEY_PROVIDERS[providerId] || authModes.includes("apikey");
@@ -1368,79 +1373,50 @@ export default function ProviderDetailPage() {
 
   return (
     <div className="flex min-w-0 flex-col gap-6 px-1 sm:gap-8 sm:px-0">
-      {/* Header */}
-      <div className="min-w-0">
-        <Link
-          href="/dashboard/providers"
-          className="inline-flex items-center gap-1 text-sm text-text-muted hover:text-primary transition-colors mb-4"
-        >
-          <span className="material-symbols-outlined text-lg">arrow_back</span>
-          Back to Providers
-        </Link>
-        <div className="flex min-w-0 items-center gap-3 sm:gap-4">
-          <div
-            className="flex size-12 shrink-0 items-center justify-center rounded-lg"
-            style={{ backgroundColor: `${providerInfo.color}15` }}
+      {/* 0.5.85 — manifest-driven hero for provider pages; legacy header for compatible nodes */}
+      {capabilities ? (
+        <ProviderHero
+          capabilities={capabilities}
+          connectionCount={connections.length}
+          headerIconPath={headerImgError ? null : getHeaderIconPath()}
+        />
+      ) : (
+        <div className="min-w-0">
+          <Link
+            href="/dashboard/providers"
+            className="inline-flex items-center gap-1 text-sm text-text-muted hover:text-primary transition-colors mb-4"
           >
-            {headerImgError ? (
-              <span className="text-sm font-bold" style={{ color: providerInfo.color }}>
-                {providerInfo.textIcon || providerInfo.id.slice(0, 2).toUpperCase()}
-              </span>
-            ) : (
-              <Image
-                src={getHeaderIconPath()}
-                alt={providerInfo.name}
-                width={48}
-                height={48}
-                className="max-h-12 max-w-12 rounded-lg object-contain"
-                sizes="48px"
-                onError={() => setHeaderImgError(true)}
-              />
-            )}
-          </div>
-          <div className="min-w-0">
-            <div className="flex items-center gap-3 flex-wrap">
-              <h1 className="truncate text-2xl font-semibold tracking-tight sm:text-3xl">{providerInfo.name}</h1>
-              {(providerInfo.notice?.apiKeyUrl || providerInfo.notice?.signupUrl || providerInfo.website) && (
-                <a
-                  href={providerInfo.notice?.apiKeyUrl || providerInfo.notice?.signupUrl || providerInfo.website}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-xs text-primary hover:underline inline-flex items-center gap-1"
-                >
-                  <span className="material-symbols-outlined text-sm">open_in_new</span>
-                  {providerInfo.notice?.apiKeyUrl ? "Get API Key" : "Sign up / Learn more"}
-                </a>
+            <span className="material-symbols-outlined text-lg">arrow_back</span>
+            Back to Providers
+          </Link>
+          <div className="flex min-w-0 items-center gap-3 sm:gap-4">
+            <div
+              className="flex size-12 shrink-0 items-center justify-center rounded-lg"
+              style={{ backgroundColor: `${providerInfo.color}15` }}
+            >
+              {headerImgError ? (
+                <span className="text-sm font-bold" style={{ color: providerInfo.color }}>
+                  {providerInfo.textIcon || providerInfo.id.slice(0, 2).toUpperCase()}
+                </span>
+              ) : (
+                <Image
+                  src={getHeaderIconPath()}
+                  alt={providerInfo.name}
+                  width={48}
+                  height={48}
+                  className="max-h-12 max-w-12 rounded-lg object-contain"
+                  sizes="48px"
+                  onError={() => setHeaderImgError(true)}
+                />
               )}
             </div>
-            <p className="text-text-muted">
-              {connections.length} connection{connections.length === 1 ? "" : "s"}
-            </p>
+            <div className="min-w-0">
+              <h1 className="truncate text-2xl font-semibold tracking-tight sm:text-3xl">{providerInfo.name}</h1>
+              <p className="text-text-muted">
+                {connections.length} connection{connections.length === 1 ? "" : "s"}
+              </p>
+            </div>
           </div>
-        </div>
-      </div>
-
-      {providerInfo.deprecated && (
-        <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-yellow-500/10 border border-yellow-500/30">
-          <span className="material-symbols-outlined text-[16px] text-yellow-500 mt-0.5 shrink-0">warning</span>
-          <p className="text-xs text-red-600 dark:text-yellow-400 leading-relaxed">{providerInfo.deprecationNotice}</p>
-        </div>
-      )}
-
-      {providerInfo.notice?.text && !providerInfo.deprecated && (
-        <div className="flex flex-col gap-2 rounded-lg border border-blue-500/30 bg-blue-500/10 px-3 py-2 sm:flex-row sm:items-center">
-          <span className="material-symbols-outlined text-[16px] text-blue-500 shrink-0">info</span>
-          <p className="min-w-0 flex-1 text-xs leading-relaxed text-blue-600 dark:text-blue-400">{providerInfo.notice.text}</p>
-          {providerInfo.notice.apiKeyUrl && (
-            <a
-              href={providerInfo.notice.apiKeyUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex justify-center rounded bg-blue-500 px-2 py-1 text-xs font-medium text-white transition-colors hover:bg-blue-600 sm:py-0.5"
-            >
-              Get API Key →
-            </a>
-          )}
         </div>
       )}
 
@@ -1587,53 +1563,29 @@ export default function ProviderDetailPage() {
           </div>
 
           {connections.length === 0 ? (
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <div className="flex items-center gap-3">
-                <div className="inline-flex items-center justify-center w-9 h-9 rounded-full bg-primary/10 text-primary shrink-0">
-                  <span className="material-symbols-outlined text-[18px]">{isOAuth ? "lock" : "key"}</span>
-                </div>
-                <div className="min-w-0">
+            capabilities ? (
+              // 0.5.85 — manifest-driven ConnectKit replaces the branchy empty-state.
+              <ConnectKit
+                capabilities={capabilities}
+                onOAuth={triggerOAuthConnection}
+                onApiKey={triggerApiKeyConnection}
+                onFree={triggerAddConnection}
+                onCookie={() => setShowIFlowCookieModal(true)}
+                onCompatible={triggerApiKeyConnection}
+                onBulkImport={() => setShowBulkImportCodex(true)}
+              />
+            ) : (
+              // Fallback for compatible-node pages (no capabilities manifest).
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="inline-flex items-center justify-center w-9 h-9 rounded-full bg-primary/10 text-primary shrink-0">
+                    <span className="material-symbols-outlined text-[18px]">key</span>
+                  </div>
                   <p className="text-sm text-text-muted">No connections yet</p>
-                  {hasDualAuthModes && (
-                    <p className="text-xs text-text-muted">
-                      Choose {oauthConnectionLabel} or {apiKeyConnectionLabel}.
-                    </p>
-                  )}
                 </div>
+                <Button size="sm" icon="add" onClick={triggerAddConnection}>Add API Key</Button>
               </div>
-              <div className="flex gap-2">
-                {hasDualAuthModes ? (
-                  <>
-                    <Button size="sm" icon="lock" variant="secondary" onClick={triggerOAuthConnection}>
-                      {oauthConnectionLabel}
-                    </Button>
-                    <Button size="sm" icon="key" onClick={triggerApiKeyConnection}>
-                      {apiKeyConnectionLabel}
-                    </Button>
-                  </>
-                ) : (
-                  <>
-                    {!isCompatible && providerId === "iflow" && (
-                      <Button size="sm" icon="cookie" variant="secondary" onClick={() => setShowIFlowCookieModal(true)}>
-                        Cookie
-                      </Button>
-                    )}
-                    {providerId === "codex" && (
-                      <Button size="sm" icon="playlist_add" variant="secondary" onClick={() => setShowBulkImportCodex(true)}>
-                        {translate("Bulk Add")}
-                      </Button>
-                    )}
-                    <Button
-                      size="sm"
-                      icon="add"
-                      onClick={triggerAddConnection}
-                    >
-                      {isCompatible ? "Add API Key" : (providerId === "iflow" ? "OAuth" : "Add Connection")}
-                    </Button>
-                  </>
-                )}
-              </div>
-            </div>
+            )
           ) : (
             <>
               {oneByOneSummary && (

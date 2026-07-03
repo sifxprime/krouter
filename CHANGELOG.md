@@ -1,3 +1,20 @@
+# v0.5.85 (2026-07-03) — Provider Page Redesign (Editorial-Bento) + Capability Manifest
+
+The per-provider detail page (`/dashboard/providers/[id]`) has been reshaped from a 1874-line branchy monolith that rendered the same layout for every provider — hiding pieces behind `if (isOAuth)` / `if (providerId === "iflow")` checks — into a manifest-driven layout that adapts to what the provider actually is.
+
+- **Provider Capability Manifest**: New `getProviderCapabilities(id)` reads the 5 existing category maps (OAUTH_PROVIDERS, APIKEY_PROVIDERS, FREE_PROVIDERS, FREE_TIER_PROVIDERS, WEB_COOKIE_PROVIDERS) and returns one unified shape: `{ tier, authModes, links, features, notices, ... }`. Every existing consumer of the raw maps still works; new UI code imports the manifest. 9 unit tests + all 1029 existing tests pass.
+- **ProviderHero**: Bento-editorial hero card with brand-color accent, tier chip (free / free tier / OAuth / API key / cookie), and a compact strip of link chips (Get API key · Homepage · Docs · Pricing) rendered from the manifest. Deprecated providers show a distinct warning banner.
+- **ConnectKit (5 auth-mode variants)**: Replaces the empty-state block that used to branch through 4 different button combinations. Each auth mode gets its own opinionated card:
+  - `FreeKit` — "Connect for free — one click" (green accent, no fields)
+  - `OAuthKit` — "Sign in with X" big button + optional Bulk import for providers that support it
+  - `ApiKeyKit` — "Paste your X API key" with the get-key-domain linked inline
+  - `CompatibleKit` — "Configure endpoint" for OpenAI/Anthropic-shaped custom endpoints
+  - `CookieKit` — advanced, show/hide, with step-by-step extraction instructions
+- **Dual-auth tabs**: When the manifest declares multiple `authModes`, the ConnectKit renders a tab strip above the active kit — e.g. xAI (OAuth + API key) or Claude (OAuth + Compatible fallback). Removes the old side-by-side button pair.
+- **Dead code**: Deleted `page.new.js` (1724-line stalled refactor from an earlier attempt, zero callers).
+
+No CSS additions — reuses existing Tailwind tokens throughout. No functional changes to OAuth callback, API-key modal, cookie modal, or bulk-import flow; the kits invoke the same trigger callbacks that the old empty-state buttons did.
+
 # v0.5.84 (2026-07-03) — Live Health API, /v1/models Cache, Refresh De-dup, Dead Code Cleanup
 
 Four wired-up improvements found via codebase-memory graph analysis:
