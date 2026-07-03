@@ -1,3 +1,14 @@
+# v0.5.86 (2026-07-03) — Live Model Catalog for Every API-Key Provider
+
+Every OpenAI-shaped API-key provider now fetches its live model catalog the moment you paste a key — even the ~25 providers that used to be stuck on stale hardcoded lists.
+
+- **Universal LIVE_FETCH table**: New `src/shared/constants/liveFetch.js` with URL + auth-header + parse rules for every OpenAI-shaped provider. Adds coverage for the ~25 previously-missing providers: Kimi, GLM (both), Minimax (both), Xiaomi MiMo, Blackbox, CommandCode, OpenCode Go, Voyage AI, Deepgram (Token auth), ElevenLabs (xi-api-key), and Cartesia. Anthropic uses `x-api-key` + `Anthropic-Version`; Gemini uses `?key=` query auth — all handled by the same dispatcher.
+- **`POST /api/models/preview`**: New endpoint takes `{providerId, apiKey}` and returns `{success, count, models, cached}` — or a clear inline error like `"Invalid API key"` on 401/403. 10-minute hashed-key LRU cache so re-typing the same key doesn't re-hit upstream.
+- **AddApiKeyModal auto-preview**: 600ms debounced live catalog fetch on API-key input. Chip shows `"Fetched 87 models from SiliconFlow"` on success, `"Invalid API key"` on failure, `"No live catalog for this provider"` for providers without a fetcher. Zero clicks required — happens as you type.
+- **Cache & rate-limit friendly**: 10-min TTL, in-process LRU, 200-entry cap. Providers with rate-limited /models endpoints (Kimi, Blackbox) won't get hammered.
+
+Backward compatible — the existing 708-line `/api/providers/[id]/models` endpoint stays as fallback for stored-connection flows. All 1038 tests pass (+9 new).
+
 # v0.5.85 (2026-07-03) — Provider Page Redesign (Editorial-Bento) + Capability Manifest
 
 The per-provider detail page (`/dashboard/providers/[id]`) has been reshaped from a 1874-line branchy monolith that rendered the same layout for every provider — hiding pieces behind `if (isOAuth)` / `if (providerId === "iflow")` checks — into a manifest-driven layout that adapts to what the provider actually is.

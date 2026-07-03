@@ -1,9 +1,14 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import PropTypes from "prop-types";
 import { Button, Badge, Input, Modal, Select } from "@/shared/components";
 import { AI_PROVIDERS } from "@/shared/constants/providers";
+
+// 0.5.86 — Live preview debounce window.
+// Providers rate-limit /v1/models, so we only fire after the user has stopped
+// typing for 600ms.
+const PREVIEW_DEBOUNCE_MS = 600;
 
 const BULK_PLACEHOLDER = `name1|sk-key1\nname2|sk-key2\nsk-key-only-auto-named`;
 
@@ -41,6 +46,9 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
   const [validating, setValidating] = useState(false);
   const [validationResult, setValidationResult] = useState(null);
   const [saving, setSaving] = useState(false);
+  // 0.5.86 — Live preview state.
+  const [previewState, setPreviewState] = useState({ status: "idle" });
+  const previewTimerRef = useRef(null);
   const [mode, setMode] = useState("single"); // "single" | "bulk"
   const [bulkText, setBulkText] = useState("");
   const [bulkResult, setBulkResult] = useState(null); // { success, failed }
@@ -65,6 +73,42 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
     }
     return undefined;
   };
+
+  // 0.5.86 — Auto-fetch the live model catalog when the API key stops changing.
+  // Runs against /api/models/preview which knows how to hit every OpenAI-shaped
+  // provider (SiliconFlow, Kimi, GLM, Minimax, Blackbox, Deepgram, ...) using
+  // the manifest in shared/constants/liveFetch.js.
+  useEffect(() => {
+    if (previewTimerRef.current) clearTimeout(previewTimerRef.current);
+    const key = formData.apiKey?.trim();
+    if (!key || key.length < 6 || isCookie || isOllamaLocal) {
+      setPreviewState({ status: "idle" });
+      return;
+    }
+    setPreviewState({ status: "loading" });
+    previewTimerRef.current = setTimeout(async () => {
+      try {
+        const res = await fetch("/api/models/preview", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ providerId: provider, apiKey: key }),
+        });
+        const data = await res.json();
+        if (data.code === "no_fetcher") {
+          setPreviewState({ status: "unsupported" });
+        } else if (data.success) {
+          setPreviewState({ status: "ok", count: data.count, cached: !!data.cached });
+        } else {
+          setPreviewState({ status: "error", error: data.error || "Fetch failed" });
+        }
+      } catch {
+        setPreviewState({ status: "error", error: "Network error" });
+      }
+    }, PREVIEW_DEBOUNCE_MS);
+    return () => {
+      if (previewTimerRef.current) clearTimeout(previewTimerRef.current);
+    };
+  }, [formData.apiKey, provider, isCookie, isOllamaLocal]);
 
   const handleValidate = async () => {
     setValidating(true);
@@ -227,6 +271,36 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
                 {validating ? "Checking..." : "Check"}
               </Button>
             </div>
+          </div>
+        )}
+        {/* 0.5.86 — Live model-count chip. Auto-populated as user types. */}
+        {previewState.status !== "idle" && !isCookie && !isOllamaLocal && (
+          <div className="flex flex-wrap items-center gap-2 text-xs">
+            {previewState.status === "loading" && (
+              <span className="inline-flex items-center gap-1.5 text-text-muted">
+                <span className="material-symbols-outlined animate-spin text-sm">progress_activity</span>
+                Checking key + fetching catalog…
+              </span>
+            )}
+            {previewState.status === "ok" && (
+              <span className="inline-flex items-center gap-1.5 text-green-500">
+                <span className="material-symbols-outlined text-sm">check_circle</span>
+                Fetched {previewState.count} model{previewState.count === 1 ? "" : "s"} from {providerName || provider}
+                {previewState.cached && <span className="text-text-muted">· cached</span>}
+              </span>
+            )}
+            {previewState.status === "error" && (
+              <span className="inline-flex items-center gap-1.5 text-red-500">
+                <span className="material-symbols-outlined text-sm">error</span>
+                {previewState.error}
+              </span>
+            )}
+            {previewState.status === "unsupported" && (
+              <span className="inline-flex items-center gap-1.5 text-text-muted">
+                <span className="material-symbols-outlined text-sm">info</span>
+                No live catalog for this provider — you can still save the key.
+              </span>
+            )}
           </div>
         )}
         {isXaiApiKey && (
