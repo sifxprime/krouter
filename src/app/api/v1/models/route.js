@@ -10,6 +10,27 @@ import { getDisabledModels } from "@/lib/disabledModelsDb";
 import { resolveKiroModels } from "open-sse/services/kiroModels.js";
 import { resolveQoderModels } from "open-sse/services/qoderModels.js";
 import { capabilitiesFromServiceKind } from "open-sse/providers/capabilities.js";
+import crypto from "node:crypto";
+
+// 0.5.84 — In-memory cache for /v1/models responses. TTL 30s. Keyed by the
+// requested kind filter + output format. Cheap ETag off the JSON hash so
+// IDE clients can 304 on repeat polls. No explicit invalidation — 30s is
+// short enough that connection/combo/alias edits become visible quickly.
+const _MODELS_CACHE_TTL_MS = 30_000;
+const _modelsCache = new Map(); // key -> { body, etag, expiresAt }
+
+function _modelsCacheKey(kindFilter, format) {
+  return `${[...kindFilter].sort().join(",")}|${format}`;
+}
+
+function _makeEtag(body) {
+  const hash = crypto.createHash("sha1").update(body).digest("hex").slice(0, 16);
+  return `W/"${hash}"`;
+}
+
+export function invalidateModelsCache() {
+  _modelsCache.clear();
+}
 
 // Per-provider live model resolvers. Each receives a connection record and
 // returns { models: [{ id, name? }, ...] } | null on failure.
@@ -448,20 +469,50 @@ export async function OPTIONS() {
  */
 export async function GET(request) {
   try {
-    const data = await buildModelsList([LLM_KIND]);
-
     const ua = (request?.headers?.get("user-agent") || "").toLowerCase();
     const url = new URL(request.url);
     const wantsCatalog = ua.includes("codex") || url.searchParams.get("format") === "codex";
+    const format = wantsCatalog ? "codex" : "openai";
+    const kindFilter = [LLM_KIND];
 
-    if (wantsCatalog) {
-      return Response.json({
-        models: data.map((m) => ({ id: m.id, name: m.id, ...(m.capabilities ? { capabilities: m.capabilities } : {}) })),
-      }, { headers: { "Access-Control-Allow-Origin": "*" } });
+    const cacheKey = _modelsCacheKey(kindFilter, format);
+    const now = Date.now();
+    let cached = _modelsCache.get(cacheKey);
+    if (!cached || cached.expiresAt <= now) {
+      const data = await buildModelsList(kindFilter);
+      const body = wantsCatalog
+        ? JSON.stringify({
+            models: data.map((m) => ({
+              id: m.id,
+              name: m.id,
+              ...(m.capabilities ? { capabilities: m.capabilities } : {}),
+            })),
+          })
+        : JSON.stringify({ object: "list", data });
+      cached = { body, etag: _makeEtag(body), expiresAt: now + _MODELS_CACHE_TTL_MS };
+      _modelsCache.set(cacheKey, cached);
     }
 
-    return Response.json({ object: "list", data }, {
-      headers: { "Access-Control-Allow-Origin": "*" },
+    const ifNoneMatch = request?.headers?.get("if-none-match");
+    if (ifNoneMatch && ifNoneMatch === cached.etag) {
+      return new Response(null, {
+        status: 304,
+        headers: {
+          "Access-Control-Allow-Origin": "*",
+          "Cache-Control": "public, max-age=30",
+          ETag: cached.etag,
+        },
+      });
+    }
+
+    return new Response(cached.body, {
+      status: 200,
+      headers: {
+        "Content-Type": "application/json",
+        "Access-Control-Allow-Origin": "*",
+        "Cache-Control": "public, max-age=30",
+        ETag: cached.etag,
+      },
     });
   } catch (error) {
     console.log("Error fetching models:", error);

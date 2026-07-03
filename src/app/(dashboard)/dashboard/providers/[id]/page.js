@@ -409,6 +409,23 @@ export default function ProviderDetailPage() {
     fetchDisabledModels();
   }, [fetchConnections, fetchAliases, fetchDisabledModels]);
 
+  // 0.5.84 — Poll live health snapshot every 10s for the colored dot indicator.
+  const [healthMap, setHealthMap] = useState({});
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const r = await fetch("/api/providers/health", { cache: "no-store" });
+        if (!r.ok) return;
+        const j = await r.json();
+        if (!cancelled && j?.success && j.snapshot) setHealthMap(j.snapshot);
+      } catch {/* silent */}
+    };
+    load();
+    const int = setInterval(load, 10_000);
+    return () => { cancelled = true; clearInterval(int); };
+  }, []);
+
   // Fetch suggested models from provider's public API (if configured)
   useEffect(() => {
     const fetcher = (OAUTH_PROVIDERS[providerId] || APIKEY_PROVIDERS[providerId] || FREE_PROVIDERS[providerId] || FREE_TIER_PROVIDERS[providerId])?.modelsFetcher;
@@ -845,6 +862,7 @@ export default function ProviderDetailPage() {
               <ConnectionRow
                 connection={conn}
                 proxyPools={proxyPools}
+                health={healthMap[conn.id]}
                 isOAuth={isOAuth}
                 isFirst={index === 0}
                 isLast={index === connections.length - 1}

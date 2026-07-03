@@ -127,17 +127,16 @@ export function selectAccount(accounts, strategy = "fill-first", state = {}, mod
 }
 
 // Per-provider round-robin state — keyed by provider id.
-// Caller is responsible for selecting the right strategy; this just holds state.
+// State is mutated in place inside selectAccount() via the returned object;
+// getRoundRobinState() is enough for round-robin to work.
 const roundRobinState = new Map();
 
 export function getRoundRobinState(providerId) {
   return roundRobinState.get(providerId) || {};
 }
 
-export function setRoundRobinState(providerId, state) {
-  roundRobinState.set(providerId, state);
-}
-
+// Test-only utility: clear internal state between test runs.
+// Not called from production code — tests import it directly.
 export function clearAllSelectorState() {
   roundRobinState.clear();
 }

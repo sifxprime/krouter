@@ -1,6 +1,7 @@
 // Re-export from open-sse with local logger
 import * as log from "../utils/logger.js";
 import { updateProviderConnection } from "../../lib/localDb.js";
+import { getCachedConnectionById, updateCachedConnection } from "@/shared/services/healthCache.js";
 import {
   getProjectIdForConnection,
   invalidateProjectId,
@@ -229,6 +230,32 @@ export async function checkAndRefreshToken(provider, credentials) {
     creds.connectionId = creds.id;
   }
 
+  // 0.5.84 — Concurrency de-dup: if a parallel request already refreshed the
+  // token in the last ~10s, the health cache holds the fresh value. Consult it
+  // BEFORE we touch the network. Saves a full OAuth round trip when multiple
+  // IDE requests fire in parallel against the same account.
+  if (creds.connectionId && creds.connectionId !== "noauth") {
+    try {
+      const fresh = await getCachedConnectionById(creds.connectionId, provider);
+      if (fresh && fresh.expiresAt) {
+        const freshExpiryMs = new Date(fresh.expiresAt).getTime();
+        const staleExpiryMs = creds.expiresAt ? new Date(creds.expiresAt).getTime() : 0;
+        // Only adopt if the cached version is strictly newer AND still valid
+        // for at least the refresh lead window.
+        if (freshExpiryMs > staleExpiryMs && freshExpiryMs - Date.now() > _getRefreshLeadMs(provider)) {
+          creds = {
+            ...creds,
+            accessToken: fresh.accessToken || creds.accessToken,
+            refreshToken: fresh.refreshToken || creds.refreshToken,
+            expiresAt: fresh.expiresAt,
+            lastRefreshAt: fresh.lastRefreshAt || creds.lastRefreshAt,
+            providerSpecificData: fresh.providerSpecificData || creds.providerSpecificData,
+          };
+        }
+      }
+    } catch { /* cache miss is fine; fall through to normal path */ }
+  }
+
   // ── 1. Regular access-token expiry ────────────────────────────────────────
   if (_shouldRefreshCredentials(provider, creds)) {
     const expiresAt = creds.expiresAt ? new Date(creds.expiresAt).getTime() : null;
@@ -262,6 +289,19 @@ export async function checkAndRefreshToken(provider, credentials) {
           ? { ...creds.providerSpecificData, ...newCreds.providerSpecificData }
           : creds.providerSpecificData,
       };
+
+      // 0.5.84 — Publish the fresh token to the RAM cache so any concurrent
+      // in-flight request immediately sees the new value (see checkAndRefreshToken
+      // step 0) instead of also triggering a refresh.
+      if (creds.connectionId) {
+        updateCachedConnection(creds.connectionId, provider, {
+          accessToken: creds.accessToken,
+          refreshToken: creds.refreshToken,
+          expiresAt: creds.expiresAt,
+          lastRefreshAt: Date.now(),
+          providerSpecificData: creds.providerSpecificData,
+        });
+      }
 
       // Non-blocking: refresh projectId with the new access token
       _refreshProjectId(provider, creds.connectionId, creds.accessToken);

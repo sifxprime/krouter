@@ -102,18 +102,6 @@ export function scoreOf(connectionId) {
 }
 
 /**
- * Rank connections so the healthiest goes first. Stable: connections with the
- * same score keep their input order (so priority-set order survives ties).
- * Returns a new array; does not mutate the input.
- */
-export function rankConnections(connections) {
-  if (!Array.isArray(connections) || connections.length < 2) return connections || [];
-  const scored = connections.map((c, i) => ({ c, i, s: scoreOf(c.id) }));
-  scored.sort((a, b) => b.s - a.s || a.i - b.i);
-  return scored.map((x) => x.c);
-}
-
-/**
  * Snapshot for diagnostics / dashboard.
  */
 export function getHealthSnapshot() {
@@ -133,9 +121,3 @@ export function getHealthSnapshot() {
   return out;
 }
 
-/**
- * Reset all scores. Mainly used by tests.
- */
-export function resetHealth() {
-  g.scores.clear();
-}

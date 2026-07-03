@@ -5,7 +5,7 @@ import PropTypes from "prop-types";
 import { Badge, Toggle, Tooltip } from "@/shared/components";
 import CooldownTimer from "./CooldownTimer";
 
-export default function ConnectionRow({ connection, proxyPools, isOAuth, isFirst, isLast, onMoveUp, onMoveDown, onToggleActive, onUpdateProxy, onEdit, onDelete, oneByOneStatus = null, autoPing = null }) {
+export default function ConnectionRow({ connection, proxyPools, health = null, isOAuth, isFirst, isLast, onMoveUp, onMoveDown, onToggleActive, onUpdateProxy, onEdit, onDelete, oneByOneStatus = null, autoPing = null }) {
   const [showProxyDropdown, setShowProxyDropdown] = useState(false);
   const [updatingProxy, setUpdatingProxy] = useState(false);
   const proxyDropdownRef = useRef(null);
@@ -154,6 +154,21 @@ export default function ConnectionRow({ connection, proxyPools, isOAuth, isFirst
         <span className="material-symbols-outlined shrink-0 text-base text-text-muted">
           {authIcon}
         </span>
+        {health && (() => {
+          // 0.5.84 — Live health dot. Green if score≥750, amber ≥400, red else.
+          const s = health.score ?? 500;
+          const color = s >= 750 ? "bg-green-500" : s >= 400 ? "bg-amber-500" : "bg-red-500";
+          const sr = health.successRate != null ? `${health.successRate}%` : "n/a";
+          const lat = `${health.ewmaLatencyMs}ms`;
+          const title = `Health ${Math.round(s)} • success ${sr} • latency ${lat} (n=${health.observed})`;
+          return (
+            <span
+              className={`shrink-0 inline-block h-2 w-2 rounded-full ${color}`}
+              title={title}
+              aria-label={title}
+            />
+          );
+        })()}
         <div className="flex-1 min-w-0">
           <p className="text-sm font-medium truncate">{displayName}</p>
           <div className="mt-1 flex min-w-0 flex-wrap items-center gap-1.5 sm:gap-2">
@@ -283,6 +298,13 @@ ConnectionRow.propTypes = {
     priority: PropTypes.number,
     globalPriority: PropTypes.number,
   }).isRequired,
+  health: PropTypes.shape({
+    score: PropTypes.number,
+    ewmaLatencyMs: PropTypes.number,
+    successRate: PropTypes.number,
+    observed: PropTypes.number,
+    lastUpdate: PropTypes.number,
+  }),
   proxyPools: PropTypes.arrayOf(PropTypes.shape({
     id: PropTypes.string,
     name: PropTypes.string,

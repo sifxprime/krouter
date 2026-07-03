@@ -80,12 +80,39 @@ export function lockAccountInMemory(connectionId, provider, updateData) {
 }
 
 /**
- * Get a specific connection by ID from the cache.
+ * Get a specific connection by ID from the cache. If provider is not passed,
+ * scans all cached providers.
+ * Returns null if not found or the connection isn't active.
  */
-export async function getCachedConnectionById(connectionId, provider) {
+export async function getCachedConnectionById(connectionId, provider = null) {
+  if (!connectionId) return null;
   if (Date.now() - _lastSyncTime > CACHE_TTL_MS) {
     await syncHealthCache();
   }
-  const connections = _cache.get(provider) || [];
-  return connections.find(c => c.id === connectionId) || null;
+  if (provider) {
+    const connections = _cache.get(provider) || [];
+    return connections.find(c => c.id === connectionId) || null;
+  }
+  // No provider hint — scan across all providers.
+  for (const connections of _cache.values()) {
+    const hit = connections.find(c => c.id === connectionId);
+    if (hit) return hit;
+  }
+  return null;
+}
+
+/**
+ * 0.5.84 — Update cached credentials in place after a successful token refresh.
+ * This is critical for de-duping concurrent refresh attempts: the next request
+ * that arrives during the 10s cache window will see the fresh accessToken and
+ * expiresAt immediately instead of triggering its own refresh.
+ * Fires an async DB write for durability.
+ */
+export function updateCachedConnection(connectionId, provider, updateData) {
+  if (!_cache.has(provider)) return;
+  const connections = _cache.get(provider);
+  const connIndex = connections.findIndex(c => c.id === connectionId);
+  if (connIndex !== -1) {
+    Object.assign(connections[connIndex], updateData);
+  }
 }

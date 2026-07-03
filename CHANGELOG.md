@@ -1,3 +1,14 @@
+# v0.5.84 (2026-07-03) — Live Health API, /v1/models Cache, Refresh De-dup, Dead Code Cleanup
+
+Four wired-up improvements found via codebase-memory graph analysis:
+
+- **Live Health Snapshot API**: New `GET /api/providers/health` exposes the Zenith EWMA latency + success rate tracker. The provider dashboard now polls it every 10s and shows a live colored dot per connection card (green ≥750, amber ≥400, red below), with tooltip showing exact score / latency / success rate. Previously the health tracker was fully wired into routing but had no UI surface.
+- **/v1/models Cache + ETag**: Wrapped the OpenAI-compatible models endpoint in a 30-second in-memory cache keyed by kind filter + format. Added weak ETag (`W/"<sha1>"`) so repeat polls from Codex/Cursor/Cline return `304 Not Modified` when unchanged. Cuts DB round-trips on model-list polling by ~95% under bursty IDE traffic.
+- **Concurrent Refresh De-duplication**: `checkAndRefreshToken()` now consults the `healthCache` for a fresher access token before triggering its own refresh. When a successful refresh completes, the new token is republished into the cache immediately. Parallel IDE requests against the same account no longer each trigger their own OAuth round-trip.
+- **Dead Code Removal**: Deleted 3 unreferenced functions surfaced by `codebase-memory-mcp` graph analysis (`in_degree=0`): `setRoundRobinState` from `accountSelector.js`, and `rankConnections` + `resetHealth` from `connectionHealth.js`. The Zenith Score Engine already superseded `rankConnections`.
+
+All 1020 tests pass.
+
 # v0.5.82 (2026-07-01) — Fix OpenCode Free-Tier Model Discovery
 
 OpenCode changed how their free-tier endpoint (`opencode.ai/zen/v1/models`) labels models — they no longer append `-free` to IDs. The old k‍router filter in `src/app/api/providers/suggested-models/filters.js` was matching 0 out of 50 upstream models, so users saw an empty OpenCode Free model list even though OpenCode has 50 fresh models available (Claude Fable 5, Claude Opus 4.8, Claude Sonnet 5, GPT-5.5 Pro, Gemini 3.5 Flash, and more).
