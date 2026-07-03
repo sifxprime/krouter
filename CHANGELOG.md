@@ -1,3 +1,14 @@
+# v0.5.87 (2026-07-03) — Live Catalog on the Provider Page + Atomesus Fix
+
+The Available Models section on every provider page now shows a live freshness pill using the connection's stored credential. Previously v0.5.86 only wired live-fetch into the Add API Key modal — visiting a saved provider looked identical to before.
+
+- **Fix Atomesus 0-models**: `atomesus.modelsFetcher.type` was `"openrouter-free"` which required `pricing.prompt === "0"` and `context_length >= 200000`. Atomesus returns a bare OpenAI shape without those fields, so the filter dropped its 1 real model (`cipher`) → 0. Changed to `type: "openai"`. Also broadened the `openrouter-free` filter to pass-through when it would otherwise return 0, so any other provider misconfigured to that filter type still surfaces its catalog.
+- **New `/api/models/live-by-connection` endpoint**: Takes `connectionId`, reads stored `apiKey` / `accessToken` from the DB, hits the provider's real endpoint via the LIVE_FETCH table (all 34+ providers). 10-min cache. Supports `?force=1` for manual refresh.
+- **New `LiveModelsPanel` component**: Renders the freshness pill on the Available Models card — `"Live · N models · Updated Xs ago · Refresh"`. Silent 5-min background refresh. Renders nothing when there's no active connection or the provider isn't in LIVE_FETCH — so no visual noise on unauthenticated pages.
+- **openai filter type**: Added standard OpenAI pass-through as an explicit filter so future providers can opt into it explicitly instead of overloading openrouter-free.
+
+All 1038 tests pass.
+
 # v0.5.86 (2026-07-03) — Live Model Catalog for Every API-Key Provider
 
 Every OpenAI-shaped API-key provider now fetches its live model catalog the moment you paste a key — even the ~25 providers that used to be stuck on stale hardcoded lists.

@@ -1,14 +1,28 @@
 export const FILTERS = {
-  "openrouter-free": (models) =>
-    models
+  // 0.5.87 — Pass-through fallback if provider doesn't return {pricing, context_length}.
+  // Prevents providers like Atomesus (bare OpenAI shape) from silently returning 0.
+  "openrouter-free": (models) => {
+    const list = Array.isArray(models) ? models : [];
+    const filtered = list
       .filter(
         (m) =>
           m.pricing?.prompt === "0" &&
           m.pricing?.completion === "0" &&
-          m.context_length >= 200000
+          m.context_length >= 200000,
       )
-      .map((m) => ({ id: m.id, name: m.name, contextLength: m.context_length }))
-      .sort((a, b) => b.contextLength - a.contextLength),
+      .map((m) => ({ id: m.id || m.name, name: m.name || m.id, contextLength: m.context_length }))
+      .sort((a, b) => b.contextLength - a.contextLength);
+    if (filtered.length > 0) return filtered;
+    return list
+      .filter((m) => m?.id || m?.name || m?.model)
+      .map((m) => ({ id: m.id || m.name || m.model, name: m.name || m.id || m.model }));
+  },
+
+  // 0.5.87 — Standard OpenAI pass-through — {data: [{id, ...}]}.
+  openai: (models) =>
+    (Array.isArray(models) ? models : [])
+      .filter((m) => m?.id || m?.name || m?.model)
+      .map((m) => ({ id: m.id || m.name || m.model, name: m.name || m.id || m.model })),
 
   // 0.5.82 — OpenCode's free-tier endpoint (opencode.ai/zen/v1/models) now
   // returns ALL free models with clean IDs (no more "-free" suffix). The old

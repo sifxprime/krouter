@@ -20,6 +20,7 @@ import AddCustomModelModal from "./AddCustomModelModal";
 import BulkImportCodexModal from "./BulkImportCodexModal";
 import ProviderHero from "./ProviderHero";
 import ConnectKit from "./ConnectKit";
+import LiveModelsPanel from "./LiveModelsPanel";
 import { getProviderCapabilities } from "@/shared/constants/providerCapabilities";
 
 const ONE_BY_ONE_DELAY_MS = 1000;
@@ -137,6 +138,9 @@ export default function ProviderDetailPage() {
     : (OAUTH_PROVIDERS[providerId] || APIKEY_PROVIDERS[providerId] || FREE_PROVIDERS[providerId] || FREE_TIER_PROVIDERS[providerId] || WEB_COOKIE_PROVIDERS[providerId]);
   // 0.5.85 — Unified capability manifest (null for compatible-node pages).
   const capabilities = providerNode ? null : getProviderCapabilities(providerId);
+  // 0.5.87 — Live model IDs fetched from the provider's API via the first
+  // active connection. Merged into the visible catalog by page.js consumers.
+  const [liveModelIds, setLiveModelIds] = useState([]);
   const authModes = providerInfo?.authModes || [];
   const isOAuth = !!OAUTH_PROVIDERS[providerId] || !!FREE_PROVIDERS[providerId] || authModes.includes("oauth");
   const supportsApiKeyAuth = !!APIKEY_PROVIDERS[providerId] || authModes.includes("apikey");
@@ -1698,6 +1702,16 @@ export default function ProviderDetailPage() {
         </div>
         {!!modelsTestError && (
           <p className="text-xs text-red-500 mb-3 break-words">{modelsTestError}</p>
+        )}
+        {/* 0.5.87 — Live catalog freshness pill (renders nothing when no connection or provider lacks live fetcher) */}
+        <LiveModelsPanel
+          connections={connections}
+          onLiveModels={(list) => setLiveModelIds(list.map((m) => m.id))}
+        />
+        {liveModelIds.length > 0 && (
+          <div className="mb-3 text-xs text-text-muted">
+            Live catalog returned {liveModelIds.length} model{liveModelIds.length === 1 ? "" : "s"}. Static list is shown below; live-only IDs will appear once you enable per-connection catalogs (v0.5.88 preview).
+          </div>
         )}
         {renderModelsSection()}
       </Card>
