@@ -1,3 +1,12 @@
+# v0.5.90 (2026-07-03) — Live catalog for user-configured compatible nodes
+
+Previously `openai-compatible-*` / `anthropic-compatible-*` connections (user-configured custom endpoints like DigitalOcean AI, LiteLLM, etc.) showed "From API (0)" because neither the new `/api/models/live-by-connection` nor the legacy `/api/providers/[id]/models` endpoint knew their provider IDs — they're dynamic UUIDs, not entries in any table.
+
+- `/api/models/live-by-connection` now detects the `openai-compatible-*` / `anthropic-compatible-*` provider prefix, reads the connection's `providerSpecificData.baseUrl`, and builds the fetcher on the fly (`Bearer` auth for OpenAI-shape, `x-api-key` + `anthropic-version` for Anthropic-shape).
+- End-to-end probe against a real DigitalOcean AI compatible node (baseUrl `https://inference.do-ai.run/v1`) confirms the fetcher returns the full model catalog.
+
+All 1038 tests pass.
+
 # v0.5.89 (2026-07-03) — Cleanup: remove duplicate LiveModelsPanel
 
 v0.5.87 introduced a `LiveModelsPanel` component that duplicated the existing "From API (N)" section, added component-scope `liveModelIds` state that shadowed a pre-existing local const inside `renderModelsSection`, and inserted extra JSX above the models list. The duplicate state and JSX made the render tree fragile — the model test buttons stopped responding on some renders.

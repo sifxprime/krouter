@@ -95,7 +95,35 @@ export async function GET(request) {
   }
 
   const provider = connection.provider;
-  const fetcher = getLiveFetcher(provider);
+  let fetcher = getLiveFetcher(provider);
+
+  // 0.5.90 — Dynamic fetcher for user-configured compatible nodes.
+  // provider ids look like `openai-compatible-<uuid>` / `anthropic-compatible-<uuid>`;
+  // the base URL + key live inside providerSpecificData.
+  if (!fetcher) {
+    const isOpenAICompat = /^openai-compatible/.test(provider);
+    const isAnthropicCompat = /^anthropic-compatible/.test(provider);
+    const baseUrl = connection.providerSpecificData?.baseUrl || connection.baseUrl;
+    if ((isOpenAICompat || isAnthropicCompat) && baseUrl) {
+      const cleanBase = String(baseUrl).replace(/\/$/, "");
+      const modelsUrl = /\/models$/.test(cleanBase) ? cleanBase : `${cleanBase}/models`;
+      fetcher = isAnthropicCompat
+        ? {
+            url: modelsUrl,
+            authHeader: "x-api-key",
+            authPrefix: "",
+            extraHeaders: { "anthropic-version": "2023-06-01" },
+            parse: (j) => Array.isArray(j?.data) ? j.data : [],
+          }
+        : {
+            url: modelsUrl,
+            authHeader: "Authorization",
+            authPrefix: "Bearer ",
+            parse: (j) => Array.isArray(j?.data) ? j.data : (Array.isArray(j?.models) ? j.models : []),
+          };
+    }
+  }
+
   if (!fetcher) {
     return NextResponse.json(
       { success: false, error: `No live fetcher for ${provider}`, code: "no_fetcher", provider },
