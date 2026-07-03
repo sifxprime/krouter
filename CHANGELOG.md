@@ -1,3 +1,13 @@
+# v0.5.89 (2026-07-03) — Cleanup: remove duplicate LiveModelsPanel
+
+v0.5.87 introduced a `LiveModelsPanel` component that duplicated the existing "From API (N)" section, added component-scope `liveModelIds` state that shadowed a pre-existing local const inside `renderModelsSection`, and inserted extra JSX above the models list. The duplicate state and JSX made the render tree fragile — the model test buttons stopped responding on some renders.
+
+- Delete orphaned `LiveModelsPanel.js`.
+- Remove `liveModelIds` component state, the `<LiveModelsPanel>` element, and the "Live catalog returned N models" text from `page.js`.
+- Keep the `fetchLiveModels()` change from v0.5.88 that prefers the universal `/api/models/live-by-connection` endpoint — that's what actually makes atomesus, kimi, glm, minimax, blackbox, deepgram, elevenlabs, voyage-ai, and 25+ other providers surface real counts in the existing "From API (N)" section.
+
+Result: the Available Models section renders exactly the way it always did, only now the "From API (N)" counter is accurate across all 34+ providers instead of stopping at 35. Model test buttons work. All 1038 tests pass.
+
 # v0.5.88 (2026-07-03) — Hotfix: "From API (0)" on providers with a saved key
 
 v0.5.87 wired the LiveModelsPanel freshness pill but the visible "From API (N)" counter on the Available Models card was still using the legacy `/api/providers/[id]/models` endpoint, which only covered 35 providers — Atomesus, Kimi, GLM, Minimax, Blackbox, Deepgram, ElevenLabs, Voyage AI, and other newly-added providers were falling through to `(0)`. Also LiveModelsPanel silently rendered nothing because it required `apiKey` on the client-side connection object, but `/api/providers` redacts it before sending.
