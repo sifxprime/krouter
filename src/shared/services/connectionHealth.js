@@ -68,7 +68,7 @@ function decay(record, nowMs) {
  * @param {boolean} success
  * @param {number} latencyMs - request total time including upstream
  */
-export function recordOutcome(connectionId, success, latencyMs) {
+export function recordOutcome(connectionId, success, latencyMs, meta = null) {
   if (!connectionId || connectionId === "noauth") return;
   const nowMs = Date.now();
   const decayed = decay(g.scores.get(connectionId), nowMs);
@@ -84,6 +84,25 @@ export function recordOutcome(connectionId, success, latencyMs) {
     failureCount: decayed.failureCount + (success ? 0 : 1),
     lastUpdate: nowMs,
   });
+
+  // 0.5.91 — Also emit to the routing decision log for the dashboard's live
+  // panel. Lazy-imported to avoid pulling routing code into the client bundle.
+  if (meta && typeof meta === "object") {
+    try {
+      // Dynamic import; safe because this file is server-only.
+      import("../../../open-sse/services/routingLog.js")
+        .then((m) => m.logRoutingDecision({
+          connectionId,
+          success,
+          latencyMs: newLatency,
+          provider: meta.provider,
+          model: meta.model,
+          score: Math.round(scoreOf(connectionId)),
+          strategy: meta.strategy || "zenith",
+        }))
+        .catch(() => {/* silent — log is diagnostic, not critical */});
+    } catch { /* silent */ }
+  }
 }
 
 /**

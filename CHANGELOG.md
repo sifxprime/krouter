@@ -1,3 +1,18 @@
+# v0.5.91 (2026-07-03) — Zenith Visibility
+
+Five surgical additions that make the routing engine legible to users. Every layer in Zenith's decision (health · quota factor · priority bonus · final score) is now visible in the UI.
+
+- **/api/providers/zenith** — full leaderboard endpoint. Returns each active connection's health score, quota factor, priority bonus, final Zenith score, and ranking. Optional `?providerId=X&model=Y` for scoped/per-model breakdowns.
+- **/api/providers/zenith/log** — reads the in-memory routing decision ring buffer (200 entries, ephemeral).
+- **Zenith Score Chip** — the v0.5.84 colored dot is replaced with a numeric chip (`Z:923`), color-banded by score magnitude, with breakdown in tooltip.
+- **Zenith Route Preview** — new strip above the connection list on each provider page: `Next request → SiliconFlow #1 (Z:923) · health 875 · quota ×1.0 · priority +10`. Model dropdown for per-model preview. Auto-refreshes every 10s.
+- **Zenith Engine strip** — global strip at the top of /dashboard/providers with active count, best/worst scores, and a Leaderboard button that opens a modal with a sortable ranking table.
+- **Routing Decision Log** — collapsible panel per provider showing the last N routing decisions (newest first) with model, connection, score, latency, success/fail. Populated via a lazy import in `recordOutcome` so it doesn't add hot-path overhead.
+
+New `open-sse/services/routingLog.js` — 200-entry ring buffer with newest-first read. 5 unit tests cover noop guard, order, limit, ring behavior, meta preservation.
+
+All 1023 tests pass (+5 new).
+
 # v0.5.90 (2026-07-03) — Live catalog for user-configured compatible nodes
 
 Previously `openai-compatible-*` / `anthropic-compatible-*` connections (user-configured custom endpoints like DigitalOcean AI, LiteLLM, etc.) showed "From API (0)" because neither the new `/api/models/live-by-connection` nor the legacy `/api/providers/[id]/models` endpoint knew their provider IDs — they're dynamic UUIDs, not entries in any table.

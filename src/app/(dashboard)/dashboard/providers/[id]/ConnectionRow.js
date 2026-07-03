@@ -155,18 +155,26 @@ export default function ConnectionRow({ connection, proxyPools, health = null, i
           {authIcon}
         </span>
         {health && (() => {
-          // 0.5.84 — Live health dot. Green if score≥750, amber ≥400, red else.
-          const s = health.score ?? 500;
-          const color = s >= 750 ? "bg-green-500" : s >= 400 ? "bg-amber-500" : "bg-red-500";
+          // 0.5.91 — Zenith Score Chip (replaces the plain dot from 0.5.84).
+          // Shows a numeric score with color band derived from magnitude.
+          // Tooltip breaks out health · success · latency · sample count.
+          const s = Math.round(health.score ?? 500);
+          const cls = s >= 750
+            ? "bg-green-500/10 text-green-700 dark:text-green-400 border-green-500/30"
+            : s >= 400
+              ? "bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/30"
+              : "bg-red-500/10 text-red-700 dark:text-red-400 border-red-500/30";
           const sr = health.successRate != null ? `${health.successRate}%` : "n/a";
           const lat = `${health.ewmaLatencyMs}ms`;
-          const title = `Health ${Math.round(s)} • success ${sr} • latency ${lat} (n=${health.observed})`;
+          const title = `Zenith health ${s}\nsuccess ${sr} · latency ${lat} · n=${health.observed}`;
           return (
             <span
-              className={`shrink-0 inline-block h-2 w-2 rounded-full ${color}`}
+              className={`shrink-0 inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 font-mono text-[10px] leading-none ${cls}`}
               title={title}
               aria-label={title}
-            />
+            >
+              Z:{s}
+            </span>
           );
         })()}
         <div className="flex-1 min-w-0">

@@ -20,6 +20,8 @@ import AddCustomModelModal from "./AddCustomModelModal";
 import BulkImportCodexModal from "./BulkImportCodexModal";
 import ProviderHero from "./ProviderHero";
 import ConnectKit from "./ConnectKit";
+import ZenithRoutePreview from "./ZenithRoutePreview";
+import ZenithDecisionLog from "./ZenithDecisionLog";
 import { getProviderCapabilities } from "@/shared/constants/providerCapabilities";
 
 const ONE_BY_ONE_DELAY_MS = 1000;
@@ -1617,7 +1619,15 @@ export default function ProviderDetailPage() {
                   </div>
                 </div>
               )}
+              {/* 0.5.91 — Zenith route preview above the connection list */}
+              {!isCompatible && capabilities && (
+                <ZenithRoutePreview providerId={providerId} models={liveModels} />
+              )}
               {connectionsList}
+              {/* 0.5.91 — Routing decision log (collapsed by default) */}
+              {!isCompatible && capabilities && (
+                <ZenithDecisionLog providerId={providerId} />
+              )}
               {!isCompatible && (
                 <div className="mt-4 grid grid-cols-1 gap-2 sm:flex">
                   {providerId === "iflow" && (
