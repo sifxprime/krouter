@@ -448,8 +448,21 @@ export default function ProviderDetailPage() {
     if (!conn) return;
     setLiveModelsLoading(true);
     try {
-      const r = await fetch(`/api/providers/${conn.id}/models`);
-      const data = r.ok ? await r.json() : null;
+      // 0.5.88 — Prefer the universal live-by-connection endpoint (covers 34+
+      // providers via LIVE_FETCH). Fall back to the legacy per-provider handler
+      // if the new endpoint says "no_fetcher" — some OAuth providers (kiro,
+      // qoder, antigravity, cloudflare-ai) still need their custom resolver.
+      let data = null;
+      try {
+        const r1 = await fetch(`/api/models/live-by-connection?connectionId=${conn.id}`);
+        const j = r1.ok ? await r1.json() : null;
+        if (j?.success && j?.models?.length) data = { models: j.models };
+        else if (j?.code === "no_fetcher") data = null;
+      } catch { /* fall through */ }
+      if (!data) {
+        const r = await fetch(`/api/providers/${conn.id}/models`);
+        data = r.ok ? await r.json() : null;
+      }
       if (data?.models?.length) {
         setLiveModels(data.models);
         // Auto-expand first group on initial load

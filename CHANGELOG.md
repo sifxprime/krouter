@@ -1,3 +1,12 @@
+# v0.5.88 (2026-07-03) — Hotfix: "From API (0)" on providers with a saved key
+
+v0.5.87 wired the LiveModelsPanel freshness pill but the visible "From API (N)" counter on the Available Models card was still using the legacy `/api/providers/[id]/models` endpoint, which only covered 35 providers — Atomesus, Kimi, GLM, Minimax, Blackbox, Deepgram, ElevenLabs, Voyage AI, and other newly-added providers were falling through to `(0)`. Also LiveModelsPanel silently rendered nothing because it required `apiKey` on the client-side connection object, but `/api/providers` redacts it before sending.
+
+- **`fetchLiveModels()` now prefers `/api/models/live-by-connection`** (covers all 34+ LIVE_FETCH providers). Falls back to the legacy per-provider handler only for providers with custom OAuth resolvers (kiro, qoder, antigravity, cloudflare-ai) where LIVE_FETCH says `no_fetcher`.
+- **LiveModelsPanel no longer checks `apiKey` client-side** — the server-side endpoint reads the real credential from the DB. Panel now renders on any active connection.
+
+Result: opening `/dashboard/providers/atomesus` (or any other newly-wired provider) with a saved key now shows `From API (1)` with `atms/cipher` populated from the live upstream, and the freshness pill shows `Live · 1 model · Updated Xs ago · Refresh`.
+
 # v0.5.87 (2026-07-03) — Live Catalog on the Provider Page + Atomesus Fix
 
 The Available Models section on every provider page now shows a live freshness pill using the connection's stored credential. Previously v0.5.86 only wired live-fetch into the Add API Key modal — visiting a saved provider looked identical to before.

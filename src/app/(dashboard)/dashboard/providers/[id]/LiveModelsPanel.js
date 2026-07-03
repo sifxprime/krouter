@@ -31,9 +31,10 @@ export default function LiveModelsPanel({ connections, onLiveModels }) {
   const [state, setState] = useState({ status: "idle" });
   const timerRef = useRef(null);
 
-  const activeConn = (connections || []).find(
-    (c) => c.isActive !== false && (c.apiKey || c.accessToken),
-  );
+  // 0.5.88 — Don't check apiKey/accessToken on the client — the /api/providers
+  // response redacts them. Any active connection is fine; the server endpoint
+  // reads the real credential from the DB.
+  const activeConn = (connections || []).find((c) => c.isActive !== false);
   const connectionId = activeConn?.id;
 
   const doFetch = useCallback(async (force = false) => {
