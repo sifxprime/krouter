@@ -6,7 +6,7 @@ on:
 
 jobs:
   dispatch:
-    name: Trigger k‍router-web Sync & Deploy
+    name: Trigger k‍router-web Sync and Deploy
     runs-on: ubuntu-latest
     steps:
       - name: Send repository_dispatch to k‍router-web
@@ -15,7 +15,7 @@ jobs:
             -X POST \
             -H "Authorization: Bearer ${{ secrets.KDL_ROUTER_WEB_TOKEN }}" \
             -H "Accept: application/vnd.github.v3+json" \
-            https://api.github.com/repos/sifxprime/k‍router-web/dispatches \
-            -d '{"event_type":"k‍router-release"}')
+            https://api.github.com/repos/sifxprime/krouter-web/dispatches \
+            -d '{"event_type":"krouter-release"}'  )
           echo "Response status: $STATUS"
-          [ "$STATUS" = "204" ] && echo "Dispatch succeeded!" || echo "Dispatch failed (status $STATUS) - check KROUTER_WEB_TOKEN secret"
+          [ "$STATUS" = "204" ] && echo "Dispatch succeeded!" || echo "Dispatch failed status $STATUS"
