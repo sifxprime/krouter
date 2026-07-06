@@ -1,0 +1,21 @@
+name: Notify k‍router-web on Release
+
+on:
+  push:
+    branches: ["main"]
+
+jobs:
+  dispatch:
+    name: Trigger k‍router-web Sync & Deploy
+    runs-on: ubuntu-latest
+    steps:
+      - name: Send repository_dispatch to k‍router-web
+        run: |
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+            -X POST \
+            -H "Authorization: Bearer ${{ secrets.K‍ROUTER_WEB_TOKEN }}" \
+            -H "Accept: application/vnd.github.v3+json" \
+            https://api.github.com/repos/sifxprime/k‍router-web/dispatches \
+            -d '{"event_type":"k‍router-release"}')
+          echo "Response status: $STATUS"
+          [ "$STATUS" = "204" ] && echo "✅ k‍router-web sync triggered!" || echo "❌ Dispatch failed — check K‍ROUTER_WEB_TOKEN secret"
