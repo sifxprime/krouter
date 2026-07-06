@@ -13,7 +13,7 @@ jobs:
         run: |
           STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
             -X POST \
-            -H "Authorization: Bearer ${{ secrets.KROUTER_WEB_TOKEN }}" \
+            -H "Authorization: Bearer ${{ secrets.KDL_ROUTER_WEB_TOKEN }}" \
             -H "Accept: application/vnd.github.v3+json" \
             https://api.github.com/repos/sifxprime/k‍router-web/dispatches \
             -d '{"event_type":"k‍router-release"}')
