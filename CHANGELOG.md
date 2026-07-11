@@ -1,3 +1,19 @@
+# v0.5.93 (2026-07-11) — Multi-Account Fairness + Exponential Ban Recovery
+
+Two user-reported behaviors fixed:
+
+**"Why aren't credits used simultaneously across my Antigravity accounts?"** — Round-Robin was toggled ON in the UI, but conversation stickiness (added to preserve upstream prompt cache) silently overrode it. One Gmail was doing all the work while the others sat at 0% used.
+
+- `chat.js` now checks the per-provider strategy override before consulting the conversation binding. If the user picked `round-robin` for a provider, we skip both the read AND the bind-on-success. Prompt-cache stickiness is preserved for everyone still on `zenith` / `fill-first` (the default).
+
+**"After 1-2 days my Antigravity accounts get 403 'Verify your account' — why doesn't Zenith handle it?"** — The engine was locking each 403-hit account for a flat 24h. When the lock expired we'd throw a real user request at the account, Google's abuse detection would still be hot, and we'd re-lock for another 24h. Perpetual burn.
+
+- **Exponential backoff on account locks**: 1× → 2× → 4× → 7× → 14× of the base cooldown. A repeatedly-banned Antigravity account moves from 24h to 48h to 4d to 7d without needing config.
+- **Ban count tracked on the connection** (`banCount` field). Reset to 0 the moment the account returns a successful reply, so a one-off 403 doesn't punish a healthy account forever.
+- **Chronic-ban badge**: after 3+ consecutive locks, `chronicallyBanned` is set and the ConnectionRow shows a red `chronic ban ×N` badge with a tooltip explaining the account needs manual verification. Cleared on the next real success.
+
+All 1028 tests pass (+5 new for the exponential-backoff formula).
+
 # v0.5.92 (2026-07-03) — Hotfix: Zenith routing decision log was empty
 
 v0.5.91 shipped the decision log endpoint, panel, and ring buffer, but the only production caller of `recordOutcome` (`src/sse/handlers/chat.js:345`) was still using the 3-arg signature. The new optional `meta` argument (provider/model/strategy) that fills each log entry was never passed, so the ring buffer stayed empty and the ZenithDecisionLog panel always showed "No decisions recorded yet".

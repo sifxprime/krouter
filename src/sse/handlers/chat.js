@@ -260,8 +260,15 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
   // previously bound an account to this conversation, prefer it so Anthropic
   // (and any other per-key-cached upstream) keeps serving from its warm
   // prompt cache instead of paying full tokens on each rotation.
+  // 0.5.93 — Respect the user's explicit round-robin choice. Conversation
+  // stickiness exists to keep upstream prompt cache warm, but if the user
+  // toggled Round Robin on a provider, they clearly want traffic distributed
+  // across accounts (e.g. Antigravity subscription accounts on different
+  // Gmails), so skip the conversation binding for that provider.
+  const providerOverride = (settings.providerStrategies || {})[provider] || {};
+  const userWantsRoundRobin = providerOverride.fallbackStrategy === "round-robin";
   const conversationFingerprint = generateConversationFingerprint(body, { provider });
-  let stickyConnectionId = conversationFingerprint
+  let stickyConnectionId = (!userWantsRoundRobin && conversationFingerprint)
     ? getStickyConnection(conversationFingerprint)
     : null;
 
@@ -356,7 +363,8 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
       // on this same conversation route back to the same account. Keeps
       // upstream prompt cache warm. Only bind on success — failures shouldn't
       // sticky the user to a misbehaving account.
-      if (conversationFingerprint && credentials.connectionId) {
+      // 0.5.93 — Only bind when the user hasn't explicitly opted into round-robin.
+      if (!userWantsRoundRobin && conversationFingerprint && credentials.connectionId) {
         bindConversationConnection(conversationFingerprint, credentials.connectionId);
       }
 

@@ -352,6 +352,21 @@ export async function markAccountUnavailable(connectionId, status, errorText, pr
     // account for the cooldown period. No point trying any model — the whole account
     // needs human intervention. Uses modelLock___all which isModelLockActive() checks
     // as a fallback for any model, so the account is skipped entirely by the picker.
+    //
+    // 0.5.93 — Exponential backoff on repeat account-locks. Google's abuse
+    // detection often stays hot for days once tripped; recycling the account
+    // every 24h just wastes a real request. Multiplier: 1x, 2x, 4x, 7x, then
+    // 14x for anything above. Also mark chronicallyBanned at 3+ so the UI can
+    // surface a persistent warning even after the cooldown expires.
+    let newBanCount = existing?.banCount || 0;
+    let chronicallyBanned = existing?.chronicallyBanned || false;
+    if (accountLock) {
+      newBanCount = newBanCount + 1;
+      const multipliers = [1, 2, 4, 7, 14];
+      const mult = multipliers[Math.min(newBanCount - 1, multipliers.length - 1)];
+      cooldownMs = cooldownMs * mult;
+      if (newBanCount >= 3) chronicallyBanned = true;
+    }
     const lockUpdate = accountLock
       ? buildModelLockUpdate(null, cooldownMs)   // null → modelLock___all
       : buildModelLockUpdate(model, cooldownMs);
@@ -371,6 +386,7 @@ export async function markAccountUnavailable(connectionId, status, errorText, pr
     return {
       ...lockUpdate,
       testStatus: testStatusValue,
+      ...(accountLock ? { banCount: newBanCount, chronicallyBanned } : {}),
       ...(permanent ? { isPermanentlyBanned: true, bannedAt: new Date().toISOString() } : {}),
       // For Google "Verify your account" 403s, embed the clickable verification
       // URL right in lastError so the dashboard Connection card can render it
@@ -453,7 +469,9 @@ export async function clearAccountError(connectionId, currentConnection, model =
 
   // Only reset error state if no active locks remain
   if (remainingActiveLocks.length === 0) {
-    Object.assign(clearObj, { testStatus: "active", lastError: null, lastErrorAt: null, backoffLevel: 0, isPermanentlyBanned: false, bannedAt: null });
+    // 0.5.93 — a successful response ends the ban streak. Also clears the
+    // chronicallyBanned flag so the account can rejoin the rotation cleanly.
+    Object.assign(clearObj, { testStatus: "active", lastError: null, lastErrorAt: null, backoffLevel: 0, isPermanentlyBanned: false, bannedAt: null, banCount: 0, chronicallyBanned: false });
   }
 
   await updateProviderConnection(connectionId, clearObj);

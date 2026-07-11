@@ -183,6 +183,14 @@ export default function ConnectionRow({ connection, proxyPools, health = null, i
             <Badge variant={getStatusVariant()} size="sm" dot>
               {connection.isActive === false ? "disabled" : (effectiveStatus || "Unknown")}
             </Badge>
+            {/* 0.5.93 — Chronic-ban badge: 3+ consecutive account-locks. Persistent
+                warning so the user knows this account keeps failing verification
+                even between cooldown windows. Cleared on next successful reply. */}
+            {connection.chronicallyBanned && connection.isActive !== false && (
+              <Badge variant="error" size="sm" title={`Banned ${connection.banCount || 3}× in a row. Verify manually.`}>
+                chronic ban ×{connection.banCount || 3}
+              </Badge>
+            )}
             <Badge variant="default" size="sm">
               {authLabel}
             </Badge>
@@ -303,6 +311,8 @@ ConnectionRow.propTypes = {
     testStatus: PropTypes.string,
     isActive: PropTypes.bool,
     lastError: PropTypes.string,
+    banCount: PropTypes.number,
+    chronicallyBanned: PropTypes.bool,
     priority: PropTypes.number,
     globalPriority: PropTypes.number,
   }).isRequired,
