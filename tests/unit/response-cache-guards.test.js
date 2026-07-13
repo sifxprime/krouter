@@ -25,16 +25,19 @@ describe("responseCache 0.5.99 guards", () => {
     expect(hit).not.toBeNull();
   });
 
-  it("refuses to cache Antigravity provider", () => {
-    const cfg = { ...baseSave, model: "antigravity/gemini-2.5-pro" };
-    expect(saveToCache(cfg)).toBe(false);
-    expect(lookupCache({ model: cfg.model, body: cfg.body })).toBeNull();
+  it("refuses to cache Antigravity provider (id AND alias forms)", () => {
+    // 0.5.101 — model strings arrive as ALIASES ("ag/..."), not ids. Both must be blocked.
+    for (const model of ["antigravity/gemini-2.5-pro", "ag/gemini-3-flash-agent"]) {
+      const cfg = { ...baseSave, model };
+      expect(saveToCache(cfg), `should block ${model}`).toBe(false);
+      expect(lookupCache({ model, body: cfg.body })).toBeNull();
+    }
   });
 
-  it("refuses to cache raw gemini + gemini-cli provider", () => {
-    for (const model of ["gemini/gemini-2.0-flash", "gemini-cli/gemini-2.5-pro"]) {
+  it("refuses to cache gemini + gemini-cli (id AND alias forms)", () => {
+    for (const model of ["gemini/gemini-2.0-flash", "gemini-cli/gemini-2.5-pro", "gc/gemini-2.5-pro"]) {
       const cfg = { ...baseSave, model };
-      expect(saveToCache(cfg)).toBe(false);
+      expect(saveToCache(cfg), `should block ${model}`).toBe(false);
     }
   });
 

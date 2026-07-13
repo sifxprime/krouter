@@ -61,10 +61,16 @@ function hashRequest({ model, body }) {
 // into this bucket: the Google IDE fires probes with identical bodies whose
 // answers then leak into real user turns. Safest to skip caching entirely for
 // this family.
+//
+// 0.5.101 — CRITICAL: the model string that reaches the cache uses the provider
+// ALIAS, not the provider id (e.g. "ag/gemini-3-flash-agent", "gc/gemini-2.5").
+// v0.5.99 only listed the ids, so the guard never fired and the user's
+// Antigravity duplicate-reply bug persisted. Include BOTH ids and aliases:
+//   antigravity → ag · gemini-cli → gc · gemini → gemini (id == alias)
 const CACHE_UNSAFE_PROVIDERS = new Set([
-  "antigravity",
+  "antigravity", "ag",
   "gemini",
-  "gemini-cli",
+  "gemini-cli", "gc",
 ]);
 
 // Extract provider slug from a modelStr like "antigravity/gemini-2.5-pro" or

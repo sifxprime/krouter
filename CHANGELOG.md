@@ -1,3 +1,31 @@
+# v0.5.101 (2026-07-11) — CRITICAL: actually fix the Antigravity cache bug (v0.5.99 missed it) + Kiro multi-thinking
+
+Found via real-user end-to-end testing on the running dev server (logged in, fired real chat requests through `/v1/chat/completions`, inspected `/api/cache` stats). Two bugs — one is a gap in my own v0.5.99 fix.
+
+**Bug 1 — the Antigravity duplicate-reply cache bug was NEVER actually fixed in v0.5.99.**
+
+v0.5.99 added a `CACHE_UNSAFE_PROVIDERS` blocklist with `{antigravity, gemini, gemini-cli}` — the provider **ids**. But the model string that reaches the cache uses the provider **alias**: Antigravity models arrive as `ag/gemini-3-flash-agent`, not `antigravity/...`. So `providerFromModel("ag/...")` returned `"ag"`, which was NOT in the set, so the guard never fired and Antigravity responses kept getting cached.
+
+Reproduced live: with Response Cache ON, an `ag/gemini-3-flash-agent` request showed `entries: 1` in the cache stats — it was being cached. That is exactly the user's original bug (duplicate/wrong replies on Antigravity when cache is on).
+
+Fix: added the aliases to the blocklist — `antigravity/ag`, `gemini-cli/gc`, `gemini` (id == alias). Re-verified live: same request now shows `entries: 0, skipped: 1` — correctly bypassed. Normal providers still cache.
+
+**Bug 2 — Kiro `extractThinking` dropped all but the first `<thinking>` block.**
+
+Surfaced via a `codebase-memory` `unguarded_recursion` audit of the graph. `src/mitm/handlers/kiro.js:extractThinking` recurses to handle multiple thinking blocks in one chunk, but the recursive result's `.thinking` was discarded — only `recurse.text` was returned. So if Kiro's Claude backend streamed two `<thinking>…</thinking>` sections in a single chunk, the second one's reasoning was silently lost.
+
+Fix: concatenate `[thinking, recurse.thinking]` so all captured reasoning reaches the caller. Exported the function and added 6 regression tests.
+
+**Full real-user verification (terminal, against dev server on this Mac, logged in with a real session):**
+
+- Login → session cookie → all 12 core dashboard APIs return 200 (`/api/providers`, `/api/providers/health`, `/api/providers/zenith`, `/api/providers/zenith/log`, `/api/settings`, `/api/proxy-pools`, `/api/combos`, `/api/usage/history`, `/api/usage/stats`, `/api/cache`, `/api/models/availability`, `/api/auth/status`).
+- **Quota Tracker** verified for all 3 stored connection types: Claude (session 5h 90/100, weekly 9/100), Kiro (1 bucket), Antigravity (9 buckets). All 200.
+- **Zenith leaderboard**: 22 active accounts ranked with real health/quota/priority scores; winner Z:1081.
+- **Real chat routing**: `ag/gemini-3-flash-agent` request routed through the engine, returned correct reply ("banana" for the second turn, not the first turn's "apple" — proving no wrong-cache-hit).
+- **Cache guard verified live**: antigravity → `entries: 0, skipped: 1` after the alias fix.
+- **Settings persistence**: PATCH + read-back round-trip confirmed.
+- Full test suite: **1072 tests pass** (+6 new for extractThinking, cache-guard tests updated for aliases).
+
 # v0.5.100 (2026-07-11) — Two user-reported bugs: Grok stale-error badge, Kimi validation rejects valid keys
 
 Report from a Bengali-speaking user (via a friend): two independent bugs in the provider dashboard flow.

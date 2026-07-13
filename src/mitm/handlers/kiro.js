@@ -96,8 +96,14 @@ function extractThinking(text, state) {
     ? extractThinking(rest, { inThink: false, thinkBuf: "" })
     : { thinking: null, text: null };
 
+  // 0.5.101 — Was dropping the recursive thinking payload entirely, so if the
+  // model streamed two <thinking>...</thinking> blocks in the same chunk we'd
+  // only surface the first. Concatenate so all captured thinking reaches the
+  // caller.
+  const mergedThinking = [thinking, recurse.thinking].filter(Boolean).join("\n") || null;
+
   return {
-    thinking: thinking || null,
+    thinking: mergedThinking,
     text: recurse.text || null
   };
 }
@@ -585,4 +591,4 @@ function isBinaryEventStream(buffer) {
   return totalLen > 12 && totalLen < 1000000 && headersLen < totalLen - 12;
 }
 
-module.exports = { intercept };
+module.exports = { intercept, extractThinking };
