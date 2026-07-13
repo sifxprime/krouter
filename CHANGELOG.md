@@ -1,3 +1,14 @@
+# v0.5.94 (2026-07-11) — Stop burning accounts on input-size errors
+
+User report: a Claude Sonnet 4.5 request to Kiro was returning `400 {"reason":"CONTENT_LENGTH_EXCEEDS_THRESHOLD"}`, and Zenith was rotating through all 5 Kiro accounts trying the same oversize prompt — burning credits on requests that were guaranteed to fail identically on every account. Same root cause would have hit any provider that returns a client-side input-size 400.
+
+The fallback rule table had no entry for content-length errors. Unmatched 400s fell to the default `shouldFallback: true, cooldownMs: TRANSIENT_COOLDOWN_MS`, so every account got tried and cooled-down for nothing.
+
+- Added 10 text patterns to `errorConfig.js` — Kiro's `CONTENT_LENGTH_EXCEEDS_THRESHOLD`, OpenAI's `maximum context length`, Anthropic's `prompt is too long`, plus generic `context length exceeded` / `request too large` / `payload too large` / `tokens exceeds` / `too many tokens` / `input is too long`.
+- All flagged `shouldFallback: false, cooldownMs: 0` — the 400 goes straight back to the client, and the account is NOT punished (a smaller next request should work fine on the same account).
+
+7 new regression tests lock every pattern. 1035 tests pass.
+
 # v0.5.93 (2026-07-11) — Multi-Account Fairness + Exponential Ban Recovery
 
 Two user-reported behaviors fixed:

@@ -97,6 +97,24 @@ export const ERROR_RULES = [
   { text: "not_found",                      shouldFallback: false, cooldownMs: 30 * 60 * 1000 },
   { text: "model_not_found",                shouldFallback: false, cooldownMs: 30 * 60 * 1000 },
   { text: "the model `",                    shouldFallback: false, cooldownMs: 30 * 60 * 1000 }, // OpenAI shape: "The model `x` does not exist"
+  // 0.5.94 — Input-size errors. The REQUEST is the problem, not the account.
+  // Fanning out through other accounts is guaranteed to hit the same limit and
+  // burn every credential in the pool. Surface the 400 to the caller immediately
+  // and DON'T lock the account (cooldownMs:0) — a smaller next request should
+  // work fine on the same account. Reported: Kiro returning
+  //   {"message":"Input content length exceeds threshold.",
+  //    "reason":"CONTENT_LENGTH_EXCEEDS_THRESHOLD"}
+  // which was burning all 5 accounts on every oversize prompt.
+  { text: "content_length_exceeds_threshold", shouldFallback: false, cooldownMs: 0 },
+  { text: "input content length exceeds",     shouldFallback: false, cooldownMs: 0 },
+  { text: "context length exceeded",          shouldFallback: false, cooldownMs: 0 },
+  { text: "maximum context length",           shouldFallback: false, cooldownMs: 0 },
+  { text: "prompt is too long",               shouldFallback: false, cooldownMs: 0 },
+  { text: "input is too long",                shouldFallback: false, cooldownMs: 0 },
+  { text: "request too large",                shouldFallback: false, cooldownMs: 0 },
+  { text: "payload too large",                shouldFallback: false, cooldownMs: 0 },
+  { text: "tokens exceeds",                   shouldFallback: false, cooldownMs: 0 },
+  { text: "too many tokens",                  shouldFallback: false, cooldownMs: 0 },
   { text: "rate limit",                backoff: true },
   { text: "too many requests",         backoff: true },
   { text: "quota exceeded",            backoff: true },
