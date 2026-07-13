@@ -1,3 +1,19 @@
+# v0.5.102 (2026-07-11) — Real logos for Featherless, Venice AI, Perplexity Agent
+
+The 3 providers added in v0.5.98 had no logo files, so they fell back to plain text badges ("FL", "VE", "PA") — which looked broken next to the 103 real provider logos our fork ships. (Upstream uses Material icons for these too, but our fork's convention is a real PNG logo per provider, resolved by the list card via `/providers/<id>.png`.)
+
+- **Featherless** — fetched the real logo from `featherless.ai/apple-touch-icon.png` (180×180 RGBA) → `public/providers/featherless.png`.
+- **Venice AI** — fetched from `venice.ai/apple-touch-icon.png` (512×512 RGBA) → `public/providers/venice.png`.
+- **Perplexity Agent** — it's Perplexity's own Agent API, so copied the existing `perplexity.png` → `public/providers/perplexity-agent.png` (128×128).
+- Wired the `image` field on all three manifest entries and adopted upstream's fuller `notice.text` descriptions for Venice and Perplexity Agent.
+
+**Verification (real, on dev server on this Mac):**
+
+- All 3 assets serve `200 image/png`: `/providers/featherless.png`, `/providers/venice.png`, `/providers/perplexity-agent.png`.
+- `file` confirms valid PNGs (180×180, 512×512, 128×128 RGBA).
+- Loaded `/dashboard/providers/venice` in the browser — the Venice logo renders in the hero card and the upstream description shows.
+- Full test suite: **1072 tests pass**.
+
 # v0.5.101 (2026-07-11) — CRITICAL: actually fix the Antigravity cache bug (v0.5.99 missed it) + Kiro multi-thinking
 
 Found via real-user end-to-end testing on the running dev server (logged in, fired real chat requests through `/v1/chat/completions`, inspected `/api/cache` stats). Two bugs — one is a gap in my own v0.5.99 fix.
