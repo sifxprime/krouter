@@ -1,3 +1,28 @@
+# v0.5.99 (2026-07-11) — Response cache bug (Antigravity duplicate replies) + Perplexity Agent branding
+
+**User-reported bug (real, reproduced):** With **Response Cache ON**, Antigravity conversations returned duplicate replies — user typed "Hi" and got "Hello, how can I help you?"; then user typed a different message and got the same "Hello, how can I help you?" back. Turning Response Cache OFF made everything work correctly.
+
+**Root cause:** `responseCache` in `open-sse/services/responseCache.js` hashes a request by `{model, system, messages, temperature, max_tokens, tools, ...}`. When Antigravity's IDE fires small deterministic *probe* requests (title generation, warmup, "is X reachable" pings) at temperature 0, they all hash to the same cache key. On the next real user turn those cached probe replies leak into the response stream.
+
+**Fix — layered guards in `isCacheable`:**
+
+1. **Provider blocklist** — `CACHE_UNSAFE_PROVIDERS = { antigravity, gemini, gemini-cli }`. These all sit on top of Google backends that have session-level state and heavy IDE probe traffic; caching is disabled for them regardless of the user's global toggle. The user's report is now impossible on Antigravity.
+2. **Probe-size skip** — refuse to cache when `max_tokens < 32`. That size range is virtually always an IDE warmup ping, not a real turn worth serving from cache later.
+3. **Empty-reply skip** — refuse to cache `responseBody < 100 bytes`. Those are error stubs or empty completions; caching them would poison the cache with worthless hits.
+
+**Tests:** 8 new regression tests in `tests/unit/response-cache-guards.test.js` — provider blocklist (antigravity, gemini, gemini-cli), max_tokens threshold, responseBody threshold, backwards-compat guards. Adapted 5 existing tests in `response-cache.test.js` to use realistic 120-byte response payloads (they were using 1-2 char stubs, which correctly trip the new probe-size guard). 1066 tests pass.
+
+**Perplexity Agent branding** — the v0.5.98 provider entry was using a generic Material icon; wired it to the existing `/providers/perplexity.png` asset so the provider card renders real branding.
+
+**Caveman + Ponytail can't both be on:** This is intentional behavior. `EndpointPageClient.js:413,429` explicitly disables the other when one is toggled on. `open-sse/handlers/chatCore.js:197` also detects `personaConflict = cavemanEnabled && ponytailEnabled && both have levels` as a defensive backstop. The two personas apply conflicting transforms (Caveman = terse fragments, Ponytail = lazy-dev ladder); stacking them produces the garbled output the user described. This is working as designed. If the user wants a different behavior (e.g. Ponytail wraps Caveman output) we can build a `--persona=stacked` mode as a v0.6 feature.
+
+**Verification (real-user, on dev server on this Mac):**
+
+- Full test suite: **1066 pass** / 20 expected-fail / 21 skipped
+- Dev server `/api/providers/health` → 401 (compiled, auth-gated ✓)
+- Production build (`cli/npm run build`): 54M package, no errors
+- Compiled bundle contains `CACHE_UNSAFE_PROVIDERS` symbol at 3 route paths (auto-loaded by dev routes) — confirmed via `grep` on `.next/dev/server`
+
 # v0.5.98 (2026-07-11) — Add Featherless, Venice AI, Perplexity Agent providers
 
 Backported 3 new provider entries from upstream. Skipped 6 upstream new-provider commits because they either need OAuth device-code infrastructure we don't have (Kimchi, ClinePass, CodeBuddy CN, Grok CLI/Build) or target the per-file registry architecture our fork doesn't use (Featherless was the reference — we translated the metadata into our `AI_PROVIDERS` object).

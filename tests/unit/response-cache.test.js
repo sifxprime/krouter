@@ -54,10 +54,11 @@ describe("responseCache", () => {
 
     it("returns cached entry on second identical request", () => {
       const body = { messages: [{ role: "user", content: "hi" }] };
-      saveToCache({ model: "m1", body, status: 200, responseBody: '{"reply":"hello"}' });
+      const respBody = JSON.stringify({ reply: "hello with enough content to clear the 100-byte responseBody guard that was added in v0.5.99 for the Antigravity cache-collision fix" });
+      saveToCache({ model: "m1", body, status: 200, responseBody: respBody });
       const hit = lookupCache({ model: "m1", body });
       expect(hit).not.toBeNull();
-      expect(hit.body).toBe('{"reply":"hello"}');
+      expect(hit.body).toBe(respBody);
       expect(getCacheStats().hits).toBe(1);
     });
 
@@ -66,24 +67,24 @@ describe("responseCache", () => {
         model: "m1",
         body: { messages: [{ role: "user", content: "hi" }] },
         status: 200,
-        responseBody: "A",
+        responseBody: "A".padEnd(120, "-"),
       });
       saveToCache({
         model: "m1",
         body: { messages: [{ role: "user", content: "bye" }] },
         status: 200,
-        responseBody: "B",
+        responseBody: "B".padEnd(120, "-"),
       });
-      expect(lookupCache({ model: "m1", body: { messages: [{ role: "user", content: "hi" }] } }).body).toBe("A");
-      expect(lookupCache({ model: "m1", body: { messages: [{ role: "user", content: "bye" }] } }).body).toBe("B");
+      expect(lookupCache({ model: "m1", body: { messages: [{ role: "user", content: "hi" }] } }).body).toBe("A".padEnd(120, "-"));
+      expect(lookupCache({ model: "m1", body: { messages: [{ role: "user", content: "bye" }] } }).body).toBe("B".padEnd(120, "-"));
     });
 
     it("different models produce different cache entries", () => {
       const body = { messages: [{ role: "user", content: "hi" }] };
-      saveToCache({ model: "model-a", body, status: 200, responseBody: "fromA" });
-      saveToCache({ model: "model-b", body, status: 200, responseBody: "fromB" });
-      expect(lookupCache({ model: "model-a", body }).body).toBe("fromA");
-      expect(lookupCache({ model: "model-b", body }).body).toBe("fromB");
+      saveToCache({ model: "model-a", body, status: 200, responseBody: "fromA".padEnd(120, "-") });
+      saveToCache({ model: "model-b", body, status: 200, responseBody: "fromB".padEnd(120, "-") });
+      expect(lookupCache({ model: "model-a", body }).body).toBe("fromA".padEnd(120, "-"));
+      expect(lookupCache({ model: "model-b", body }).body).toBe("fromB".padEnd(120, "-"));
     });
   });
 
@@ -110,7 +111,7 @@ describe("responseCache", () => {
   describe("stats", () => {
     it("tracks hits and bytes saved", () => {
       const body = { messages: [{ role: "user", content: "hi" }] };
-      saveToCache({ model: "m1", body, status: 200, responseBody: "0123456789" });
+      saveToCache({ model: "m1", body, status: 200, responseBody: "0123456789".padEnd(120, "-") });
       lookupCache({ model: "m1", body });
       lookupCache({ model: "m1", body });
       const stats = getCacheStats();

@@ -55,7 +55,27 @@ function hashRequest({ model, body }) {
   return crypto.createHash("sha256").update(serialized).digest("hex");
 }
 
-function isCacheable(body) {
+// 0.5.99 — Providers with backend session-state, per-account contextual routing,
+// or heavy IDE-driven probe traffic that breaks a naive request-hash cache.
+// User reports of duplicate/wrong replies on Antigravity + Gemini surface fell
+// into this bucket: the Google IDE fires probes with identical bodies whose
+// answers then leak into real user turns. Safest to skip caching entirely for
+// this family.
+const CACHE_UNSAFE_PROVIDERS = new Set([
+  "antigravity",
+  "gemini",
+  "gemini-cli",
+]);
+
+// Extract provider slug from a modelStr like "antigravity/gemini-2.5-pro" or
+// "kr/claude-sonnet-4.5-thinking". Falls back to null if unparseable.
+function providerFromModel(model) {
+  if (typeof model !== "string") return null;
+  const slash = model.indexOf("/");
+  return slash > 0 ? model.slice(0, slash) : null;
+}
+
+function isCacheable(body, model = null) {
   if (!body || typeof body !== "object") return false;
   // Streaming requests skipped — see file docstring.
   if (body.stream === true) return false;
@@ -64,11 +84,19 @@ function isCacheable(body) {
   // Tool calls with tool_choice: "required" generally indicate the model is
   // mid-conversation about a side effect — never serve from cache.
   if (body.tool_choice === "required") return false;
+  // 0.5.99 — Provider blocklist. Antigravity/Gemini IDE probes were leaking
+  // canned "warmup" replies into user turns because their bodies hash identically.
+  const provider = providerFromModel(model);
+  if (provider && CACHE_UNSAFE_PROVIDERS.has(provider)) return false;
+  // 0.5.99 — Skip caching when max_tokens is tiny (< 32) — that's almost always
+  // an IDE probe, not a real turn worth cache-hitting later.
+  const maxTok = body.max_tokens ?? body.max_output_tokens ?? null;
+  if (typeof maxTok === "number" && maxTok < 32) return false;
   return true;
 }
 
 export function lookupCache({ model, body }) {
-  if (!isCacheable(body)) {
+  if (!isCacheable(body, model)) {
     stats.skipped++;
     return null;
   }
@@ -93,9 +121,13 @@ export function lookupCache({ model, body }) {
 }
 
 export function saveToCache({ model, body, status, contentType, responseBody, estimatedTokens = 0, ttlMs = DEFAULT_TTL_MS, maxEntries = DEFAULT_MAX_ENTRIES }) {
-  if (!isCacheable(body)) return false;
+  if (!isCacheable(body, model)) return false;
   if (status !== 200) return false;
   if (!responseBody) return false;
+  // 0.5.99 — Also skip caching sub-100-byte responses. Those are almost always
+  // error stubs, empty completions, or probe pings; keeping them poisons the
+  // cache with worthless hits.
+  if (typeof responseBody === "string" && responseBody.length < 100) return false;
 
   const key = hashRequest({ model, body });
   const serialized = typeof responseBody === "string" ? responseBody : JSON.stringify(responseBody);
