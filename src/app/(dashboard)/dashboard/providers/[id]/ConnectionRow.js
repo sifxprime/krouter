@@ -200,7 +200,14 @@ export default function ConnectionRow({ connection, proxyPools, health = null, i
               </Badge>
             )}
             {isCooldown && connection.isActive !== false && <CooldownTimer until={modelLockUntil} />}
-            {connection.lastError && connection.isActive !== false && (
+            {/* 0.5.100 — Only show the red error text when the connection is
+                actually in an error state. If the last-error timestamp is
+                stale (cooldown expired OR effectiveStatus recovered to active),
+                keep the message hidden. Fixes user report: "grok error, then
+                working, but error still showing" — request succeeded and
+                the account was cleared server-side, but the error text lingered. */}
+            {connection.lastError && connection.isActive !== false
+              && effectiveStatus !== "active" && effectiveStatus !== "success" && (
               <span className="max-w-full truncate text-xs text-red-500 sm:max-w-[300px]" title={connection.lastError}>
                 {connection.lastError}
               </span>

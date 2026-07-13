@@ -472,6 +472,14 @@ export async function clearAccountError(connectionId, currentConnection, model =
     // 0.5.93 — a successful response ends the ban streak. Also clears the
     // chronicallyBanned flag so the account can rejoin the rotation cleanly.
     Object.assign(clearObj, { testStatus: "active", lastError: null, lastErrorAt: null, backoffLevel: 0, isPermanentlyBanned: false, bannedAt: null, banCount: 0, chronicallyBanned: false });
+  } else if (model) {
+    // 0.5.100 — Fix "working but error still showing" (user report on Grok).
+    // If the account previously accumulated per-model locks for other models
+    // but the current request just succeeded, the ACCOUNT-LEVEL badge should
+    // reflect health regardless of those unrelated locks. Clear only the
+    // account-scoped signals; keep the per-model locks intact so other-model
+    // requests still respect their cooldowns.
+    Object.assign(clearObj, { testStatus: "active", lastError: null, lastErrorAt: null, backoffLevel: 0, isPermanentlyBanned: false, bannedAt: null, banCount: 0, chronicallyBanned: false });
   }
 
   await updateProviderConnection(connectionId, clearObj);

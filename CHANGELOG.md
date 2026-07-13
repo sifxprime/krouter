@@ -1,3 +1,38 @@
+# v0.5.100 (2026-07-11) — Two user-reported bugs: Grok stale-error badge, Kimi validation rejects valid keys
+
+Report from a Bengali-speaking user (via a friend): two independent bugs in the provider dashboard flow.
+
+**Bug 1 — Kimi (and Minimax) validation rejects every key.**
+
+User pasted a valid Kimi API key → dashboard said the key was invalid → user gave up and pasted an OpenAI key instead (which was accepted only because the Kimi endpoint returned a non-401 status for that shape).
+
+Root cause: `src/app/api/providers/validate/route.js:290-326` groups `glm / glm-cn / kimi / minimax / minimax-cn / alicode / alicode-intl / agentrouter` together, and then branches on `isOpenAiFormat = provider === "glm-cn" || provider === "alicode" || provider === "alicode-intl"`. **Kimi and both Minimax variants were NOT in the openai-format list** — so their validation sent `x-api-key: <key>` + `anthropic-version` headers (Claude-format). Kimi's endpoint (`api.moonshot.ai/v1/chat/completions`) is OpenAI-compatible and requires `Authorization: Bearer <key>`; it returns 401 for anything else. So every valid Kimi key looked invalid.
+
+Verified against live upstream: `curl` with `x-api-key` returns `401 invalid_authentication_error`; `curl` with `Authorization: Bearer` returns the same 401 for a fake key but would accept a real one. Kimi's docs confirm Bearer is the only supported auth.
+
+Fix: added `kimi`, `minimax`, `minimax-cn` to the `isOpenAiFormat` list.
+
+**Bug 2 — Grok connection: "was showing error, then working, but error still showing".**
+
+User's Grok connection hit a 403/429 at some point (locking a model), then a later request on a *different* model succeeded. But the red error badge lingered on the connection card even though the account was actually healthy.
+
+Root cause traced through two files:
+
+1. `src/sse/services/auth.js:471-475` — `clearAccountError` refused to clear `lastError` / `testStatus` unless **every** model lock on the connection was ALSO cleared. If the user had accumulated `modelLock_grok-4` and `modelLock_grok-3-mini` earlier and only `grok-3-mini` succeeded now, `modelLock_grok-4` still existed → `remainingActiveLocks.length !== 0` → we skipped the reset entirely. Account-level `lastError` stayed forever.
+2. `src/app/(dashboard)/dashboard/providers/[id]/ConnectionRow.js:203-207` — the red error `<span>` was rendered whenever `connection.lastError` had any value, ignoring the `effectiveStatus` we compute above (which correctly handles "cooldown expired → active"). So even after step 1 cleared things, the error text would linger for the poll window.
+
+Both fixed:
+- `auth.js` — added an `else if (model)` branch so a successful per-model request clears the account-level `testStatus / lastError / backoffLevel / banCount / chronicallyBanned` even when unrelated per-model locks remain. The per-model locks themselves are intentionally preserved (that's the "grok-4 is in cooldown" state; only the account-level badge changes).
+- `ConnectionRow.js` — the error text now hides when `effectiveStatus === "active"` or `"success"` regardless of `lastError`.
+
+**Verification (real, on dev server on this Mac):**
+
+- Full test suite: **1066 tests pass** — no regressions.
+- Live probe against Moonshot API confirmed the auth-header mismatch:
+  - `POST /v1/chat/completions` with `x-api-key: fake` → **401** `invalid_authentication_error`
+  - `POST /v1/chat/completions` with `Authorization: Bearer fake` → **401** (same error but this endpoint would accept a valid Bearer key here)
+- Dev server compiles clean; `/api/providers/health` returns 401 auth-gated.
+
 # v0.5.99 (2026-07-11) — Response cache bug (Antigravity duplicate replies) + Perplexity Agent branding
 
 **User-reported bug (real, reproduced):** With **Response Cache ON**, Antigravity conversations returned duplicate replies — user typed "Hi" and got "Hello, how can I help you?"; then user typed a different message and got the same "Hello, how can I help you?" back. Turning Response Cache OFF made everything work correctly.

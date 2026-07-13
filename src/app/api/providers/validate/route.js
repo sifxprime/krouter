@@ -295,9 +295,17 @@ export async function POST(request) {
         case "alicode-intl":
         case "alicode":
         case "agentrouter": {
-          // Use baseUrl from PROVIDERS (DRY); separate openai-format vs claude-format flow
+          // Use baseUrl from PROVIDERS (DRY); separate openai-format vs claude-format flow.
+          // v0.5.100 — Kimi (Moonshot), Minimax (both) use Authorization: Bearer, NOT x-api-key.
+          // Previously they fell into the Claude-format branch and every valid key was rejected
+          // as 401 because Moonshot's endpoint only reads the Authorization header.
           const cfg = PROVIDERS[provider];
-          const isOpenAiFormat = provider === "glm-cn" || provider === "alicode" || provider === "alicode-intl";
+          const isOpenAiFormat = provider === "glm-cn"
+            || provider === "alicode"
+            || provider === "alicode-intl"
+            || provider === "kimi"
+            || provider === "minimax"
+            || provider === "minimax-cn";
 
           if (isOpenAiFormat) {
             const testModel = getDefaultModel(provider);
