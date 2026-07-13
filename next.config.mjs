@@ -28,6 +28,10 @@ const nextConfig = {
   experimental: {
     // #1529/#1572: LLM clients can send long context or base64 image payloads through /v1 rewrites.
     proxyClientMaxBodySize,
+    // 0.5.97 (from upstream 0270f6ea) — cache fetch across HMR refreshes.
+    serverComponentsHmrCache: true,
+    // 0.5.97 (from upstream 0270f6ea) — tree-shake heavy barrel imports.
+    optimizePackageImports: ["@xyflow/react", "@dnd-kit/core", "@dnd-kit/sortable", "material-symbols", "marked"],
   },
   webpack: (config, { isServer }) => {
     // Ignore fs/path modules in browser bundle
