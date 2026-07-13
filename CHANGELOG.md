@@ -1,3 +1,23 @@
+# v0.5.95 (2026-07-11) — Tier 1 Security Backport from Upstream
+
+Backported the 7 security-critical patches upstream (`decolua/9router`) shipped between May–July 2026 that our fork was missing. Audit against the current tree first — the four that matter as material new code are highlighted; the remaining three were either already applied to our fork or superseded by stronger local hardening.
+
+- **`fix(security)` — CWE-1385: OAuth callback postMessage now uses per-origin allowlist iteration** instead of `targetOrigin: "*"`. A drive-by attacker page that opened the callback popup could previously receive the live OAuth code/state. (`src/app/callback/page.js`, already in our tree from a prior sync — verified.)
+- **`fix(security)` — CWE-295: TLS certificate validation on DNS-bypass fetch** (`open-sse/utils/proxyFetch.js`) — our tree already used `https.request` with a properly-scoped agent + SNI validation, so this fix was already applied.
+- **`fix(kiro)` — strip leaked `<thinking>` tags from content stream (upstream #2158)**. Kiro's Claude Sonnet 4.5 backend was leaking internal reasoning blocks into the assistant content stream. Sanitized before forwarding. 4 new tests.
+- **`fix(security)` — Public API & local-only gate hardening**. `PUBLIC_PREFIXES` extended to `/api/v1` and `/api/v1beta`; `isPublicLlmApi` / `canAccessPublicLlmApi` / `canAccessLocalOnlyRoute` introduced. Our tree already has all of these plus an extra `x-9r-via-proxy` reverse-proxy defense — verified equivalent or stronger.
+- **`fix(security)` — DB export/import re-auth prompt + SSRF guard on web fetch**. `src/shared/utils/ssrfGuard.js` — `assertPublicUrl` rejects private / link-local / loopback / metadata / `.internal` / `.local` targets. Wired into `src/sse/handlers/fetch.js`. **Verified**: blocks `169.254.169.254`, `127.x`, `10.x`, `172.16-31.x`, `192.168.x`, `::1`, `fe80::`, `fc/fd::` (ULA), and `.internal/.local` suffixes; allows real public URLs.
+- **`fix(security)` — 5-vuln audit patch (upstream `d8c2298d`)**: API-key masking in `getUsageHistory()` (never return raw `apiKey`), outbound-proxy URL validation (`validateProxyUrl` — scheme allowlist + reject control-char injection `\n \r \` $`), OAuth server-side utils and MITM manager hardening. 21 new regression tests. Kept our KROUTER_* env-var names.
+- **`fix(security)` — don't trust loopback socket as local when request arrives via reverse proxy** — our tree already has this (custom-server.js stamps `x-9r-via-proxy` when forwarding headers present, `dashboardGuard.isLocalRequest` rejects on that marker).
+- **`fix(auth)` — real client IP rate-limiting + remote default-password guard** — `loginLimiter.js` already reads `x-9r-real-ip`; login page already surfaces default-password hint. Applied clean.
+
+**Verification (real-user tests):**
+- SSRF guard: 6 attack URLs blocked, 1 legit URL allowed
+- Proxy validator: 3 attack values silently rejected (env preserved), 2 legit values applied
+- Kiro thinking-strip: 2/2 unit tests pass
+- Security-audit regression suite: 21/21 pass
+- Full suite: **1058 tests pass** (+23 new)
+
 # v0.5.94 (2026-07-11) — Stop burning accounts on input-size errors
 
 User report: a Claude Sonnet 4.5 request to Kiro was returning `400 {"reason":"CONTENT_LENGTH_EXCEEDS_THRESHOLD"}`, and Zenith was rotating through all 5 Kiro accounts trying the same oversize prompt — burning credits on requests that were guaranteed to fail identically on every account. Same root cause would have hit any provider that returns a client-side input-size 400.
