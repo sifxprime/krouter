@@ -1,3 +1,28 @@
+# v0.5.97 (2026-07-11) — Tier 3 Upstream Features Audit
+
+Audited the 7 Tier 3 feature commits shipped upstream. Four material additions land; three were skipped or already applied.
+
+**Landed:**
+
+- **Token Saver dashboard page** (upstream `cb65a45e`) — new `/dashboard/token-saver` route + `TokenSaverClient.js` (475 lines). Sidebar entry added. Pairs with our v0.5.91 Zenith Visibility work — dedicated home for RTK / prompt-compression / token-reducing controls instead of buried inside the Endpoint page.
+- **`pickProxyPoolId` helper** (from upstream `e1f3399b`) — in-memory rotation state per provider. Round-robin / random pool selection for no-auth free providers to dodge per-IP rate limits. Skipped the accompanying `NoAuthProxyCard` UI wiring because our v0.5.85 provider-page redesign diverged; the helper is exported and ready for the next UI pass.
+- **`nextTag` + `tagForSession` log helpers** (from upstream `a625ea9f`) — session-colored dot emojis for correlating log lines. Same seed → same color, so the wall-of-text dev log gets legible per-request. Skipped the accompanying `chatCore` refactor from the same commit — those handlers carry our v0.5.84 health-cache dedup, v0.5.91 Zenith visibility, and v0.5.94 recordOutcome meta wiring; a blanket refactor would risk regressions. Helpers can be adopted incrementally.
+- **Next.js perf** (upstream `0270f6ea`) — enabled `serverComponentsHmrCache: true` (HMR fetch caching, faster reloads) and `optimizePackageImports` for `@xyflow/react`, `@dnd-kit/core`, `@dnd-kit/sortable`, `material-symbols`, `marked` (tree-shakes heavy barrel imports → smaller client bundle).
+
+**Audited, skipped:**
+
+- **`dcf1927f` PXPIPE token saver** — depends on the `headroom` module (patch `f1f9d270`, also in Tier 3) which is a 6-file feature we don't have. Applying PXPIPE without headroom breaks `chat.js` at import time. Deferring both to a future release where they can be co-installed cleanly. Users still gain a Token Saver landing page (see above); PXPIPE integration on top of it can come later.
+- **`f1f9d270` Headroom extras detection UI** — same reason; a standalone feature not blocking anything else.
+- **`644bff4c` bulk delete for connections** — already in our tree (`page.js:683-692`, `selectedConnectionIds` state at line 57).
+
+**Verification (real-user checks on dev server):**
+
+- Full test suite: **1058 tests pass** (unchanged from v0.5.96 baseline — additions are UI + helpers, not new tests).
+- Dev server `Ready in 368ms` after applying — no compile errors.
+- `next.config.mjs` — `node --check` clean; new `experimental` flags in place.
+- `/api/providers/health` → 401 (compiled, auth-gated ✓).
+- Sidebar bundle has the new Token Saver entry.
+
 # v0.5.96 (2026-07-11) — Tier 2 Auth/Routing Correctness Audit
 
 Audited the 7 Tier 2 routing/auth correctness fixes shipped upstream between June–July 2026. Six were already in our fork (either from our own v0.5.84–v0.5.94 work or from earlier syncs). One material UX fix was genuinely missing and is added here.
