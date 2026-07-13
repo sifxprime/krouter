@@ -41,6 +41,12 @@ export const LIVE_FETCH = {
   nebius:        openaiShape("https://api.studio.nebius.ai/v1/models"),
   siliconflow:   openaiShape("https://api.siliconflow.com/v1/models"),
   hyperbolic:    openaiShape("https://api.hyperbolic.xyz/v1/models"),
+  // 0.5.98 — Featherless (LLM catalog)
+  featherless:   openaiShape("https://api.featherless.ai/v1/models"),
+  // 0.5.98 — Venice AI (LLM catalog)
+  venice:        openaiShape("https://api.venice.ai/api/v1/models"),
+  // 0.5.98 — Perplexity Agent API models endpoint (distinct from search-focused Perplexity provider)
+  "perplexity-agent": openaiShape("https://api.perplexity.ai/v1/models"),
   chutes:        openaiShape("https://llm.chutes.ai/v1/models"),
   nvidia:        openaiShape("https://integrate.api.nvidia.com/v1/models"),
   nanobanana:    openaiShape("https://api.nanobananaapi.ai/v1/models"),

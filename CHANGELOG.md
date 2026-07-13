@@ -1,3 +1,34 @@
+# v0.5.98 (2026-07-11) — Add Featherless, Venice AI, Perplexity Agent providers
+
+Backported 3 new provider entries from upstream. Skipped 6 upstream new-provider commits because they either need OAuth device-code infrastructure we don't have (Kimchi, ClinePass, CodeBuddy CN, Grok CLI/Build) or target the per-file registry architecture our fork doesn't use (Featherless was the reference — we translated the metadata into our `AI_PROVIDERS` object).
+
+**Landed — 3 API-key providers:**
+
+- **Featherless** (`fl`) — `https://api.featherless.ai` — OpenAI-compatible, DeepSeek/GLM/Kimi presets. From upstream `0d4d4bc2`.
+- **Venice AI** (`venice`) — `https://api.venice.ai/api/v1` — privacy-first uncensored provider. From upstream `ab5ec52f`.
+- **Perplexity Agent** (`perplexity-agent`) — `https://api.perplexity.ai/v1` — separate from the existing search-focused Perplexity provider; targets the Agent Responses API. From upstream `ce6bdf7f`.
+
+All three include:
+- Full entry in `src/shared/constants/providers.js` (`APIKEY_PROVIDERS`) with icon, color, name, apiKeyUrl, serviceKinds
+- Live-fetch entry in `src/shared/constants/liveFetch.js` so the Add API Key modal auto-fetches the model catalog on paste (from v0.5.86)
+- Zenith routing, health tracking, ban recovery, and the entire routing engine work automatically once the user pastes a key
+
+**Skipped — deferred to future release:**
+
+- `a11937cd` **Grok CLI / Grok Build** — OAuth device-code flow, 29 files. Needs new OAuth polling infra.
+- `8a664d61` **Kimchi OAuth** — same reason, 17 files.
+- `b08751c4` **ClinePass** — declared as `oauth` category; deferred to keep this release atomic.
+- `efd20be8`+`8321032e`+`791705ae` **CodeBuddy CN** — OAuth chain (Tencent Copilot), 3-commit sequence.
+
+**Verification (real dev server on this Mac):**
+
+- Full test suite: **1058 tests pass** — unchanged from v0.5.97 baseline.
+- Dev server `/api/providers/health` → 401 (compiled, auth-gated ✓).
+- **Upstream API sanity probes**: Featherless returns 401 without key, Venice + Perplexity return 200 on `/models` — all three endpoints alive and matching the base URLs we registered.
+- Provider-capability tests still pass (the manifest builder auto-picks up new entries).
+
+**User-facing effect:** open `/dashboard/providers`, three new provider cards appear (Featherless, Venice AI, Perplexity Agent). Click any one → paste API key in the Add modal → live model catalog auto-fetches within 600ms. Zenith engine takes over from there.
+
 # v0.5.97 (2026-07-11) — Tier 3 Upstream Features Audit
 
 Audited the 7 Tier 3 feature commits shipped upstream. Four material additions land; three were skipped or already applied.
