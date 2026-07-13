@@ -1,3 +1,32 @@
+# v0.5.96 (2026-07-11) — Tier 2 Auth/Routing Correctness Audit
+
+Audited the 7 Tier 2 routing/auth correctness fixes shipped upstream between June–July 2026. Six were already in our fork (either from our own v0.5.84–v0.5.94 work or from earlier syncs). One material UX fix was genuinely missing and is added here.
+
+**Audit result — per commit:**
+
+| Upstream fix | Status | Where |
+|---|---|---|
+| `c572c687` github: proactively refresh missing/expired Copilot token | ✓ already in tree | `src/sse/services/tokenRefresh.js:312-320` |
+| `79df34ca` claude: cool down OAuth usage endpoint on 429 | ✓ already in tree (with more elaborate implementation) | `open-sse/services/usage.js:510-546` |
+| `f8c59227` kiro: auto-resolve profileArn for IDC login | ✓ already in tree | `src/lib/oauth/providers.js:122+`, `open-sse/services/tokenRefresh.js:370+` |
+| `46e6c01a` claude: reconcile max_tokens vs thinking budget | ✓ already in tree | `open-sse/translator/helpers/maxTokensHelper.js:30` |
+| `c233c7c8` codex: durable OAuth refresh lifecycle | ✓ already in tree | `open-sse/services/oauthCredentialManager.js` (151 lines), wired everywhere |
+| `9102c4c6` xiaomi-tokenplan: region selector | **✗ was missing on Edit → NOW ADDED** | `src/shared/components/EditConnectionModal.js` |
+| `65c65a0f` headroom: kiro conversation compression | skipped (Tier 3 feature, not correctness) | — |
+
+**Material change — EditConnectionModal region field:**
+
+Previously a user could add a Xiaomi Token Plan connection with a `sgp / cn / ams` region on the Add flow, but there was no way to change the region on the Edit flow. If someone bought a China-region key and originally saved as Singapore, they had to delete + re-add.
+
+- `EditConnectionModal` now imports `AI_PROVIDERS` and `Select`.
+- Loads the saved region from `providerSpecificData.region` (fallback to `defaultRegion` → first region) on modal open for any provider with a `regions` array (currently only `xiaomi-tokenplan`).
+- Renders a `<Select>` labelled **Region** with the provider's declared options.
+- Persists the chosen region in `providerSpecificData.region` on save, merged into the existing advanced-PSD path so `maxConcurrency` and `extraApiKeys` are preserved.
+
+Same pattern the existing `AddApiKeyModal` uses (region-aware for any provider with `regions` in the manifest) — a real user finally has full symmetry.
+
+All 1058 tests pass.
+
 # v0.5.95 (2026-07-11) — Tier 1 Security Backport from Upstream
 
 Backported the 7 security-critical patches upstream (`decolua/9router`) shipped between May–July 2026 that our fork was missing. Audit against the current tree first — the four that matter as material new code are highlighted; the remaining three were either already applied to our fork or superseded by stronger local hardening.

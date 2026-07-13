@@ -6,7 +6,8 @@ import Modal from "@/shared/components/Modal";
 import Input from "@/shared/components/Input";
 import Button from "@/shared/components/Button";
 import Badge from "@/shared/components/Badge";
-import { isOpenAICompatibleProvider, isAnthropicCompatibleProvider } from "@/shared/constants/providers";
+import Select from "@/shared/components/Select";
+import { isOpenAICompatibleProvider, isAnthropicCompatibleProvider, AI_PROVIDERS } from "@/shared/constants/providers";
 
 export default function EditConnectionModal({ isOpen, connection, proxyPools, onSave, onClose }) {
   const [formData, setFormData] = useState({
@@ -21,6 +22,8 @@ export default function EditConnectionModal({ isOpen, connection, proxyPools, on
     organization: "",
   });
   const [cloudflareData, setCloudflareData] = useState({ accountId: "" });
+  // 0.5.96 — Region for providers with clustered endpoints (xiaomi-tokenplan et al).
+  const [region, setRegion] = useState("");
   // 0.5.28 — per-connection max concurrency override for accountSemaphore.
   // Empty string = use provider default (Antigravity=2, Kiro=2, free=1, etc.).
   const [maxConcurrency, setMaxConcurrency] = useState("");
@@ -50,6 +53,16 @@ export default function EditConnectionModal({ isOpen, connection, proxyPools, on
       if (connection.provider === "cloudflare-ai" && connection.providerSpecificData) {
         setCloudflareData({ accountId: connection.providerSpecificData.accountId || "" });
       }
+      // 0.5.96 — Load region for providers that expose a `regions` array
+      // (xiaomi-tokenplan: sgp/cn/ams). Falls back to defaultRegion → first entry.
+      const providerCfg = AI_PROVIDERS?.[connection.provider];
+      if (providerCfg?.regions) {
+        const savedRegion = connection.providerSpecificData?.region
+          || providerCfg.defaultRegion
+          || providerCfg.regions[0]?.id
+          || "";
+        setRegion(savedRegion);
+      }
       // 0.5.28 — load advanced per-connection settings
       const psd = connection.providerSpecificData || {};
       const mc = Number(psd.maxConcurrency);
@@ -68,6 +81,7 @@ export default function EditConnectionModal({ isOpen, connection, proxyPools, on
   const isCompatible = connection
     ? (isOpenAICompatibleProvider(connection.provider) || isAnthropicCompatibleProvider(connection.provider))
     : false;
+  const providerRegions = connection ? (AI_PROVIDERS?.[connection.provider]?.regions || null) : null;
 
   const handleTest = async () => {
     if (!connection?.provider) return;
@@ -179,6 +193,8 @@ export default function EditConnectionModal({ isOpen, connection, proxyPools, on
         .filter(s => s.length > 0);
       if (extras.length > 0) advancedPSD.extraApiKeys = extras;
       else delete advancedPSD.extraApiKeys;
+      // 0.5.96 — persist region for region-aware providers
+      if (providerRegions && region) advancedPSD.region = region;
       updates.providerSpecificData = advancedPSD;
 
       await onSave(updates);
@@ -271,6 +287,15 @@ export default function EditConnectionModal({ isOpen, connection, proxyPools, on
               />
             </div>
           </div>
+        )}
+
+        {providerRegions && (
+          <Select
+            label="Region"
+            value={region}
+            onChange={(e) => setRegion(e.target.value)}
+            options={providerRegions.map((r) => ({ value: r.id, label: r.label }))}
+          />
         )}
 
         {!isCompatible && !isAzure && !isCloudflareAi && (
