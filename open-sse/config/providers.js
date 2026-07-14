@@ -336,6 +336,22 @@ export const PROVIDERS = {
     baseUrl: "https://api.siliconflow.com/v1/chat/completions",
     format: "openai"
   },
+  // 0.5.103 — Backend chat routing for the 3 providers added in v0.5.98.
+  // Without these, a user could add a key + see the model catalog but chat
+  // requests had no baseUrl to route to (they would fail). From upstream
+  // registry transport configs.
+  featherless: {
+    baseUrl: "https://api.featherless.ai/v1/chat/completions",
+    format: "openai"
+  },
+  venice: {
+    baseUrl: "https://api.venice.ai/api/v1/chat/completions",
+    format: "openai"
+  },
+  "perplexity-agent": {
+    baseUrl: "https://api.perplexity.ai/v1/responses",
+    format: "openai-responses"
+  },
   hyperbolic: {
     baseUrl: "https://api.hyperbolic.xyz/v1/chat/completions",
     format: "openai"

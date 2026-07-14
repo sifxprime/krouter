@@ -72,6 +72,15 @@ const ALIAS_TO_PROVIDER_ID = {
   // 0.5.71 — Map new Atomesus provider
   atms: "atomesus",
   atomesus: "atomesus",
+  // 0.5.103 — Map the v0.5.98 providers so chat routing resolves their alias
+  // to the provider id used by the backend PROVIDERS config. Featherless was
+  // the real bug: its alias "fl" was not mapped, so "fl/<model>" requests
+  // resolved to "fl" and PROVIDERS["fl"] was undefined → chat failed. Venice
+  // and perplexity-agent have alias == id so they only need the identity entry.
+  fl: "featherless",
+  featherless: "featherless",
+  venice: "venice",
+  "perplexity-agent": "perplexity-agent",
   // Web cookie providers
   gw: "grok-web",
   "grok-web": "grok-web",

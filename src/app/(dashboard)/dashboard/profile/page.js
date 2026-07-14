@@ -277,7 +277,7 @@ export default function ProfilePage() {
   };
 
   const updateStickyLimit = async (limit) => {
-    const numLimit = parseInt(limit);
+    const numLimit = parseInt(limit, 10);
     if (isNaN(numLimit) || numLimit < 1) return;
 
     try {
@@ -295,7 +295,7 @@ export default function ProfilePage() {
   };
 
   const updateComboStickyLimit = async (limit) => {
-    const numLimit = parseInt(limit);
+    const numLimit = parseInt(limit, 10);
     if (isNaN(numLimit) || numLimit < 1) return;
 
     try {

@@ -1,3 +1,35 @@
+# v0.5.103 (2026-07-13) — CRITICAL: Featherless/Venice/Perplexity Agent chat was broken (missing backend routing)
+
+Found via a `codebase-memory` graph audit hunting "small things we didn't notice." The v0.5.98 providers were half-wired.
+
+**Bug 1 (CRITICAL) — new providers couldn't route chat at all.**
+
+When v0.5.98 added Featherless, Venice, and Perplexity Agent, they got a UI manifest entry (`src/shared/constants/providers.js`) and a live-catalog fetcher (`liveFetch.js`) — so the provider card showed, the model list loaded, and validation worked. But the **backend chat-routing config `open-sse/config/providers.js` had no entry for them**, so an actual chat request had no `baseUrl` to send to and failed. A user could add a key, see models, and then every chat would break.
+
+- Added backend config: `featherless` → `api.featherless.ai/v1/chat/completions` (openai), `venice` → `api.venice.ai/api/v1/chat/completions` (openai), `perplexity-agent` → `api.perplexity.ai/v1/responses` (openai-responses). Base URLs taken from upstream's registry transport configs.
+
+**Bug 2 (CRITICAL) — Featherless alias `fl` was never mapped.**
+
+Even with the backend config, Featherless still failed: models surface as `fl/<model>` (its alias is `fl`, id is `featherless`), but `ALIAS_TO_PROVIDER_ID` in `open-sse/services/model.js` had no `fl` entry, so `resolveProviderAlias("fl")` returned `"fl"` and `PROVIDERS["fl"]` was undefined. Venice and Perplexity Agent were safe only because their alias equals their id.
+
+- Added `fl → featherless` (plus identity entries for `featherless`, `venice`, `perplexity-agent`).
+
+**Verified the whole chain resolves** for all 3: alias → provider id → backend baseUrl → format. Cross-checked every other LLM api-key provider in the UI against the backend config — only `azure` is absent, and that's intentional (its baseUrl is built at runtime from the user's `azureEndpoint`).
+
+**Bug 3 (minor) — `parseInt` without radix.**
+
+- `src/app/api/usage/request-details/route.js:12-13` (`page`, `pageSize`) and `src/app/(dashboard)/dashboard/profile/page.js:280,298` (`numLimit`) called `parseInt` with no radix. Added `, 10` — guards against leading-zero / `0x` inputs being mis-parsed.
+
+**Also audited and cleared (false positives, no change needed):**
+
+- `maskB64` (media-provider pages), `flush` (responsesTransformer) — graph flagged `unguarded_recursion`, but both have proper base cases / the "recursion" is a different object's `.flush()`.
+- `geminiHelper` schema transformers — recursive-in-loop by design, no dropped results.
+- `JSON.parse` in cli-tools settings routes — all wrapped in try/catch with ENOENT handling.
+- Zenith UI components (`ZenithRoutePreview`, `ZenithStrip`, `ZenithDecisionLog`) — all have `clearInterval` cleanup.
+- The v0.5.91 `recordOutcome` dynamic import — verified live: routing decision log populates correctly (confirmed real entries from actual chat traffic).
+
+**Verification:** full suite **1079 tests pass** (+7 new for the new-provider routing chain). Dev server compiles clean. Live alias→id→baseUrl resolution confirmed for all 3 providers via runtime import.
+
 # v0.5.102 (2026-07-11) — Real logos for Featherless, Venice AI, Perplexity Agent
 
 The 3 providers added in v0.5.98 had no logo files, so they fell back to plain text badges ("FL", "VE", "PA") — which looked broken next to the 103 real provider logos our fork ships. (Upstream uses Material icons for these too, but our fork's convention is a real PNG logo per provider, resolved by the list card via `/providers/<id>.png`.)
