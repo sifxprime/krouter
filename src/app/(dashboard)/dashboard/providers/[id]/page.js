@@ -139,6 +139,10 @@ export default function ProviderDetailPage() {
     : (OAUTH_PROVIDERS[providerId] || APIKEY_PROVIDERS[providerId] || FREE_PROVIDERS[providerId] || FREE_TIER_PROVIDERS[providerId] || WEB_COOKIE_PROVIDERS[providerId]);
   // 0.5.85 — Unified capability manifest (null for compatible-node pages).
   const capabilities = providerNode ? null : getProviderCapabilities(providerId);
+  // 0.5.105 — Auto-ping is available for Claude and Codex; each has its own
+  // settings key so a toggle on one provider page doesn't touch the other.
+  const autoPingKey = providerId === "codex" ? "codexAutoPing" : "claudeAutoPing";
+  const autoPingSupported = providerId === "claude" || providerId === "codex";
   const authModes = providerInfo?.authModes || [];
   const isOAuth = !!OAUTH_PROVIDERS[providerId] || !!FREE_PROVIDERS[providerId] || authModes.includes("oauth");
   const supportsApiKeyAuth = !!APIKEY_PROVIDERS[providerId] || authModes.includes("apikey");
@@ -269,7 +273,7 @@ export default function ProviderDetailPage() {
       // Load per-provider thinking config
       const thinkingCfg = (settingsData.providerThinking || {})[providerId] || {};
       setThinkingMode(thinkingCfg.mode || "auto");
-      const apCfg = settingsData.claudeAutoPing || {};
+      const apCfg = settingsData[autoPingKey] || {};
       setAutoPing({ enabled: apCfg.enabled === true, connections: apCfg.connections || {} });
       if (nodesRes.ok) {
         let node = (nodesData.nodes || []).find((entry) => entry.id === providerId) || null;
@@ -393,7 +397,7 @@ export default function ProviderDetailPage() {
     try {
       const r = await fetch("/api/settings", { cache: "no-store" });
       const s = r.ok ? await r.json() : {};
-      const latestCfg = s.claudeAutoPing || {};
+      const latestCfg = s[autoPingKey] || {};
       const merged = {
         ...latestCfg,
         connections: { ...(latestCfg.connections || {}), [connectionId]: on },
@@ -401,7 +405,7 @@ export default function ProviderDetailPage() {
       await fetch("/api/settings", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ claudeAutoPing: merged }),
+        body: JSON.stringify({ [autoPingKey]: merged }),
       });
       setAutoPing({ enabled: merged.enabled === true, connections: merged.connections });
     } catch (error) {
@@ -889,7 +893,7 @@ export default function ProviderDetailPage() {
                 onMoveUp={() => handleSwapPriority(index, index - 1)}
                 onMoveDown={() => handleSwapPriority(index, index + 1)}
                 onToggleActive={(isActive) => handleUpdateConnectionStatus(conn.id, isActive)}
-                autoPing={providerId === "claude" && conn.authType === "oauth" ? {
+                autoPing={autoPingSupported && conn.authType === "oauth" ? {
                   on: autoPing.connections[conn.id] === true,
                   onToggle: (on) => handleAutoPingConnection(conn.id, on),
                 } : null}

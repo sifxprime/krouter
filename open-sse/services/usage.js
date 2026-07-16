@@ -774,7 +774,7 @@ function getCodexReviewRateLimit(data) {
   }) || null;
 }
 
-async function getCodexUsage(accessToken, proxyOptions = null) {
+export async function getCodexUsage(accessToken, proxyOptions = null) {
   try {
     const response = await proxyAwareFetch(CODEX_CONFIG.usageUrl, {
       method: "GET",

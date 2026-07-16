@@ -1,3 +1,27 @@
+# v0.5.105 (2026-07-16) — Codex opt-in auto-ping (generalized quota auto-ping)
+
+Ported the Codex auto-ping feature (upstream b66b5c68) by generalizing our Claude-only scheduler into a provider-agnostic one — the Claude path is preserved byte-for-byte, Codex is added alongside it.
+
+**What it does:** just like Claude auto-ping warms the 5h window right after reset, Codex auto-ping now warms the Codex 5h window so the next real request starts on a fresh window instead of a half-spent one. Opt-in per connection via the Auto-ping toggle on each Codex OAuth account (same UI as Claude).
+
+**How it was done (safely, not the risky upstream refactor):**
+
+- Renamed `claudeAutoPing.js` → `quotaAutoPing.js` as a provider-agnostic scheduler with a `HANDLERS` table. `startClaudeAutoPing` is kept as a backward-compat alias so nothing else changes.
+- **Claude handler**: identical behavior — waits for the FIXED reset, pings once when `now >= resetAt - pingLeadMs`, keeps the billing-disabled (`disabled_reason`) skip logic.
+- **Codex handler**: Codex's 5h window works differently — it only STARTS after a completed response and its `resetAt` slides forward while idle. So we ping when `resetAt` drifts (window inactive) to kick a fresh window off, and we DRAIN the streaming response (Codex only starts the window once the response completes). Uses the codex executor's Responses API.
+- Exported `getCodexUsage` from `open-sse/services/usage.js`.
+- New `CODEX_AUTOPING_CONFIG` with its own `codexAutoPing` settings key (session window keyed "session" vs Claude's "session (5h)").
+- Wired the UI: the Auto-ping toggle now shows for Codex OAuth connections too, reading/writing `codexAutoPing` independently of `claudeAutoPing`.
+
+**End-to-end verification (dev server on this Mac, logged in):**
+
+- Claude provider page still renders the Auto-ping button on every connection — no regression from the generalization (screenshot confirmed).
+- Settings persistence: PATCH `codexAutoPing` persisted correctly AND left `claudeAutoPing` untouched — proving the two providers use independent settings keys.
+- `getCodexUsage` + `getClaudeUsage` both exported; scheduler module compiles clean on the dev server.
+- Full suite: **1098 tests pass** (+4 for the provider-config lock).
+
+Note: the actual ping-on-reset can only be observed with an active Codex account near its window boundary; the logic follows upstream's proven implementation and is guarded so an idle/disabled account is never spammed.
+
 # v0.5.104 (2026-07-16) — Tier A upstream parity: token-saver bypass header, bulk-add overwrite fix, GPT-5.6 context
 
 Ported the genuinely quick, high-value parity items from upstream. Two of the five originally scoped "Tier A" items turned out to be larger than quick wins (see bottom) and are deferred.

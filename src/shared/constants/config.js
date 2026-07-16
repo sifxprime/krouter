@@ -52,6 +52,22 @@ export const CLAUDE_AUTOPING_CONFIG = {
   fiveHourKey: "session (5h)",
 };
 
+// 0.5.105 (upstream b66b5c68) — Codex opt-in auto-ping. Warms the 5h Codex
+// window right after it resets so the next real request starts a fresh window.
+// Codex's window only starts after a completed response and its resetAt slides
+// forward while inactive — so unlike Claude (which waits for a fixed reset), we
+// ping when the account is idle to kick the window off. Keyed by "session".
+export const CODEX_AUTOPING_CONFIG = {
+  settingsKey: "codexAutoPing",
+  tickIntervalMs: 60000,
+  pingLeadMs: 5000,
+  pingModel: "gpt-5-mini",
+  pingText: "hi",
+  pingMaxTokens: 1,
+  refreshAheadMs: 300000,
+  fiveHourKey: "session",
+};
+
 // Subscription
 export const SUBSCRIPTION_CONFIG = {
   price: 1.0,
