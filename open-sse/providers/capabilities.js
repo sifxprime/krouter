@@ -156,6 +156,11 @@ export const PATTERN_CAPABILITIES = [
   // ── OpenAI GPT-5.x (vision + thinking + web search) ──────────────
   { pattern: "*gpt-5*image*",   caps: { imageOutput: true } },
   { pattern: "*gpt-5*codex*",   caps: { reasoning: true, search: true, thinkingFormat: "openai", contextWindow: 400000, maxOutput: 128000 } },
+  // 0.5.104 (upstream b94685b8) — GPT-5.6 family (Kiro sol/terra/luna preview)
+  // has a real 272k context window, not 400k. A more-specific pattern before
+  // the generic *gpt-5* prevents over-packing context, which otherwise triggers
+  // Kiro's CONTENT_LENGTH_EXCEEDS_THRESHOLD 400s on large prompts.
+  { pattern: "*gpt-5.6*",       caps: { vision: true, reasoning: true, search: true, thinkingFormat: "openai", contextWindow: 272000, maxOutput: 128000 } },
   { pattern: "*gpt-5*",         caps: { vision: true, reasoning: true, search: true, thinkingFormat: "openai", contextWindow: 400000, maxOutput: 128000 } },
   { pattern: "*gpt-4o*",        caps: { vision: true, search: true, contextWindow: 128000, maxOutput: 16384 } },
   { pattern: "*gpt-4.1*",       caps: { vision: true, contextWindow: 1000000, maxOutput: 32768 } },

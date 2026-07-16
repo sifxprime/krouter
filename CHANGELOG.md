@@ -1,3 +1,24 @@
+# v0.5.104 (2026-07-16) — Tier A upstream parity: token-saver bypass header, bulk-add overwrite fix, GPT-5.6 context
+
+Ported the genuinely quick, high-value parity items from upstream. Two of the five originally scoped "Tier A" items turned out to be larger than quick wins (see bottom) and are deferred.
+
+**1. `X-9Router-Token-Saver: off` per-request bypass header** (upstream c9926897).
+A client can now send `X-9Router-Token-Saver: off` on a single chat request to bypass ALL token savers (RTK, Caveman, Ponytail) without touching the global dashboard toggles — useful when one prompt needs to reach the model verbatim (polished prose, exact formatting) while savers stay on everywhere else. Header check added to `open-sse/handlers/chatCore.js`; constant in `runtimeConfig.js`.
+
+**2. Bulk-add API keys no longer overwrite existing keys** (upstream de680e78).
+The backend upserts api-key connections BY NAME. Bulk-add used to name keys by paste-line index (`Key 1`, `Key 2`, …) blind to what was already saved, so re-adding keys silently OVERWROTE existing ones with the same generated name. New `src/shared/utils/bulkAdd.js` planner gap-fills the smallest free `Key N` against both existing connection names and earlier entries in the same batch. Wired `existingNames` through `AddApiKeyModal` + the provider page. 15 planner tests.
+- Verified live: with `Key 1` + `Key 2` already saved, pasting 2 more bare keys now plans `Key 3` + `Key 4` (was: `Key 1` + `Key 2` → overwrite).
+
+**3. GPT-5.6 (Kiro sol/terra/luna) correct 272k context window** (upstream b94685b8).
+Our wildcard `*gpt-5*` capability pattern already gave GPT-5.6 models the right reasoning/search/thinking caps, but a 400k context window — over the family's real 272k. Added a more-specific `*gpt-5.6*` pattern (272k) before the generic one, so we don't over-pack context and trip Kiro's `CONTENT_LENGTH_EXCEEDS_THRESHOLD` 400s on large prompts. Other GPT-5 models keep 400k.
+- Verified live: `gpt-5.6-sol` → 272k, `gpt-5-codex` → 400k (unchanged), reasoning/search/thinking all correct.
+
+**Deferred (NOT actually quick wins — recommend separate handling):**
+- **Codex auto-ping** (upstream b66b5c68) — this is a 757-line refactor that DELETES our working `claudeAutoPing.js` and replaces it with a generalized `quotaAutoPing.js`. High risk of breaking the Claude auto-ping users rely on; deserves its own release + full testing.
+- **Provider quota visibility** (upstream 4dadab9d) — 185 lines across 3 ProviderLimits UI files that have diverged in our fork; a manual port, not a clean cherry-pick.
+
+**Verification:** full suite **1094 tests pass** (+15 for bulk-add planner + GPT-5.6 slots). All 3 features tested end-to-end on the dev server as a real logged-in user (live chat requests, real bulk-add planning, live capability resolution).
+
 # v0.5.103 (2026-07-13) — CRITICAL: Featherless/Venice/Perplexity Agent chat was broken (missing backend routing)
 
 Found via a `codebase-memory` graph audit hunting "small things we didn't notice." The v0.5.98 providers were half-wired.

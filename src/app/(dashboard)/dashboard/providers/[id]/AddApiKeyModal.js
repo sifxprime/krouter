@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from "react";
 import PropTypes from "prop-types";
 import { Button, Badge, Input, Modal, Select } from "@/shared/components";
 import { AI_PROVIDERS } from "@/shared/constants/providers";
+import { planBulkAdd } from "@/shared/utils/bulkAdd";
 
 // 0.5.86 — Live preview debounce window.
 // Providers rate-limit /v1/models, so we only fire after the user has stopped
@@ -12,7 +13,7 @@ const PREVIEW_DEBOUNCE_MS = 600;
 
 const BULK_PLACEHOLDER = `name1|sk-key1\nname2|sk-key2\nsk-key-only-auto-named`;
 
-export default function AddApiKeyModal({ isOpen, provider, providerName, isCompatible, isAnthropic, authType, authHint, website, proxyPools, error, onSave, onBulkDone, onClose }) {
+export default function AddApiKeyModal({ isOpen, provider, providerName, isCompatible, isAnthropic, authType, authHint, website, proxyPools, error, existingNames, onSave, onBulkDone, onClose }) {
   const NONE_PROXY_POOL_VALUE = "__none__";
   const isOllamaLocal = provider === "ollama-local";
   const isCookie = authType === "cookie";
@@ -171,22 +172,29 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
   };
 
   const handleBulkSubmit = async () => {
-    const lines = bulkText.split("\n").map(l => l.trim()).filter(Boolean);
-    if (!lines.length) return;
+    // 0.5.104 (upstream de680e78) — plan collision-free names against existing
+    // connection names so a generated "Key N" never matches a saved name. The
+    // backend upserts apikey connections BY NAME, so a colliding generated name
+    // would silently OVERWRITE an existing key instead of inserting a new one.
+    const plan = planBulkAdd(bulkText.split("\n"), existingNames, { isCloudflareAi });
+    if (!plan.length) return;
     setSaving(true);
     setBulkResult(null);
     let success = 0;
     let failed = 0;
-    for (let i = 0; i < lines.length; i++) {
-      const parts = lines[i].split("|");
-      const apiKey = parts.length >= 2 ? parts.slice(1).join("|").trim() : parts[0].trim();
-      const baseName = parts.length >= 2 ? parts[0].trim() : "Key";
-      const name = `${baseName} ${i + 1}`;
+    for (const entry of plan) {
       try {
         const res = await fetch("/api/providers", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ provider, apiKey, name, priority: 1, testStatus: "unknown" }),
+          body: JSON.stringify({
+            provider,
+            apiKey: entry.apiKey,
+            name: entry.name,
+            priority: 1,
+            testStatus: "unknown",
+            ...(entry.providerSpecificData ? { providerSpecificData: entry.providerSpecificData } : {}),
+          }),
         });
         if (res.ok) success++;
         else failed++;
@@ -457,6 +465,7 @@ AddApiKeyModal.propTypes = {
     name: PropTypes.string,
   })),
   error: PropTypes.string,
+  existingNames: PropTypes.arrayOf(PropTypes.string),
   onSave: PropTypes.func.isRequired,
   onBulkDone: PropTypes.func,
   onClose: PropTypes.func.isRequired,

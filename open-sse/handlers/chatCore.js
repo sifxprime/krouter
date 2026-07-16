@@ -11,7 +11,7 @@ import { getModelTargetFormat, getModelStrip, getModelUpstreamId, getModelType, 
 import { createErrorResult, parseUpstreamError, formatProviderError } from "../utils/error.js";
 import { resolveDeprecatedModel } from "../services/modelDeprecation.js";
 import { stripUnsupportedFields } from "../services/modelStrip.js";
-import { HTTP_STATUS } from "../config/runtimeConfig.js";
+import { HTTP_STATUS, TOKEN_SAVER_HEADER } from "../config/runtimeConfig.js";
 import { handleBypassRequest } from "../utils/bypassHandler.js";
 import { trackPendingRequest, appendRequestLog, saveRequestDetail } from "@/lib/usageDb.js";
 import { getExecutor } from "../executors/index.js";
@@ -179,8 +179,17 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
     delete translatedBody.tools;
   }
 
-  if (isClaudeDirectCachePath) {
-    log?.debug?.("CACHE", `mode=${cacheControlMode} | token savers SKIPPED to preserve upstream prompt cache (${clientTool} → ${provider})`);
+  // 0.5.104 (upstream c9926897) — per-request opt-out. A client can send
+  // `X-9Router-Token-Saver: off` to bypass ALL token savers (RTK, Caveman,
+  // Ponytail) for one request without touching the global dashboard toggles.
+  const tokenSaverEnabled = clientRawRequest?.headers?.[TOKEN_SAVER_HEADER]?.toLowerCase() !== "off";
+
+  if (isClaudeDirectCachePath || !tokenSaverEnabled) {
+    if (!tokenSaverEnabled) {
+      log?.debug?.("TOKEN_SAVER", "bypassed via X-9Router-Token-Saver: off");
+    } else {
+      log?.debug?.("CACHE", `mode=${cacheControlMode} | token savers SKIPPED to preserve upstream prompt cache (${clientTool} → ${provider})`);
+    }
   } else {
     // RTK: compress tool_result content
     const rtkStats = compressMessages(translatedBody, rtkEnabled);

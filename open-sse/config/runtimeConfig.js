@@ -39,6 +39,12 @@ export const FETCH_CONNECT_TIMEOUT_MS = 60 * 1000;
 
 // Default token limits
 export const DEFAULT_MAX_TOKENS = 64000;
+
+// 0.5.104 (upstream c9926897) — clients can bypass ALL token savers for a
+// single request by sending `X-9Router-Token-Saver: off`. Useful when a
+// specific prompt needs to reach the model verbatim (polished prose, exact
+// formatting) even though the user keeps savers on globally.
+export const TOKEN_SAVER_HEADER = "x-9router-token-saver";
 export const DEFAULT_MIN_TOKENS = 32000;
 
 // Retry config for 429 responses (legacy - kept for backward compatibility)
