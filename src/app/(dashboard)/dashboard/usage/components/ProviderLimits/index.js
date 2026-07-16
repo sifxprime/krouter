@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import ProviderIcon from "@/shared/components/ProviderIcon";
 import QuotaTable from "./QuotaTable";
 import Toggle from "@/shared/components/Toggle";
-import { parseQuotaData, calculatePercentage } from "./utils";
+import { parseQuotaData, calculatePercentage, filterQuotasByVisibility, getHiddenQuotaRows, getQuotaVisibilityKey } from "./utils";
 import Card from "@/shared/components/Card";
 import { EditConnectionModal, Tooltip } from "@/shared/components";
 import { USAGE_SUPPORTED_PROVIDERS } from "@/shared/constants/providers";
@@ -227,6 +227,8 @@ export default function ProviderLimits() {
   const [errors, setErrors] = useState({});
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [autoPingMap, setAutoPingMap] = useState({});
+  // 0.5.106 — per-provider hidden quota rows { [provider]: { hidden: [key] } }
+  const [quotaVisibility, setQuotaVisibility] = useState({});
   const [lastUpdated, setLastUpdated] = useState(null);
   const [hasHydratedAutoRefresh, setHasHydratedAutoRefresh] = useState(false);
   const [refreshingAll, setRefreshingAll] = useState(false);
@@ -572,13 +574,41 @@ export default function ProviderLimits() {
     window.localStorage.setItem(AUTO_REFRESH_STORAGE_KEY, String(autoRefresh));
   }, [autoRefresh, hasHydratedAutoRefresh]);
 
-  // Load Claude auto-ping per-connection map
+  // Load Claude auto-ping per-connection map + quota visibility
   useEffect(() => {
     fetch("/api/settings", { cache: "no-store" })
       .then((r) => (r.ok ? r.json() : {}))
-      .then((s) => setAutoPingMap(s?.claudeAutoPing?.connections || {}))
+      .then((s) => {
+        setAutoPingMap(s?.claudeAutoPing?.connections || {});
+        setQuotaVisibility(s?.quotaVisibility || {});
+      })
       .catch(() => {});
   }, []);
+
+  // 0.5.106 — hide/restore a quota row for a provider. Persists to
+  // settings.quotaVisibility so the choice survives reloads. Optimistic with
+  // rollback, mirroring toggleAutoPing.
+  const setProviderQuotaHidden = useCallback(async (provider, quotaKey, hidden) => {
+    const prev = quotaVisibility;
+    const prevHidden = new Set((prev?.[provider]?.hidden || []).map(String));
+    if (hidden) prevHidden.add(String(quotaKey));
+    else prevHidden.delete(String(quotaKey));
+    const next = { ...prev, [provider]: { ...(prev?.[provider] || {}), hidden: [...prevHidden] } };
+    setQuotaVisibility(next);
+    try {
+      const r = await fetch("/api/settings", { cache: "no-store" });
+      const s = r.ok ? await r.json() : {};
+      const merged = { ...(s.quotaVisibility || {}), [provider]: next[provider] };
+      await fetch("/api/settings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ quotaVisibility: merged }),
+      });
+      setQuotaVisibility(merged);
+    } catch {
+      setQuotaVisibility(prev);
+    }
+  }, [quotaVisibility]);
 
   const toggleAutoPing = useCallback(async (connectionId, on) => {
     const next = { ...autoPingMap, [connectionId]: on };
@@ -1129,16 +1159,46 @@ export default function ProviderLimits() {
                   <div className="text-center py-5">
                     <p className="text-xs text-text-muted">{quota.message}</p>
                   </div>
-                ) : (
-                  <QuotaTable
-                    quotas={quota?.quotas}
-                    compact
-                    sortMode="default"
-                    showSortLabel={
-                      conn.provider === "codex" && quotaSortMode !== "default"
-                    }
-                  />
-                )}
+                ) : (() => {
+                  // 0.5.106 — apply per-provider quota visibility so hidden rows
+                  // are filtered out; surface a restore chip when any are hidden.
+                  const allQuotas = quota?.quotas || [];
+                  const visibleQuotas = filterQuotasByVisibility(conn.provider, allQuotas, quotaVisibility);
+                  const hiddenRows = getHiddenQuotaRows(conn.provider, allQuotas, quotaVisibility);
+                  return (
+                    <>
+                      <QuotaTable
+                        quotas={visibleQuotas}
+                        compact
+                        sortMode="default"
+                        showSortLabel={
+                          conn.provider === "codex" && quotaSortMode !== "default"
+                        }
+                        onHideQuota={(q) => setProviderQuotaHidden(conn.provider, getQuotaVisibilityKey(q), true)}
+                      />
+                      {hiddenRows.length > 0 && (
+                        <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[11px] text-text-muted">
+                          <span>{hiddenRows.length} hidden:</span>
+                          {hiddenRows.map((q) => {
+                            const key = getQuotaVisibilityKey(q);
+                            return (
+                              <button
+                                key={key}
+                                type="button"
+                                onClick={() => setProviderQuotaHidden(conn.provider, key, false)}
+                                className="inline-flex items-center gap-1 rounded border border-border px-1.5 py-0.5 hover:border-primary hover:text-primary transition-colors"
+                                title={`Show "${q.name}" again`}
+                              >
+                                <span className="material-symbols-outlined text-[13px]">visibility</span>
+                                {q.name}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </>
+                  );
+                })()}
               </div>
             </Card>
           );

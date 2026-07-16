@@ -89,6 +89,7 @@ export default function QuotaTable({
   compact = false,
   sortMode = "default",
   showSortLabel = false,
+  onHideQuota = null,
 }) {
   const [page, setPage] = useState(1);
 
@@ -160,11 +161,23 @@ export default function QuotaTable({
                   className="border-b border-black/5 dark:border-white/5 hover:bg-black/[0.02] dark:hover:bg-white/[0.02] transition-colors"
                 >
                   <td className={`${cellPad} w-[30%]`}>
-                    <div className="flex items-center gap-1.5 min-w-0">
+                    <div className="group/qrow flex items-center gap-1.5 min-w-0">
                       <span className="text-[10px] shrink-0">{colors.emoji}</span>
                       <span className={`${nameText} font-medium text-text-primary truncate`}>
                         {quota.name}
                       </span>
+                      {/* 0.5.106 — hide this quota row (persisted per provider) */}
+                      {onHideQuota && (
+                        <button
+                          type="button"
+                          onClick={() => onHideQuota(quota)}
+                          className="shrink-0 opacity-0 group-hover/qrow:opacity-100 text-text-muted hover:text-red-500 transition-opacity"
+                          title={`Hide "${quota.name}"`}
+                          aria-label={`Hide ${quota.name}`}
+                        >
+                          <span className="material-symbols-outlined text-[13px] align-middle">visibility_off</span>
+                        </button>
+                      )}
                     </div>
                   </td>
 

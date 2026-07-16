@@ -260,3 +260,32 @@ export function parseQuotaData(provider, data) {
 
   return normalizedQuotas;
 }
+
+// ─── Quota visibility (0.5.106, upstream 4dadab9d) ────────────────────────────
+// Users can hide individual quota rows they don't care about (e.g. a "review"
+// window on Codex). Hidden keys are stored per provider in settings.quotaVisibility
+// as { [provider]: { hidden: [key, ...] } }.
+
+export function getQuotaVisibilityKey(quota) {
+  if (!quota || typeof quota !== "object") return "";
+  return String(quota.modelKey || quota.name || "").trim();
+}
+
+function getProviderHiddenQuotaSet(provider, quotaVisibility) {
+  const hidden = quotaVisibility?.[provider]?.hidden;
+  return new Set(Array.isArray(hidden) ? hidden.map(String) : []);
+}
+
+export function filterQuotasByVisibility(provider, quotas = [], quotaVisibility = {}) {
+  if (!Array.isArray(quotas) || quotas.length === 0) return [];
+  const hidden = getProviderHiddenQuotaSet(provider, quotaVisibility);
+  if (hidden.size === 0) return quotas;
+  return quotas.filter((quota) => !hidden.has(getQuotaVisibilityKey(quota)));
+}
+
+export function getHiddenQuotaRows(provider, quotas = [], quotaVisibility = {}) {
+  if (!Array.isArray(quotas) || quotas.length === 0) return [];
+  const hidden = getProviderHiddenQuotaSet(provider, quotaVisibility);
+  if (hidden.size === 0) return [];
+  return quotas.filter((quota) => hidden.has(getQuotaVisibilityKey(quota)));
+}

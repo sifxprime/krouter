@@ -1,3 +1,23 @@
+# v0.5.106 (2026-07-16) — Provider quota visibility (hide/restore quota rows)
+
+Ported the quota visibility feature (upstream 4dadab9d), manually integrated into our diverged Quota Tracker.
+
+**What it does:** on the Quota Tracker, hover any quota row and click the eye-off icon to hide it — useful for muting windows you don't track (e.g. a Codex "review" window, or Antigravity model rows you don't use). Hidden rows collapse into a small "N hidden: [row] [row]" chip strip below the card; click a chip to bring it back. The choice is per provider and persists in `settings.quotaVisibility` across reloads.
+
+- New pure helpers in `ProviderLimits/utils.js`: `getQuotaVisibilityKey`, `filterQuotasByVisibility`, `getHiddenQuotaRows`.
+- `ProviderLimits/index.js`: `quotaVisibility` state loaded from settings, optimistic hide/restore with rollback (`setProviderQuotaHidden`), quotas filtered before render, restore-chip strip.
+- `QuotaTable.js`: optional `onHideQuota` prop + a per-row hover hide button.
+- `settingsRepo.js`: `quotaVisibility: {}` default.
+
+**End-to-end verification (real user, on a fresh v0.5.106 dev server on this Mac):**
+
+1. Loaded Quota Tracker — 103 hide buttons present across all quota rows.
+2. Clicked "Hide weekly (7d)" on the Claude card → row disappeared, "1 hidden: weekly (7d)" restore chip appeared, and `settings.quotaVisibility` persisted `{"claude":{"hidden":["weekly (7d)"]}}` (confirmed via the settings API).
+3. Clicked the restore chip → weekly (7d) reappeared on the card, chip gone, and settings cleared back to `{"claude":{"hidden":[]}}`.
+4. Verified visibility is scoped per provider (unit test) — hiding a Codex row never affects Claude.
+
+Full suite: **1103 tests pass** (+5 for the visibility helpers). This completes both previously-deferred Tier A items (Codex auto-ping shipped in v0.5.105).
+
 # v0.5.105 (2026-07-16) — Codex opt-in auto-ping (generalized quota auto-ping)
 
 Ported the Codex auto-ping feature (upstream b66b5c68) by generalizing our Claude-only scheduler into a provider-agnostic one — the Claude path is preserved byte-for-byte, Codex is added alongside it.
