@@ -39,6 +39,13 @@ const DEFAULT_SETTINGS = {
   cavemanLevel: "full",
   ponytailEnabled: false,
   ponytailLevel: "full",
+  // 0.5.111 (upstream dcf1927f) — PXPIPE: render bulky Claude context as dense
+  // PNGs via the lazily-installed pxpipe-proxy library. Off by default; the
+  // package installs on demand into the data dir (never bundled).
+  pxpipeEnabled: false,
+  pxpipeAutoInstall: true,
+  pxpipeMinChars: 25000,
+  pxpipeTimeoutMs: 15000,
   responseCacheEnabled: false,
   responseCacheTtlSec: 300,
   // 0.5.28 — emergency fallback redirect on 402 / budget exhaustion

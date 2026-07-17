@@ -524,6 +524,8 @@ export const PROVIDER_MODELS = {
     { id: "grok-code-fast-1", name: "Grok Code Fast" },
     { id: "grok-3", name: "Grok 3" },
     { id: "grok-2-image-1212", name: "Grok 2 Image", type: "image", params: ["n", "response_format"] },
+    // 0.5.111 (upstream d6761c6f) — async Grok Imagine video (/v1/videos).
+    { id: "grok-imagine-video", name: "Grok Imagine Video", type: "video", params: ["duration", "aspect_ratio", "resolution"] },
   ],
   mistral: [
     { id: "mistral-large-latest", name: "Mistral Large 3" },

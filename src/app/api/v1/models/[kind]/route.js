@@ -3,6 +3,10 @@ import { buildModelsList } from "../route.js";
 // URL slug → service kind(s). `web` covers both webSearch and webFetch.
 const KIND_SLUG_MAP = {
   "image": ["image"],
+  // 0.5.111 — Grok Imagine video. Without this slug, /v1/models/video returns
+  // "Unknown model kind" even though the Sidebar links a video page and xai
+  // publishes grok-imagine-video with kind "video".
+  "video": ["video"],
   "tts": ["tts"],
   "stt": ["stt"],
   "embedding": ["embedding"],

@@ -26,6 +26,7 @@ import { detectClientTool, isNativePassthrough } from "../utils/clientDetector.j
 import { dedupeTools } from "../utils/toolDeduper.js";
 import { injectCaveman } from "../rtk/caveman.js";
 import { injectPonytail } from "../rtk/ponytail.js";
+import { compressWithPxpipe, formatPxpipeLog } from "../rtk/pxpipe.js";
 import { compressMessages, formatRtkLog } from "../rtk/index.js";
 
 /**
@@ -35,7 +36,7 @@ import { compressMessages, formatRtkLog } from "../rtk/index.js";
  * @param {object} options.credentials - Provider credentials
  * @param {string} options.sourceFormatOverride - Override detected source format (e.g. "openai-responses")
  */
-export async function handleChatCore({ body, modelInfo, credentials, log, onCredentialsRefreshed, onRequestSuccess, onDisconnect, clientRawRequest, connectionId, userAgent, apiKey, ccFilterNaming, rtkEnabled, cavemanEnabled, cavemanLevel, ponytailEnabled, ponytailLevel, sourceFormatOverride, providerThinking, settings = null }) {
+export async function handleChatCore({ body, modelInfo, credentials, log, onCredentialsRefreshed, onRequestSuccess, onDisconnect, clientRawRequest, connectionId, userAgent, apiKey, ccFilterNaming, rtkEnabled, cavemanEnabled, cavemanLevel, ponytailEnabled, ponytailLevel, pxpipeEnabled = false, pxpipeMinChars, pxpipeTimeoutMs, pxpipeTransform = null, onPxpipeEvent = null, sourceFormatOverride, providerThinking, settings = null }) {
   const { provider, model } = modelInfo;
   const requestStartTime = Date.now();
 
@@ -193,6 +194,9 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
   // `X-9Router-Token-Saver: off` to bypass ALL token savers (RTK, Caveman,
   // Ponytail) for one request without touching the global dashboard toggles.
   const tokenSaverEnabled = clientRawRequest?.headers?.[TOKEN_SAVER_HEADER]?.toLowerCase() !== "off";
+  // Threaded into the streaming/non-streaming request-detail logs so the UI can
+  // show per-request PXPIPE savings. Null when PXPIPE didn't run or didn't apply.
+  let pxpipeSummary = null;
 
   if (isClaudeDirectCachePath || !tokenSaverEnabled) {
     if (!tokenSaverEnabled) {
@@ -230,6 +234,30 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
     if (ponytailRuns) {
       injectPonytail(translatedBody, finalFormat, ponytailLevel);
       log?.debug?.("PONYTAIL", `${ponytailLevel} | ${finalFormat}`);
+    }
+
+    // PXPIPE (0.5.111): render bulky Claude-format context as dense PNGs.
+    // Fail-open like every token saver — a null transform (not installed),
+    // timeout, or error returns { body: null } and leaves the request as-is.
+    // Runs LAST so it captures whatever RTK/persona injection produced.
+    if (pxpipeEnabled) {
+      const pxResult = await compressWithPxpipe(translatedBody, {
+        enabled: true,
+        format: finalFormat,
+        model,
+        minChars: pxpipeMinChars,
+        timeoutMs: pxpipeTimeoutMs,
+        transform: pxpipeTransform,
+      });
+      if (pxResult.body) {
+        translatedBody = pxResult.body;
+        const pxLine = formatPxpipeLog(pxResult.summary);
+        if (pxLine) log?.debug?.("PXPIPE", pxLine);
+      }
+      if (pxResult.summary && typeof onPxpipeEvent === "function") {
+        try { onPxpipeEvent({ model, provider, ...pxResult.summary }); } catch { /* event log is best-effort */ }
+      }
+      pxpipeSummary = pxResult.summary || null;
     }
   }
 
@@ -484,7 +512,7 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
   // to this account can begin in parallel with the stream the user receives).
   releaseOnce();
 
-  const sharedCtx = { provider, model, body, stream, translatedBody, finalBody, requestStartTime, connectionId, apiKey, clientRawRequest, onRequestSuccess };
+  const sharedCtx = { provider, model, body, stream, translatedBody, finalBody, requestStartTime, connectionId, apiKey, clientRawRequest, onRequestSuccess, pxpipe: pxpipeSummary };
   const appendLog = (extra) => appendRequestLog({ model, provider, connectionId, ...extra }).catch(() => { });
   const trackDone = () => trackPendingRequest(model, provider, connectionId, false);
 

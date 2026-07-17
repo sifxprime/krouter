@@ -649,3 +649,19 @@ describe("forced-SSE aggregation for Responses-API providers (0.5.110 bug fix)",
     expect(undeclared, `executors force stream but chatCore does not know:\n  ${undeclared.join("\n  ")}`).toEqual([]);
   });
 });
+
+describe("grok-cli token refresh (0.5.111 fix)", () => {
+  // Shipped in 0.5.110 with no refresh case, so it fell to refreshAccessToken,
+  // which needs a clientId grok-cli's backend config lacks → refresh always
+  // failed → OAuth connections died after ~8h. grok-cli tokens are xai tokens.
+  it("routes grok-cli refresh through the xai path", () => {
+    const src = readFileSync("open-sse/services/tokenRefresh.js", "utf8");
+    // The two cases must share the refreshXaiToken return.
+    expect(src).toMatch(/case "xai":\s*\n(?:.*\n)*?\s*case "grok-cli":\s*\n\s*return refreshXaiToken/);
+  });
+
+  it("formats grok-cli credentials like xai (bearer access token)", () => {
+    const src = readFileSync("open-sse/services/tokenRefresh.js", "utf8");
+    expect(src).toMatch(/case "xai":\s*\n\s*case "grok-cli":/);
+  });
+});

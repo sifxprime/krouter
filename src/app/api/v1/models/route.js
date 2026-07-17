@@ -95,6 +95,7 @@ const MODEL_TYPE_TO_KIND = {
   embedding: "embedding",
   stt: "stt",
   imageToText: "imageToText",
+  video: "video",
 };
 
 function modelKind(model) {

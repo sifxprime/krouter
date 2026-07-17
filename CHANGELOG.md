@@ -1,3 +1,41 @@
+# v0.5.111 (2026-07-18) — Grok Imagine video + PXPIPE, plus two bugs the live tests caught
+
+Two Tier B features land together, each verified against real endpoints on a live account, plus two real bugs surfaced along the way.
+
+## Grok Imagine video (upstream d6761c6f) — verified end-to-end on a real account
+
+A new `/v1/videos` surface (generations / edits / extensions + status polling) proxying xAI's async Grok Imagine jobs.
+
+- `videoCore.js` is a transparent proxy: forwards the body byte-for-byte, passes `request_id` / `status` / `video.url` back verbatim, refreshes once on 401/403 and retries once, never re-sends a creation POST on a network error (the job may already exist). Upstream reads its endpoint from a `PROVIDER_MEDIA` registry this fork doesn't have; ours keeps a small self-contained `VIDEO_CONFIG` instead.
+- 4 routes, the sse handler, `grok-imagine-video` (kind `video`), the `video` serviceKind on xai, and the Sidebar entry — all wired.
+
+**Proven live against your xAI account:** submitted a real job → `request_id: f00c3438…` → polled → status `done` → a playable video URL at `https://vidgen.x.ai/…`. The token was expired in storage (8h TTL); our server refreshed it and xAI accepted the job. Full round trip, not a mock.
+
+**Bug found while wiring it:** the `[kind]` media route's slug map had no `video` entry, so `/v1/models/video` returned "Unknown model kind" even though the Sidebar links a video page and xai publishes a video model. Upstream's own port missed this. Fixed — `/v1/models/video` now returns exactly `xai/grok-imagine-video`, and the main `/v1/models` correctly keeps video out of the LLM list.
+
+## PXPIPE (upstream dcf1927f) — context-to-PNG token saver, verified with the real package
+
+Renders bulky Claude-format context as dense PNGs via the `pxpipe-proxy` library (images bill by pixels, not encoded length). It joins RTK / Caveman / Ponytail as a fail-open token saver — runs last in the pipeline, and any error, timeout, or missing install returns the request untouched.
+
+- The `pxpipe-proxy` package is **never bundled**: it installs on demand into the data dir (same lazy pattern as our sqlite/systray runtime deps) and loads via dynamic import. No new hard dependency in `package.json`.
+- 8 management routes (status / health / install / start / stop / restart / logs / stats), a dashboard page, settings (off by default, 25k-char threshold), and per-request savings threaded into the request-detail log.
+
+**Verified live end-to-end:**
+- Before install: status `installed:false`, health cleanly reports "not installed", and a real Claude request still succeeds (fail-open).
+- Installed the real `pxpipe-proxy@0.9.0` into the data dir → health goes green (all three checks: installed ✓, module loads ✓, transform runs ✓).
+- Enabled it, sent a real request → still 200 (the package made its own profitability decision and passed the request through — fail-open, exactly as designed). Stats and logs routes functional.
+
+The package's v0.9.0 profitability heuristic is conservative and opaque about which payloads it images; what this release guarantees is that our integration invokes it correctly and never lets it break a request.
+
+## Bug: grok-cli OAuth tokens never refreshed (regression from 0.5.110)
+
+`grok-cli` shipped last release with **no case in `refreshTokenByProvider`**, so it fell to the default `refreshAccessToken`, which needs a `clientId` grok-cli's backend config doesn't carry — refresh always failed, and OAuth connections died after xAI's ~8h token TTL. This was a real 401 hit on a day-old grok-cli connection.
+
+grok-cli tokens **are** xai tokens (same public client `b1a00492…`, same `auth.x.ai/oauth2/token`), so the fix routes grok-cli through the exact same `refreshXaiToken` path as xai. **Verified live:** `refreshTokenByProvider("grok-cli", …)` returned a fresh token (was `null` before), and a grok-cli chat that had been 401-ing came back with `"mango"` (431 in / 349 out). A scan confirmed grok-cli was the only provider on that refresh path with the gap.
+
+## Verification
+
+Full suite **1256 pass** (+49 across the two features and their regressions). Production build clean, all new routes registered. New guards: the `[kind]` route must recognize `video`, chat.js must thread the pxpipe transform to both chatCore calls, and grok-cli refresh must route through the xai path.
 # v0.5.110 (2026-07-17) — Tier C complete: Grok CLI (Grok Build) + two routing bugs it exposed
 
 Adds the fourth and largest Tier C provider, and fixes two silent routing bugs that only a real request could surface. Both were found by chatting through a live Grok Build account — the unit tests passed the whole time.

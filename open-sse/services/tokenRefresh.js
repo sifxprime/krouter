@@ -710,6 +710,13 @@ export async function refreshTokenByProvider(provider, credentials, log) {
         log
       );
     case "xai":
+    // 0.5.111 fix — grok-cli was shipped in 0.5.110 with no refresh case, so it
+    // fell to the default refreshAccessToken, which needs a clientId grok-cli's
+    // backend config doesn't have → refresh always failed → OAuth connections
+    // died after ~8h (a real 401 we hit on a day-old grok-cli connection).
+    // grok-cli tokens ARE xai tokens (same client b1a00492, same auth.x.ai
+    // /oauth2/token), so they refresh through the exact same path.
+    case "grok-cli":
       return refreshXaiToken(credentials.refreshToken, log);
     case "vertex":
     case "vertex-partner": {
@@ -752,6 +759,7 @@ export function formatProviderCredentials(provider, credentials, log) {
     case "openai":
     case "openrouter":
     case "xai":
+    case "grok-cli":
       return {
         apiKey: credentials.apiKey,
         accessToken: credentials.accessToken
