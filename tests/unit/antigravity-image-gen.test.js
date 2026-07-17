@@ -26,12 +26,13 @@ describe("Antigravity image generation wiring", () => {
     expect(AI_PROVIDERS.antigravity.serviceKinds).toContain("llm");
   });
 
-  it("image models are published under the ag alias", () => {
+  it("publishes only image models Google actually serves", () => {
     const ids = PROVIDER_MODELS.ag.map((m) => m.id);
     expect(ids).toContain("gemini-3.1-flash-image");
-    expect(ids).toContain("gemini-3-pro-image");
-    const imageModels = PROVIDER_MODELS.ag.filter((m) => m.type === "image");
-    expect(imageModels.length).toBe(2);
+    // 0.5.108 — upstream lists gemini-3-pro-image but Google 404s it on every
+    // account we tested; we deliberately don't publish it (see providerModels.js).
+    expect(ids).not.toContain("gemini-3-pro-image");
+    expect(PROVIDER_MODELS.ag.filter((m) => m.type === "image")).toHaveLength(1);
   });
 
   it("normalize() converts Gemini inlineData parts to OpenAI b64_json shape", () => {

@@ -94,8 +94,13 @@ export const PROVIDER_MODELS = {
     // 0.5.107 (upstream 5306bd90) — native image generation. The executor
     // detects any model matching /image/i and switches to the image_gen
     // envelope. Append "-16x9" / "-1024x768" etc. to request an aspect ratio.
+    //
+    // 0.5.108 — upstream also lists "gemini-3-pro-image", but Google returns
+    // 404 NOT_FOUND for it on every account we tested (11 connections), while
+    // gemini-3.1-flash-image generates real images reliably. Listing a model
+    // that always 404s just hands the user a confusing 502, so it stays out
+    // until Google actually serves it.
     { id: "gemini-3.1-flash-image", name: "Gemini 3.1 Flash (Image)", type: "image" },
-    { id: "gemini-3-pro-image", name: "Gemini 3 Pro (Image)", type: "image" },
   ],
   gh: [  // GitHub Copilot - OpenAI models
     { id: "gpt-3.5-turbo", name: "GPT-3.5 Turbo" },

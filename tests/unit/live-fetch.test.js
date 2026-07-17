@@ -3,6 +3,7 @@ import {
   getLiveFetcher,
   listLiveFetchProviders,
   LIVE_FETCH,
+  LIVE_FETCH_USER_AGENT,
 } from "@/shared/constants/liveFetch.js";
 
 describe("getLiveFetcher", () => {
@@ -68,5 +69,40 @@ describe("getLiveFetcher", () => {
     expect(list).toContain("openai");
     expect(list).toContain("kimi");     // newly added
     expect(list).toContain("deepgram"); // newly added
+  });
+});
+
+// 0.5.108 — Featherless (and any WAF-fronted catalog) 404s "Gone." when the
+// request carries no User-Agent, which is exactly what Node's fetch sends by
+// default. Both live-catalog routes must set one.
+describe("live-fetch User-Agent (WAF bypass)", () => {
+  it("exports a non-empty User-Agent constant", () => {
+    expect(typeof LIVE_FETCH_USER_AGENT).toBe("string");
+    expect(LIVE_FETCH_USER_AGENT.length).toBeGreaterThan(0);
+  });
+
+  it("both live-catalog routes send the User-Agent header", async () => {
+    const { readFileSync } = await import("node:fs");
+    for (const route of [
+      "src/app/api/models/preview/route.js",
+      "src/app/api/models/live-by-connection/route.js",
+    ]) {
+      const src = readFileSync(route, "utf8");
+      expect(src, `${route} must import the UA constant`).toContain("LIVE_FETCH_USER_AGENT");
+      expect(src, `${route} must set the User-Agent header`).toMatch(
+        /"User-Agent":\s*LIVE_FETCH_USER_AGENT/,
+      );
+    }
+  });
+
+  it("extraHeaders can still override the default User-Agent", () => {
+    // The UA is spread BEFORE extraHeaders, so a provider that needs its own
+    // UA can still win.
+    const headers = {
+      "Content-Type": "application/json",
+      "User-Agent": LIVE_FETCH_USER_AGENT,
+      ...{ "User-Agent": "custom/9" },
+    };
+    expect(headers["User-Agent"]).toBe("custom/9");
   });
 });

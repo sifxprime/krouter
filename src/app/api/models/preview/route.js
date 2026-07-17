@@ -16,7 +16,7 @@
 
 import { NextResponse } from "next/server";
 import crypto from "node:crypto";
-import { getLiveFetcher } from "@/shared/constants/liveFetch.js";
+import { getLiveFetcher, LIVE_FETCH_USER_AGENT } from "@/shared/constants/liveFetch.js";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -59,7 +59,11 @@ async function fetchWithTimeout(url, options) {
 }
 
 function buildRequest(fetcher, apiKey) {
-  const headers = { "Content-Type": "application/json", ...(fetcher.extraHeaders || {}) };
+  const headers = {
+    "Content-Type": "application/json",
+    "User-Agent": LIVE_FETCH_USER_AGENT,
+    ...(fetcher.extraHeaders || {}),
+  };
   let url = fetcher.url;
 
   if (fetcher.authQuery) {

@@ -1,3 +1,36 @@
+# v0.5.108 (2026-07-17) — Two bugs the massive verification sweep caught
+
+A full end-to-end sweep against a live dev server (every dashboard API, real chat traffic, real image generation, the whole catalog surface) surfaced two real defects that unit tests could not see, because both only exist when talking to the actual provider. Both are fixed here.
+
+**1. Featherless live-model fetch was completely broken (not just for bad keys).**
+
+Featherless sits behind a WAF that rejects any request carrying no `User-Agent` — it answers with `404 "Gone."`. Node's `fetch` sends no User-Agent by default, so every live-catalog request we made was blocked at the edge and never reached Featherless's API. The 404 was indistinguishable from a dead endpoint, and it would have hit users with a **valid** key exactly the same way — "Fetch models" simply never worked for Featherless.
+
+Isolated by probing the same URL three ways: no UA → `404 Gone.`, curl's UA → `401`, browser UA → `401`. The auth layer was fine; the WAF was eating us before it.
+
+- `liveFetch.js` — new exported `LIVE_FETCH_USER_AGENT`, the single source of truth for the identity we present to catalogs.
+- `models/preview` + `models/live-by-connection` — both header builders now set `User-Agent`. It is spread *before* `extraHeaders`, so a provider that needs its own UA can still override it.
+
+Verified live: Featherless preview went from `Provider returned 404` → `Invalid API key`. The real auth response now reaches us, which means a real key now reaches the real catalog. Venice (101 models) and SiliconFlow (`Invalid API key`) unchanged — no regression.
+
+**2. `gemini-3-pro-image` was published but does not exist.**
+
+Upstream lists it, so we shipped it in 0.5.107. It returns Google `404 NOT_FOUND` on **every** account tested (11 antigravity connections). A/B against its sibling on the same account, same prompt: `gemini-3.1-flash-image` → HTTP 200 with a real **838,800-byte** image; `gemini-3-pro-image` → 502, twice. Publishing a model that always fails just hands the user a confusing 502, so it stays out of the list until Google actually serves it.
+
+- `providerModels.js` — `ag` now publishes only `gemini-3.1-flash-image`. Verified: `/v1/models/image` lists exactly the one working model.
+- The executor still handles `gemini-3-pro-image` correctly (aspect-ratio parsing, forced non-streaming) — only the *published catalog* changed, so nothing breaks if Google turns it on later.
+
+**Sweep results — everything else was green:**
+
+- Full suite **1120 pass** / 107 files (+3 new User-Agent regression tests), production build clean.
+- All **14 dashboard APIs → 200**.
+- Zenith live: 22 ranked accounts, winner Z:1080, all breakdown fields present.
+- **Real chat** (`ag/gemini-3-flash-agent` → "mango") populated both the health tracker (score 961.22, 3878 ms EWMA, 100%, n=6) and the routing decision log (Z:961, 5927 ms ✓) — confirming the 0.5.92 `recordOutcome` fix holds under live traffic.
+- **Cache guard** on antigravity: `entries: 0, skipped: 1` — the original duplicate-reply bug stays fixed.
+- **Bypass header** confirmed in live logs: `[TOKEN_SAVER] bypassed via X-9Router-Token-Saver: off`.
+- Quota tracker populated (claude 2 buckets, kiro 1, antigravity 9); all 3 new provider logos serve 200.
+
+**Note on Venice:** preview reports success for an invalid Venice key because Venice's `/api/v1/models` is a genuinely public endpoint requiring no auth. That is Venice's design, not a bug in the preview — the catalog it returns is real.
 # v0.5.107 (2026-07-16) — Tier B: Antigravity native image generation
 
 Ported Antigravity image generation (upstream 5306bd90) into our fork. You can now generate images through your existing Antigravity OAuth accounts — no separate image provider or API key needed.

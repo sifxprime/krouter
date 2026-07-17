@@ -16,6 +16,12 @@
 // Providers not listed here can still work via the fallback URL derivation
 // in getLiveFetcher() when their notice.apiKeyUrl or website exposes a hostname.
 
+// 0.5.108 — Some catalogs sit behind a WAF that rejects requests carrying no
+// User-Agent. Featherless answers undici's default (no UA) with 404 "Gone.",
+// but returns a real 401/200 the moment any UA is present. Node's fetch sends
+// no UA by default, so every live-catalog request has to set one explicitly.
+export const LIVE_FETCH_USER_AGENT = "krouter/1.0 (+https://github.com/sifxprime/krouter)";
+
 const openaiShape = (url, extraHeaders = null) => ({
   url,
   authHeader: "Authorization",
