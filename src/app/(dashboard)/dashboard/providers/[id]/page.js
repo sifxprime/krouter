@@ -675,11 +675,38 @@ export default function ProviderDetailPage() {
         try {
           const res = await fetch(`/api/providers/${id}`, { method: "DELETE" });
           if (res.ok) {
-            setConnections(connections.filter(c => c.id !== id));
+            setConnections(prev => prev.filter(c => c.id !== id));
           }
         } catch (error) {
           console.log("Error deleting connection:", error);
         }
+      }
+    });
+  };
+
+  // 0.5.113 (upstream 644bff4c) — delete every checked connection in one action.
+  const handleBulkDelete = () => {
+    const count = selectedConnectionIds.length;
+    if (count === 0) return;
+    setConfirmState({
+      title: `Delete ${count} Connection${count > 1 ? "s" : ""}`,
+      message: `Delete ${count} connection${count > 1 ? "s" : ""}? This cannot be undone.`,
+      onConfirm: async () => {
+        setConfirmState(null);
+        let failed = 0;
+        const idsToDelete = [...selectedConnectionIds];
+        for (const id of idsToDelete) {
+          try {
+            const res = await fetch(`/api/providers/${id}`, { method: "DELETE" });
+            if (!res.ok) failed += 1;
+          } catch (error) {
+            console.log("Error deleting connection:", error);
+            failed += 1;
+          }
+        }
+        setConnections(prev => prev.filter(c => !idsToDelete.includes(c.id)));
+        setSelectedConnectionIds([]);
+        if (failed > 0) alert(`Deleted ${idsToDelete.length - failed} connection(s), ${failed} failed.`);
       }
     });
   };
@@ -1516,6 +1543,16 @@ export default function ProviderDetailPage() {
                   onClick={() => setShowBulkProxyModal(true)}
                 >
                   Apply Proxy
+                </Button>
+              )}
+              {selectedConnectionIds.length > 0 && (
+                <Button
+                  size="sm"
+                  variant="danger"
+                  icon="delete"
+                  onClick={handleBulkDelete}
+                >
+                  Delete Selected ({selectedConnectionIds.length})
                 </Button>
               )}
               {connections.length > 0 && (

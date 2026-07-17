@@ -1,3 +1,16 @@
+# v0.5.113 (2026-07-18) — Upstream quick-wins batch
+
+Six small upstream features/fixes we were missing, verified together.
+
+- **SearXNG `SEARXNG_URL` env** (upstream e79f9edd) — the built-in unauthenticated SearXNG provider was pinned to `http://localhost:8888/search`. Self-hosters can now point at their own instance (`SEARXNG_URL=http://searxng:8080/search`). The override lives in `runtimeConfig` + `buildSearxngRequest`, and only kicks in when the env is set, so the manifest default is unchanged.
+- **Bulk-delete connections** (upstream 644bff4c) — a "Delete Selected (N)" action on the provider page that removes every checked connection in one confirm. The selection infrastructure already existed here; this adds the handler + button.
+- **Kiro GPT-5.6 family** (upstream b94685b8) — `gpt-5.6-sol/terra/luna` added to the Kiro fallback catalog (272k context). A Kiro account with access serves them via the live catalog; the `*gpt-5.6*` capability pattern already routes them.
+- **Strip `client_metadata` on responses→openai** (upstream e567ba80) — the Responses-API `client_metadata` field is now dropped when converting to plain Chat Completions, which rejects it.
+- **Gate the auto-ping scheduler at startup** (upstream 27b37705) — the quota auto-ping interval no longer spins up on a fresh install where no connection opted in; it starts only when `claudeAutoPing`/`codexAutoPing` has an enabled connection.
+
+**Deferred:** the Kiro direct-session-cache change (upstream 9c58ba64) is 400+ lines of Kiro translator internals — a perf optimization, not a correctness fix — and doesn't belong in a quick-wins batch. It gets its own careful pass.
+
+**Verification:** full suite **1267 pass** (+8), production build clean, provider page + `/v1/models` serve with no regression. New regression tests cover all five changes.
 # v0.5.112 (2026-07-18) — PXPIPE was inert for real traffic; now it actually compresses
 
 A correction to v0.5.111. PXPIPE shipped wired and fail-open, but **it never compressed a real request** — and the v0.5.111 verification missed it because the checks only exercised fail-open paths and the package's own self-test.

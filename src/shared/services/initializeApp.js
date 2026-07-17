@@ -96,7 +96,10 @@ export async function initializeApp() {
     startWatchdog();
     startNetworkMonitor();
     autoStartMitm();
-    startQuotaAutoPing();
+    // 0.5.113 (upstream 27b37705) — don't spin up the auto-ping scheduler's
+    // recurring interval unless a connection actually opted in. On a fresh
+    // install (nothing enabled) this was a pure no-op timer every 60s.
+    if (hasQuotaAutoPingEnabled(settings)) startQuotaAutoPing();
     startTokenWarmer();
     // 0.5.33 — background quota refresh for accounts in active use.
     // Reads getProviderConnections() each tick so newly added accounts pick up
@@ -118,6 +121,13 @@ export async function initializeApp() {
   } catch (error) {
     console.error("[InitApp] Error:", error);
   }
+}
+
+// True when any connection has claude/codex auto-ping turned on. Mirrors the
+// shape quotaAutoPing itself reads: settings.{claudeAutoPing,codexAutoPing}.connections.
+function hasQuotaAutoPingEnabled(settings) {
+  return [settings?.claudeAutoPing, settings?.codexAutoPing]
+    .some((config) => Object.values(config?.connections || {}).some(Boolean));
 }
 
 async function autoBackfillTokensIfNeeded() {

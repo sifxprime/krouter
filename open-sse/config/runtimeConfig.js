@@ -34,6 +34,12 @@ export const MEMORY_CONFIG = {
 // Stream stall timeout: abort if no chunk received within this duration
 export const STREAM_STALL_TIMEOUT_MS = 60 * 1000;
 
+// 0.5.113 (upstream e79f9edd) — endpoint for the built-in unauthenticated
+// SearXNG web-search provider. Self-hosters run SearXNG on their own host/port
+// (or a Docker service like http://searxng:8080/search); without this override
+// the provider only ever hit the hardcoded localhost:8888 default.
+export const SEARXNG_URL = (process.env.SEARXNG_URL || "http://localhost:8888/search").trim();
+
 // Fetch connect timeout: abort if upstream doesn't return response headers within this duration
 export const FETCH_CONNECT_TIMEOUT_MS = 60 * 1000;
 

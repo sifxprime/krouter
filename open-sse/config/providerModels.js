@@ -143,6 +143,12 @@ export const PROVIDER_MODELS = {
     { id: "qwen3-coder-next", name: "Qwen3 Coder Next", strip: ["image", "audio"] },
     { id: "glm-5", name: "GLM 5" },
     { id: "MiniMax-M2.5", name: "MiniMax M2.5" },
+    // 0.5.113 (upstream b94685b8) — experimental GPT-5.6 family (272k ctx).
+    // Fallback entries; a Kiro account with access serves these via the live
+    // catalog. The *gpt-5.6* capability pattern already handles routing.
+    { id: "gpt-5.6-sol", name: "GPT 5.6 Sol", strip: ["image", "audio"] },
+    { id: "gpt-5.6-terra", name: "GPT 5.6 Terra", strip: ["image", "audio"] },
+    { id: "gpt-5.6-luna", name: "GPT 5.6 Luna", strip: ["image", "audio"] },
     // --- Thinking variants (alias to base; thinking is enabled at request time
     //     via <thinking_mode>enabled</thinking_mode> system-prompt injection) ---
     { id: "claude-sonnet-4.5-thinking", name: "Claude Sonnet 4.5 (Thinking)" },

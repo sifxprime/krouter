@@ -30,6 +30,10 @@
  * @property {Record<string,unknown>} [providerSpecificData]
  */
 
+// 0.5.113 — honor the SEARXNG_URL env override (only when explicitly set, so
+// the static provider config still supplies the default).
+const SEARXNG_URL_OVERRIDE = (process.env.SEARXNG_URL || "").trim() || null;
+
 // ── Helpers ─────────────────────────────────────────────────────────────
 
 /**
@@ -305,7 +309,9 @@ function buildYouComRequest(config, params) {
 }
 
 function buildSearxngRequest(config, params) {
-  const baseUrl = resolveBaseUrl(config, params);
+  // SEARXNG_URL env wins over the static config baseUrl so self-hosters can
+  // point at their own instance without editing the provider manifest.
+  const baseUrl = SEARXNG_URL_OVERRIDE || resolveBaseUrl(config, params);
   const url = baseUrl.endsWith("/search") ? baseUrl : `${baseUrl}/search`;
   const qp = new URLSearchParams({
     q: params.query,

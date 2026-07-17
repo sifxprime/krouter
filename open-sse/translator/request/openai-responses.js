@@ -192,6 +192,9 @@ export function openaiResponsesToOpenAIRequest(model, body, stream, credentials)
   delete result.prompt_cache_key;
   delete result.store;
   delete result.reasoning;
+  // 0.5.113 (upstream e567ba80) — client_metadata is a Responses-API field the
+  // plain Chat Completions endpoint rejects; strip it during the conversion.
+  delete result.client_metadata;
 
   return result;
 }
