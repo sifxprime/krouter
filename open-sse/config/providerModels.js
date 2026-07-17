@@ -91,6 +91,11 @@ export const PROVIDER_MODELS = {
     { id: "claude-opus-4-6-thinking", name: "Claude Opus 4.6 (Thinking)" },
     { id: "gpt-oss-120b-medium", name: "GPT-OSS 120B (Medium)" },
     { id: "gemini-3-flash", name: "Gemini 3 Flash", thinking: false }, // command model; AG strips thinking
+    // 0.5.107 (upstream 5306bd90) — native image generation. The executor
+    // detects any model matching /image/i and switches to the image_gen
+    // envelope. Append "-16x9" / "-1024x768" etc. to request an aspect ratio.
+    { id: "gemini-3.1-flash-image", name: "Gemini 3.1 Flash (Image)", type: "image" },
+    { id: "gemini-3-pro-image", name: "Gemini 3 Pro (Image)", type: "image" },
   ],
   gh: [  // GitHub Copilot - OpenAI models
     { id: "gpt-3.5-turbo", name: "GPT-3.5 Turbo" },

@@ -1,3 +1,30 @@
+# v0.5.107 (2026-07-16) — Tier B: Antigravity native image generation
+
+Ported Antigravity image generation (upstream 5306bd90) into our fork. You can now generate images through your existing Antigravity OAuth accounts — no separate image provider or API key needed.
+
+**Usage:** `POST /v1/images/generations` with `model: "ag/gemini-3.1-flash-image"` (or `ag/gemini-3-pro-image`). Append an aspect-ratio suffix for non-square output: `ag/gemini-3.1-flash-image-16x9`, or a pixel hint like `-1024x768` (reduced to its ratio automatically).
+
+**What was added:**
+
+- `imageGenerationCore.js` — new `useExecutor` branch. Some providers need the executor's full request envelope (project id, session id, requestType) plus its auth headers, which a plain `buildUrl`/`buildHeaders` adapter can't reproduce. Those adapters now set `useExecutor: true` and the core hands off to the proven executor flow (with binary-output and `urlToBase64` support preserved).
+- `imageProviders/antigravity.js` — adapter that delegates to the executor and normalizes Gemini `inlineData` parts into the OpenAI `b64_json` shape.
+- `executors/antigravity.js` — image-model detection (`/image/i`, `/imagen/i`), aspect-ratio parsing from model-name suffixes, forced non-streaming (`generateContent`, never `streamGenerateContent`), and a dedicated `requestType: "image_gen"` envelope with no tools/systemInstruction/safetySettings. Adapted to our `getAntigravitySessionId` + `getAntigravityEnvelopeUserAgent` helpers rather than upstream's `resolveSessionId`.
+- `providers.js` — Antigravity `serviceKinds` now `["llm", "image"]`.
+- `providerModels.js` — published `gemini-3.1-flash-image` + `gemini-3-pro-image` under the `ag` alias.
+
+**Verification — 14 unit tests + real end-to-end generation on a live dev server:**
+
+- **Real image generated** through a live Antigravity account: prompt "a simple red circle on white background" → HTTP 200, 646 KB response, valid **1024×1024 JPEG**, and the rendered image was visually confirmed to be exactly a red circle on white.
+- **Aspect ratio verified end-to-end**: `ag/gemini-3.1-flash-image-16x9` returned a **1376×768** JPEG (exactly 16:9) vs the default **1024×1024** (1:1).
+- `/v1/models/image` correctly exposes `ag/gemini-3.1-flash-image` and `ag/gemini-3-pro-image`.
+- Unit tests cover: adapter registration, executor delegation, manifest service kinds, model publication, `normalize()` across three response shapes (flat, nested `response.candidates`, no-image fallback), forced non-streaming for image models, aspect-ratio parsing (`-16x9` → `16:9`, `-1024x768` → `4:3`, suffix stripped from the model id), non-text part filtering, and **regressions proving normal chat models still stream and still use the `agent` envelope**.
+
+Full suite: **1117 tests pass** (+14).
+
+**Remaining Tier B (deferred, with reasons):**
+- **PXPIPE** (upstream dcf1927f) — requires the external `pxpipe-proxy` package (it renders bulky context into dense PNGs via that library's `transformAnthropicMessages` API) plus install/health/logs management routes and a dashboard page. That's a hard third-party runtime dependency; it deserves its own release and an explicit decision about shipping an external binary dependency.
+- **Grok Imagine video** (upstream d6761c6f) — 18 files introducing a whole new `/v1/videos` surface (generations/edits/extensions/status) + `videoCore.js` + CLI. Additive and feasible, but it can't be verified end-to-end without an xAI account with Imagine video access.
+
 # v0.5.106 (2026-07-16) — Provider quota visibility (hide/restore quota rows)
 
 Ported the quota visibility feature (upstream 4dadab9d), manually integrated into our diverged Quota Tracker.

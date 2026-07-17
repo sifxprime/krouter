@@ -11,6 +11,8 @@ import stabilityAi from "./stabilityAi.js";
 import blackForestLabs from "./blackForestLabs.js";
 import runwayml from "./runwayml.js";
 import cloudflareAi from "./cloudflareAi.js";
+// 0.5.107 — Antigravity native image generation (delegates to the executor).
+import antigravity from "./antigravity.js";
 
 const ADAPTERS = {
   openai: createOpenAIAdapter("openai"),
@@ -31,6 +33,7 @@ const ADAPTERS = {
   "black-forest-labs": blackForestLabs,
   runwayml,
   "cloudflare-ai": cloudflareAi,
+  antigravity,
 };
 
 export function getImageAdapter(provider) {
