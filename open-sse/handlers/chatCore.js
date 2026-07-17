@@ -71,7 +71,17 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
   }
 
   const clientRequestedStreaming = body.stream === true || sourceFormat === FORMATS.ANTIGRAVITY || sourceFormat === FORMATS.GEMINI || sourceFormat === FORMATS.GEMINI_CLI;
-  const providerRequiresStreaming = provider === "openai" || provider === "codex" || provider === "commandcode";
+  // Providers whose upstream rejects (or never returns) a non-streamed response.
+  // When the client asks for JSON we still stream upstream and re-aggregate via
+  // handleForcedSSEToJson below. Getting this wrong is silent: chatCore takes
+  // the non-streaming path, tries to parse an SSE body as JSON, and hands the
+  // client an empty message. grok-cli and codebuddy-cn both force stream in
+  // their executors, so both must be listed here.
+  const providerRequiresStreaming = provider === "openai"
+    || provider === "codex"
+    || provider === "commandcode"
+    || provider === "grok-cli"
+    || provider === "codebuddy-cn";
   let stream = providerRequiresStreaming ? true : (body.stream !== false);
 
   // DeepSeek-TUI: interactive TUI panel sends stream:true and needs SSE.

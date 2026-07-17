@@ -12,6 +12,16 @@ const ALIAS_TO_PROVIDER_ID = {
   kc: "kilocode",
   kmc: "kimi-coding",
   cl: "cline",
+  // 0.5.109/0.5.110 — Tier C. This map is what actually routes an incoming
+  // "<alias>/<model>" to a provider; PROVIDER_ID_TO_ALIAS in providerModels.js
+  // is a separate table. A provider missing here still lists its models and
+  // passes every wiring check, then routes to the wrong upstream at request
+  // time — which is exactly how gcli/* reached api.x.ai and 401'd with
+  // invalid_issuer. The tier-c test now asserts both maps agree.
+  clinepass: "clinepass",
+  cbcn: "codebuddy-cn",
+  kimchi: "kimchi",
+  gcli: "grok-cli",
   oc: "opencode",
   ocg: "opencode-go",
   qd: "qoder",

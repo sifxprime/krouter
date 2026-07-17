@@ -2,6 +2,8 @@
  * OAuth Configuration Constants
  */
 import { platform, arch } from "os";
+// Grok CLI shares xai's public client — import rather than duplicate the id.
+import { XAI_CLIENT_ID } from "./xai";
 
 /**
  * Get the platform enum value based on the current OS.
@@ -254,6 +256,23 @@ export const CLINE_CONFIG = {
   refreshUrl: "https://api.cline.bot/api/v1/auth/refresh",
 };
 
+// Grok CLI / Grok Build OAuth (upstream a11937cd) — device code flow.
+//
+// Same public client_id and issuer as our `xai` provider, but a device-code
+// grant instead of PKCE (no loopback server needed) plus conversation scopes.
+// Verified live: auth.x.ai advertises urn:ietf:params:oauth:grant-type:device_code
+// in its discovery document and returns a real user_code for this client.
+export const GROK_CLI_CONFIG = {
+  clientId: XAI_CLIENT_ID,
+  deviceCodeUrl: "https://auth.x.ai/oauth2/device/code",
+  tokenUrl: "https://auth.x.ai/oauth2/token",
+  refreshUrl: "https://auth.x.ai/oauth2/token",
+  // Beyond xai's api-only scope, the CLI asks for conversation read/write.
+  scope: "openid profile email offline_access grok-cli:access api:access conversations:read conversations:write",
+  referrer: "grok-build",
+  pollInterval: 5000,
+};
+
 // Kimchi OAuth Configuration (upstream 8a664d61) — browser token callback.
 // The user signs in at app.kimchi.dev/cli-auth and the browser hands the token
 // straight back on the callback URL; there is no code-for-token exchange, so
@@ -323,4 +342,5 @@ export const PROVIDERS = {
   // connection with the old id can exist.
   CODEBUDDY: "codebuddy-cn",
   KIMCHI: "kimchi",
+  GROK_CLI: "grok-cli",
 };

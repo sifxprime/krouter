@@ -38,11 +38,13 @@ import {
   CLINE_CONFIG,
   CLINEPASS_CONFIG,
   KIMCHI_CONFIG,
+  GROK_CLI_CONFIG,
   GITLAB_CONFIG,
   CODEBUDDY_CONFIG,
   getOAuthClientMetadata,
 } from "./constants/oauth";
 import { XAI_CONFIG, XAI_PKCE_VERIFIER_BYTES } from "./constants/xai";
+import { GROK_CLI_USER_AGENT } from "open-sse/config/grokCli.js";
 
 // Inlined from services/xai.js to keep web route bundle free of `open` (CLI-only) package
 let cachedXaiDiscovery = null;
@@ -1233,6 +1235,75 @@ const PROVIDERS = {
   // copy of the cline block; deriving both from one factory means a fix to the
   // exchange (or to Cline's auth host) lands in both at once.
   clinepass: createClineOAuthFlow(CLINEPASS_CONFIG, "ClinePass"),
+
+  // Grok CLI / Grok Build (upstream a11937cd) — device code to auth.x.ai,
+  // inference on cli-chat-proxy.grok.com. Same client as `xai` but a device
+  // grant, so no loopback proxy is involved.
+  "grok-cli": {
+    config: GROK_CLI_CONFIG,
+    flowType: "device_code",
+    requestDeviceCode: async (config) => {
+      const body = new URLSearchParams({ client_id: config.clientId, scope: config.scope });
+      // The official CLI identifies itself as grok-build here.
+      if (config.referrer) body.set("referrer", config.referrer);
+
+      const response = await oauthFetch(config.deviceCodeUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded",
+          Accept: "application/json",
+          "User-Agent": GROK_CLI_USER_AGENT,
+        },
+        body,
+      });
+      if (!response.ok) {
+        throw new Error(`Grok CLI device code request failed: ${await response.text()}`);
+      }
+      return await response.json();
+    },
+    pollToken: async (config, deviceCode) => {
+      const response = await oauthFetch(config.tokenUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded",
+          Accept: "application/json",
+          "User-Agent": GROK_CLI_USER_AGENT,
+        },
+        body: new URLSearchParams({
+          grant_type: "urn:ietf:params:oauth:grant-type:device_code",
+          device_code: deviceCode,
+          client_id: config.clientId,
+        }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        // authorization_pending / slow_down are the normal polling states —
+        // the caller keeps polling on these rather than failing the flow.
+        const err = data?.error || "poll_failed";
+        const e = new Error(data?.error_description || err);
+        e.code = err;
+        throw e;
+      }
+      return data;
+    },
+    mapTokens: (tokens) => {
+      const mapped = {
+        accessToken: tokens.access_token,
+        refreshToken: tokens.refresh_token,
+        // 7dfb3466 — surface expiresIn so proactive refresh actually fires.
+        expiresIn: tokens.expires_in,
+        scope: tokens.scope,
+      };
+      const email = decodeXaiIdTokenEmail(tokens.id_token);
+      if (email) mapped.email = email;
+      mapped.providerSpecificData = {
+        authMethod: "device_code",
+        ...(tokens.id_token ? { idToken: tokens.id_token } : {}),
+        ...(email ? { email } : {}),
+      };
+      return mapped;
+    },
+  },
 
   // Kimchi (upstream 8a664d61) — browser token flow. app.kimchi.dev sends the
   // token back on the callback URL as ?token=..., so there is no code to

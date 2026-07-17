@@ -2,6 +2,7 @@ import { convertResponsesStreamToJson } from "../../transformer/streamToJsonConv
 import { createErrorResult } from "../../utils/error.js";
 import { HTTP_STATUS } from "../../config/runtimeConfig.js";
 import { FORMATS } from "../../translator/formats.js";
+import { PROVIDERS } from "../../config/providers.js";
 import { buildRequestDetail, extractRequestConfig, saveUsageStats } from "./requestDetail.js";
 import { saveRequestDetail, appendRequestLog } from "@/lib/usageDb.js";
 
@@ -111,8 +112,19 @@ export async function handleForcedSSEToJson({ providerResponse, sourceFormat, pr
     providerRequest: finalBody || translatedBody || null
   };
 
-  // Codex/Responses API SSE path
-  const isCodexResponsesApi = provider === "codex" || sourceFormat === FORMATS.OPENAI_RESPONSES;
+  // Responses-API SSE path.
+  //
+  // This gate is about the shape of the stream we are READING, which is the
+  // provider's format — not sourceFormat, which is the client's. Keying it off
+  // the client meant any Responses-API provider other than codex fell through
+  // to the chat.completions aggregator below, which looks for
+  // `choices[].delta.content` in a stream that only carries
+  // `response.output_text.delta` events, and quietly produced an empty message.
+  // grok-cli hit exactly that: 200 upstream, real tokens billed, empty reply.
+  const providerFormat = PROVIDERS[provider]?.format;
+  const isCodexResponsesApi = provider === "codex"
+    || providerFormat === FORMATS.OPENAI_RESPONSES
+    || sourceFormat === FORMATS.OPENAI_RESPONSES;
   if (isCodexResponsesApi) {
     try {
       const jsonResponse = await convertResponsesStreamToJson(providerResponse.body);

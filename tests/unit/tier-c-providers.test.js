@@ -18,6 +18,7 @@ const TIER_C = [
   { id: "clinepass", alias: "clinepass", name: "ClinePass" },
   { id: "codebuddy-cn", alias: "cbcn", name: "CodeBuddy CN" },
   { id: "kimchi", alias: "kimchi", name: "Kimchi" },
+  { id: "grok-cli", alias: "gcli", name: "Grok CLI (Grok Build)" },
 ];
 
 describe.each(TIER_C)("$name ($id) — provider wiring", ({ id, alias }) => {
@@ -52,6 +53,18 @@ describe.each(TIER_C)("$name ($id) — provider wiring", ({ id, alias }) => {
   it("does not collide with an existing alias", () => {
     const owners = Object.entries(PROVIDER_ID_TO_ALIAS).filter(([, a]) => a === alias);
     expect(owners.map(([k]) => k)).toEqual([id]);
+  });
+
+  it("is in the request-routing alias map (services/model.js)", async () => {
+    // The map that actually routes "<alias>/<model>" -> provider at request
+    // time. It is SEPARATE from PROVIDER_ID_TO_ALIAS, so a provider can pass
+    // every other check here and still route to the wrong upstream. That is
+    // not hypothetical: gcli/* silently reached api.x.ai and 401'd with
+    // invalid_issuer until this was added.
+    const src = readFileSync("open-sse/services/model.js", "utf8");
+    expect(src, `alias "${alias}" missing from ALIAS_TO_PROVIDER_ID`).toMatch(
+      new RegExp(`["']?${alias.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}["']?:\\s*["']${id}["']`),
+    );
   });
 
   it("ships a real logo", () => {
@@ -481,5 +494,158 @@ describe("openai→claude non-streaming translation (0.5.109 bug fix)", () => {
   it("passes through when the provider is not OpenAI-format", () => {
     const body = { anything: 1 };
     expect(translateNonStreamingResponse(body, FORMATS.OPENAI, FORMATS.GEMINI)).toBe(body);
+  });
+});
+
+describe("published aliases must actually route (0.5.110 regression guard)", () => {
+  // Two independent alias tables exist:
+  //   PROVIDER_ID_TO_ALIAS (providerModels.js) — drives the published catalog
+  //   ALIAS_TO_PROVIDER_ID (services/model.js) — drives request routing
+  //
+  // resolveProviderAlias falls back to `ALIAS_TO_PROVIDER_ID[a] || a`, so an
+  // alias that happens to equal its provider id routes correctly even when it
+  // is absent from the map. An alias that does NOT equal its id silently
+  // resolves to a provider that doesn't exist — which is exactly what happened
+  // to `gcli` (routed to a nonexistent "gcli", surfacing as a confusing 401
+  // invalid_issuer) and would have happened to `cbcn`.
+  //
+  // The real invariant is behavioural, so assert on the resolver itself rather
+  // than on the table's text: every alias we publish models under must resolve
+  // to a provider the backend actually knows.
+  it("every published alias resolves to a real backend provider", async () => {
+    const { resolveProviderAlias } = await import("../../open-sse/services/model.js");
+
+    const broken = [];
+    for (const [id, alias] of Object.entries(PROVIDER_ID_TO_ALIAS)) {
+      if (!PROVIDER_MODELS[alias]?.length) continue; // publishes nothing → nothing to route
+      const resolved = resolveProviderAlias(alias);
+      if (!BACKEND_PROVIDERS[resolved]) {
+        broken.push(`${id}: "${alias}" → "${resolved}" (no such backend provider)`);
+      }
+    }
+    expect(broken, `aliases that cannot route:\n  ${broken.join("\n  ")}`).toEqual([]);
+  });
+
+  it("each Tier C alias resolves to its own provider id", async () => {
+    const { resolveProviderAlias } = await import("../../open-sse/services/model.js");
+    for (const { id, alias } of TIER_C) {
+      expect(resolveProviderAlias(alias), `${alias} must route to ${id}`).toBe(id);
+    }
+  });
+});
+
+describe("Grok CLI — request shaping", () => {
+  const mk = async () => (await import("../../open-sse/executors/index.js")).getExecutor("grok-cli");
+  const creds = { connectionId: "c-1", accessToken: "t", email: "u@x.co" };
+  const req = (model, over = {}) => ({
+    model, input: [{ type: "message", role: "user", content: "hi" }], ...over,
+  });
+
+  it("targets cli-chat-proxy, not api.x.ai (that is the `xai` provider)", async () => {
+    const ex = await mk();
+    expect(ex.buildUrl()).toBe("https://cli-chat-proxy.grok.com/v1/responses");
+    expect(ex.buildUrl()).not.toContain("api.x.ai");
+  });
+
+  it("strips the virtual effort suffix and maps it to reasoning.effort", async () => {
+    const ex = await mk();
+    for (const [model, effort] of [["grok-4.5-low", "low"], ["grok-4.5-medium", "medium"], ["grok-4.5-high", "high"]]) {
+      const out = ex.transformRequest(model, req(model), true, creds);
+      expect(out.model, `${model} must resolve to the real upstream id`).toBe("grok-4.5");
+      expect(out.reasoning.effort).toBe(effort);
+    }
+  });
+
+  it("defaults to high effort when none is given (matches the live catalog default)", async () => {
+    const ex = await mk();
+    const out = ex.transformRequest("grok-4.5", req("grok-4.5"), true, creds);
+    expect(out.reasoning.effort).toBe("high");
+  });
+
+  it("always forces stream + store:false and asks for encrypted reasoning", async () => {
+    const ex = await mk();
+    const out = ex.transformRequest("grok-4.5", req("grok-4.5", { stream: false }), false, creds);
+    // The gateway only speaks SSE; store=false means multi-turn continuity has
+    // to ride on encrypted reasoning instead of previous_response_id.
+    expect(out.stream).toBe(true);
+    expect(out.store).toBe(false);
+    expect(out.include).toContain("reasoning.encrypted_content");
+    expect(out.previous_response_id).toBeUndefined();
+  });
+
+  it("drops Chat-Completions leftovers the Responses API rejects", async () => {
+    const ex = await mk();
+    const out = ex.transformRequest("grok-4.5", req("grok-4.5", {
+      max_tokens: 10, n: 2, seed: 1, frequency_penalty: 1, logit_bias: {}, user: "u", stream_options: {},
+    }), true, creds);
+    for (const k of ["max_tokens", "n", "seed", "frequency_penalty", "logit_bias", "user", "stream_options"]) {
+      expect(out[k], `${k} must be dropped`).toBeUndefined();
+    }
+  });
+
+  it("emits a well-formed UUID session id, stable per connection", async () => {
+    const ex = await mk();
+    const h1 = (ex.transformRequest("grok-4.5", req("grok-4.5"), true, creds), ex.buildHeaders(creds, true));
+    const h2 = (ex.transformRequest("grok-4.5", req("grok-4.5"), true, creds), ex.buildHeaders(creds, true));
+    // The real CLI sends plain UUIDs; this fork's deriveSessionId appends a
+    // timestamp, which would not look like the client we claim to be.
+    expect(h1["x-grok-session-id"]).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
+    // Stable across requests, or multi-turn continuity breaks.
+    expect(h2["x-grok-session-id"]).toBe(h1["x-grok-session-id"]);
+    expect(h1["x-grok-conv-id"]).toBe(h1["x-grok-session-id"]);
+    // But the request id must be fresh each time.
+    expect(h2["x-grok-req-id"]).not.toBe(h1["x-grok-req-id"]);
+  });
+
+  it("sends the CLI fingerprint headers the gateway gates on", async () => {
+    const ex = await mk();
+    ex.transformRequest("grok-4.5", req("grok-4.5"), true, creds);
+    const h = ex.buildHeaders(creds, true);
+    expect(h["x-xai-token-auth"]).toBe("xai-grok-cli");
+    expect(h["x-grok-client-identifier"]).toBe("grok-shell");
+    expect(h["User-Agent"]).toMatch(/^grok-shell\//);
+    expect(h["x-grok-turn-idx"]).toBeDefined();
+  });
+
+  it("only grok-4.5 accepts reasoning.effort", async () => {
+    const { supportsGrokCliReasoningEffort } = await import("../../open-sse/config/grokCli.js");
+    expect(supportsGrokCliReasoningEffort("grok-4.5")).toBe(true);
+    expect(supportsGrokCliReasoningEffort("grok-4.5-low")).toBe(true);
+    expect(supportsGrokCliReasoningEffort("grok-build")).toBe(false);
+    expect(supportsGrokCliReasoningEffort("")).toBe(false);
+  });
+});
+
+describe("forced-SSE aggregation for Responses-API providers (0.5.110 bug fix)", () => {
+  // Two independent gates had to be right for a non-streaming client to get a
+  // reply from a Responses-API provider. Both were wrong for grok-cli, and the
+  // failure was silent: HTTP 200, real tokens billed, empty message.
+  it("chatCore knows grok-cli and codebuddy-cn force streaming", () => {
+    const src = readFileSync("open-sse/handlers/chatCore.js", "utf8");
+    expect(src).toMatch(/provider === "grok-cli"/);
+    expect(src).toMatch(/provider === "codebuddy-cn"/);
+  });
+
+  it("the SSE→JSON gate keys off the PROVIDER's format, not the client's", () => {
+    // sourceFormat is the client's format. Keying on it meant any
+    // Responses-API provider other than codex fell through to the
+    // chat.completions aggregator, which found no choices[].delta.content.
+    const src = readFileSync("open-sse/handlers/chatCore/sseToJsonHandler.js", "utf8");
+    expect(src).toMatch(/providerFormat === FORMATS\.OPENAI_RESPONSES/);
+  });
+
+  it("every provider that forces stream in its executor is declared in chatCore", async () => {
+    const { readdirSync } = await import("node:fs");
+    const core = readFileSync("open-sse/handlers/chatCore.js", "utf8");
+    const gate = core.slice(core.indexOf("const providerRequiresStreaming"), core.indexOf(";", core.indexOf("const providerRequiresStreaming")));
+    const undeclared = [];
+    for (const f of readdirSync("open-sse/executors")) {
+      if (!f.endsWith(".js") || f === "index.js" || f === "base.js" || f === "default.js") continue;
+      const src = readFileSync(`open-sse/executors/${f}`, "utf8");
+      if (!/\.stream = true/.test(src)) continue;
+      const id = f.replace(/\.js$/, "");
+      if (!gate.includes(`"${id}"`)) undeclared.push(id);
+    }
+    expect(undeclared, `executors force stream but chatCore does not know:\n  ${undeclared.join("\n  ")}`).toEqual([]);
   });
 });

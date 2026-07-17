@@ -225,6 +225,18 @@ export const PROVIDER_MODELS = {
     { id: "mimo-auto", name: "MiMo Auto" },
   ],
 
+  // 0.5.110 (upstream a11937cd) — Grok CLI / Grok Build.
+  // The live catalog (verified against a real Grok Build account) publishes
+  // exactly one model: grok-4.5 at 500k context, with low/medium/high efforts
+  // and high as the default. The -low/-medium/-high entries are virtual: the
+  // executor strips the suffix and maps it to reasoning.effort, so users can
+  // pin an effort from any client that only speaks model names.
+  gcli: [  // Grok CLI (Grok Build)
+    { id: "grok-4.5", name: "Grok 4.5" },
+    { id: "grok-4.5-low", name: "Grok 4.5 (Low Effort)" },
+    { id: "grok-4.5-medium", name: "Grok 4.5 (Medium Effort)" },
+    { id: "grok-4.5-high", name: "Grok 4.5 (High Effort)" },
+  ],
   // 0.5.109 (upstream 8a664d61) — Kimchi. Static fallback only; a live
   // connection replaces this via resolveKimchiModels().
   kimchi: [  // Kimchi
@@ -952,6 +964,7 @@ const OAUTH_ALIASES = {
   clinepass: "clinepass",
   "codebuddy-cn": "cbcn",
   kimchi: "kimchi",
+  "grok-cli": "gcli",
   opencode: "oc",
   qoder: "qd",
   "mimo-free": "mmf",

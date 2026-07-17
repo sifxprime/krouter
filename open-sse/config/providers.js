@@ -1,4 +1,5 @@
 import { platform, arch } from "os";
+import { GROK_CLI_VERSION, GROK_CLI_CLIENT_IDENTIFIER, GROK_CLI_USER_AGENT } from "./grokCli.js";
 
 // === OS/Arch helpers ===
 function mapStainlessOs() {
@@ -410,6 +411,29 @@ export const PROVIDERS = {
     format: "openai",
   },
   // CodeBuddy (Tencent) - uses device_code polling auth, no chat completions baseUrl needed
+  // 0.5.110 (upstream a11937cd + 59b78282) — Grok CLI / Grok Build.
+  // Inference on cli-chat-proxy.grok.com (OpenAI Responses API) against the
+  // Grok Build subscription — distinct from xai (api.x.ai, API credits) and
+  // grok-web (grok.com cookie SSO). The gateway fingerprints the real CLI, so
+  // these headers are load-bearing: verified live returning 200 for
+  // /v1/models and /v1/billing.
+  "grok-cli": {
+    baseUrl: "https://cli-chat-proxy.grok.com/v1/responses",
+    format: "openai-responses",
+    clientIdentifier: GROK_CLI_CLIENT_IDENTIFIER,
+    clientVersion: GROK_CLI_VERSION,
+    headers: {
+      "User-Agent": GROK_CLI_USER_AGENT,
+      "x-xai-token-auth": "xai-grok-cli",
+      "x-grok-client-identifier": GROK_CLI_CLIENT_IDENTIFIER,
+      "x-grok-client-version": GROK_CLI_VERSION,
+      "x-authenticateresponse": "authenticate-response",
+    },
+    tokenUrl: "https://auth.x.ai/oauth2/token",
+    refreshUrl: "https://auth.x.ai/oauth2/token",
+    // Reasoning models think for a long time before the first byte.
+    stallTimeoutMs: 180000,
+  },
   // 0.5.109 (upstream 8a664d61) — Kimchi. Plain OpenAI gateway; the executor
   // strips Anthropic-only fields a Claude-format client would send.
   kimchi: {

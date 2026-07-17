@@ -1,3 +1,47 @@
+# v0.5.110 (2026-07-17) — Tier C complete: Grok CLI (Grok Build) + two routing bugs it exposed
+
+Adds the fourth and largest Tier C provider, and fixes two silent routing bugs that only a real request could surface. Both were found by chatting through a live Grok Build account — the unit tests passed the whole time.
+
+**Grok CLI / Grok Build** (upstream a11937cd + 7dfb3466 + 59b78282)
+
+A third Grok-family provider, distinct from the two we already had:
+
+| provider | endpoint | pays with |
+|---|---|---|
+| `xai` | api.x.ai | xAI API credits |
+| `grok-web` | grok.com | web SSO cookie |
+| `grok-cli` (new) | cli-chat-proxy.grok.com | **Grok Build subscription** |
+
+- OAuth is a **device code** flow on auth.x.ai — same public client as `xai`, plus `conversations:read/write` scope and `referrer=grok-build`. No loopback proxy, unlike our xai PKCE flow. Verified live: xAI's discovery advertises `urn:ietf:params:oauth:grant-type:device_code`, and our flow returns a real user code against `accounts.x.ai`.
+- Ported upstream's executor with our fork's paths. Upstream's `resolveSessionId()` does not exist here, so `resolveGrokCliSessionId` walks the same precedence by hand. Our `deriveSessionId` emits `uuid + Date.now()` (another provider's binary format); since these headers exist to match the CLI's fingerprint, we hash to a **well-formed UUID** instead — which also stays stable across process restarts, as an in-memory map cannot.
+- Published models come from the **live catalog read off a real account**: `grok-4.5` at 500k context with low/medium/high efforts, high default. The `-low`/`-medium`/`-high` entries are virtual — the executor strips the suffix and maps it to `reasoning.effort` — so any client that only speaks model names can pin an effort. Upstream's config also lists an `xhigh` tier; the live API does not advertise it, so we do not publish it.
+
+**Bug 1 — published aliases that could not route.**
+
+Two independent alias tables exist: `PROVIDER_ID_TO_ALIAS` (drives the published catalog) and `ALIAS_TO_PROVIDER_ID` (drives request routing). Nothing enforced that they agree. `resolveProviderAlias` falls back to `map[alias] || alias`, so an alias equal to its provider id routes correctly *by accident* — which is why `clinepass` and `kimchi` worked. `cbcn` and `gcli` do not equal their ids, so they resolved to providers that do not exist. `gcli/*` ended up at api.x.ai and returned `401 invalid_issuer` — an error that points nowhere near the cause.
+
+**`codebuddy-cn` shipped broken in 0.5.109 for this reason.** Fixed here, with a guard that asserts every alias we publish models under resolves to a real backend provider — asserted against the resolver itself, not the table's text.
+
+**Bug 2 — Responses-API providers returned empty replies to non-streaming clients.**
+
+Two gates had to be right and both were wrong:
+
+- `chatCore.providerRequiresStreaming` was a hardcoded list (`openai`/`codex`/`commandcode`). grok-cli and codebuddy-cn force `stream: true` in their executors but were not listed, so chatCore took the non-streaming path and tried to parse an SSE body as JSON.
+- `sseToJsonHandler` gated its Responses-API branch on `sourceFormat` — the **client's** format — so any Responses-API provider other than codex fell through to the chat.completions aggregator, which hunts for `choices[].delta.content` in a stream that only carries `response.output_text.delta`. The gate now keys off the **provider's** format, which is what the stream shape actually depends on.
+
+The failure mode was the dangerous kind: HTTP 200, real tokens billed, empty message. Streaming worked perfectly the entire time, which is what made it easy to miss.
+
+**Verified end-to-end against a real Grok Build account:**
+
+- Non-streaming `gcli/grok-4.5-low` → reply `"mango"`, `finish_reason: stop`, usage 431 in / 127 out. Before the fixes: `401 invalid_issuer`, then an empty reply.
+- Streaming → `delta:{"content":"mango"}` with 13 reasoning deltas ahead of it, usage 2431 in / 410 out with 384 cached.
+- All three effort variants return real replies: `grok-4.5` → "OK.", `grok-4.5-low` → "OK", `grok-4.5-high` → "OK".
+- Server log confirms the correct upstream: `GROK-CLI → https://cli-chat-proxy.grok.com/v1/responses ← 200 | ttft=473ms`.
+- All four Tier C OAuth flows re-checked live afterwards — grok-cli returns a real device code, CodeBuddy CN a real Tencent state, ClinePass and Kimchi real authorize URLs.
+
+Full suite: **1207 pass** (+23), production build clean. New guards lock both bugs: every published alias must resolve to a real provider, and every executor that forces streaming must be declared in chatCore — the latter scans the executor directory rather than trusting a hand-kept list.
+
+**Tier C is complete.** All four providers (ClinePass, CodeBuddy CN, Kimchi, Grok CLI) are wired, tested, and verified against live endpoints.
 # v0.5.109 (2026-07-17) — Tier C part 1: three OAuth providers + a real translation bug
 
 Ports ClinePass, CodeBuddy CN, and Kimchi from upstream. Every endpoint below was probed live before being wired — the 0.5.108 lesson (upstream published a model Google 404s) applies to endpoints too, and it caught one dead config here.
