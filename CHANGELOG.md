@@ -1,3 +1,26 @@
+# v0.5.115 (2026-07-18) — Headroom token saver (completed the half-ported feature)
+
+Our fork already shipped the Headroom **UI** (a card in the Token Saver page calling `/api/headroom/*`), but the entire **backend was missing** — those routes 404'd and the compression never ran. This release adds the backend and wires it into the request pipeline, completing the feature end to end.
+
+Headroom is an external Python proxy (`pip install headroom-ai[proxy]`, or with the `[ml]`/`[code]` compression extras) that de-duplicates and compresses conversation context — repeated file contents, large tool outputs, long histories — before the request reaches the provider. It joins RTK / Caveman / Ponytail / PXPIPE as a fail-open token saver.
+
+**What was added (ported from upstream b55cf36d + f1f9d270 + 74d5fedf):**
+- `src/lib/headroom/{detect,process}.js` — binary/interpreter detection and proxy lifecycle (start/stop/restart, extras install/uninstall).
+- `open-sse/rtk/headroom.js` — `compressWithHeadroom`, which POSTs the conversation to the proxy's `/v1/compress` and swaps in the compressed messages. Fails open (returns the request untouched) on any error, timeout, or missing proxy.
+- 6 API routes (`status`, `start`, `stop`, `restart`, `extras`, and a dashboard `proxy/[...path]` passthrough) — the endpoints the existing UI was already calling.
+- `chatCore` runs headroom in the token-saver block (mutates the body in place, logs before/after tokens); `chat.js` threads the settings to both dispatch paths; settings default it off.
+
+**Verified end-to-end on a live proxy — the proof is in the token counts:**
+- Installed `headroom-ai[proxy][ml]` (v0.32.0, Python 3.13), started the proxy, confirmed our `detect` finds the binary.
+- Fail-open confirmed: headroom enabled + proxy down → the request still succeeds untouched.
+- A real code-heavy request through krouter with headroom enabled logged:
+  `[HEADROOM] reported token delta=25131 before=27187 after=2056 (92.4%)`
+  — 27,187 → 2,056 tokens, **92.4% saved**, and the provider accepted the compressed body (correct reply). The direct `/v1/compress` probe showed the same: 99,776 chars → 7,263 (92.7%).
+- The compression magnitude depends on content and the installed extras (repeated-code context compresses ~92%; plain prose barely moves) — the base `[proxy]` extra alone reports 0% and the `[ml]`/`[code]` extras do the real work, which is exactly what the extras install/uninstall manages.
+
+**Note on this machine:** the local Python is pipx-isolated, so `getHeadroomStatus` reports `version:null`/`canStart:false` even though the binary runs — a probe quirk of this specific setup, not the port; a standard `pip install headroom-ai` puts the console script on PATH normally.
+
+**Verification:** full suite **1278 pass** (+11), production build clean, all 6 headroom routes registered, and a real 92.4% compression proven through the full request pipeline.
 # v0.5.114 (2026-07-18) — GitHub Copilot: route Claude through the native /v1/messages shim
 
 Port of upstream 542a088c. Claude models on GitHub Copilot now go to Copilot's Anthropic-native `/v1/messages` endpoint instead of `/chat/completions` — the only Copilot endpoint that surfaces prompt-cache token counts for Claude, and the path that lets `cache_control` actually get injected.

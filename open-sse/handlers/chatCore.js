@@ -27,6 +27,7 @@ import { dedupeTools } from "../utils/toolDeduper.js";
 import { injectCaveman } from "../rtk/caveman.js";
 import { injectPonytail } from "../rtk/ponytail.js";
 import { compressWithPxpipe, formatPxpipeLog } from "../rtk/pxpipe.js";
+import { compressWithHeadroom, formatHeadroomLog } from "../rtk/headroom.js";
 import { compressMessages, formatRtkLog } from "../rtk/index.js";
 
 /**
@@ -36,7 +37,7 @@ import { compressMessages, formatRtkLog } from "../rtk/index.js";
  * @param {object} options.credentials - Provider credentials
  * @param {string} options.sourceFormatOverride - Override detected source format (e.g. "openai-responses")
  */
-export async function handleChatCore({ body, modelInfo, credentials, log, onCredentialsRefreshed, onRequestSuccess, onDisconnect, clientRawRequest, connectionId, userAgent, apiKey, ccFilterNaming, rtkEnabled, cavemanEnabled, cavemanLevel, ponytailEnabled, ponytailLevel, pxpipeEnabled = false, pxpipeMinChars, pxpipeTimeoutMs, pxpipeTransform = null, onPxpipeEvent = null, sourceFormatOverride, providerThinking, settings = null }) {
+export async function handleChatCore({ body, modelInfo, credentials, log, onCredentialsRefreshed, onRequestSuccess, onDisconnect, clientRawRequest, connectionId, userAgent, apiKey, ccFilterNaming, rtkEnabled, headroomEnabled = false, headroomUrl, headroomCompressUserMessages = false, cavemanEnabled, cavemanLevel, ponytailEnabled, ponytailLevel, pxpipeEnabled = false, pxpipeMinChars, pxpipeTimeoutMs, pxpipeTransform = null, onPxpipeEvent = null, sourceFormatOverride, providerThinking, settings = null }) {
   const { provider, model } = modelInfo;
   const requestStartTime = Date.now();
 
@@ -234,6 +235,21 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
     if (ponytailRuns) {
       injectPonytail(translatedBody, finalFormat, ponytailLevel);
       log?.debug?.("PONYTAIL", `${ponytailLevel} | ${finalFormat}`);
+    }
+
+    // Headroom (0.5.115): optional external Python proxy that compresses the
+    // conversation context. Mutates translatedBody in place and returns stats;
+    // fails open (returns null) when the proxy isn't running or errors.
+    if (headroomEnabled) {
+      const headroomStats = await compressWithHeadroom(translatedBody, {
+        enabled: true,
+        url: headroomUrl,
+        model: upstreamModel,
+        format: finalFormat,
+        compressUserMessages: headroomCompressUserMessages,
+      });
+      const headroomLine = formatHeadroomLog(headroomStats);
+      if (headroomLine) log?.info?.("HEADROOM", headroomLine);
     }
 
     // PXPIPE (0.5.111): render bulky Claude-format context as dense PNGs.

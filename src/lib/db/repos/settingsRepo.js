@@ -39,6 +39,12 @@ const DEFAULT_SETTINGS = {
   cavemanLevel: "full",
   ponytailEnabled: false,
   ponytailLevel: "full",
+  // 0.5.115 (upstream b55cf36d + f1f9d270 + 74d5fedf) — Headroom: optional
+  // external Python proxy (pip install headroom) that compresses conversation
+  // context. Off by default; fail-open when the proxy isn't running.
+  headroomEnabled: false,
+  headroomUrl: "http://localhost:8787",
+  headroomCompressUserMessages: false,
   // 0.5.111 (upstream dcf1927f) — PXPIPE: render bulky Claude context as dense
   // PNGs via the lazily-installed pxpipe-proxy library. Off by default; the
   // package installs on demand into the data dir (never bundled).
