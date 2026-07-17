@@ -17,10 +17,14 @@ import { OllamaLocalExecutor } from "./ollama-local.js";
 import { CommandCodeExecutor } from "./commandcode.js";
 import { XiaomiTokenplanExecutor } from "./xiaomi-tokenplan.js";
 import { MimoFreeExecutor } from "./mimo-free.js";
+import { CodeBuddyExecutor } from "./codebuddy-cn.js";
+import { KimchiExecutor } from "./kimchi.js";
 import { DefaultExecutor } from "./default.js";
 
 const executors = {
   antigravity: new AntigravityExecutor(),
+  "codebuddy-cn": new CodeBuddyExecutor(),
+  kimchi: new KimchiExecutor(),
   azure: new AzureExecutor(),
   "gemini-cli": new GeminiCLIExecutor(),
   github: new GithubExecutor(),

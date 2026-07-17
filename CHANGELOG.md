@@ -1,3 +1,44 @@
+# v0.5.109 (2026-07-17) — Tier C part 1: three OAuth providers + a real translation bug
+
+Ports ClinePass, CodeBuddy CN, and Kimchi from upstream. Every endpoint below was probed live before being wired — the 0.5.108 lesson (upstream published a model Google 404s) applies to endpoints too, and it caught one dead config here.
+
+**ClinePass** (upstream b08751c4) — Cline's subscription pass, a distinct provider from `cline` with its own `cline-pass/*` model namespace, but the same auth backend.
+
+- Upstream ships this as a verbatim 50-line copy of the `cline` OAuth block. Ours derives both from one `createClineOAuthFlow(config, label)` factory, so a fix to the base64-in-code exchange — or a move of Cline's auth host — lands in both at once.
+- Caught a trap upstream's shape hides: the Cline header path is gated on `provider === "cline"`. ClinePass would have fallen through to the generic Bearer branch and sent an **unprefixed token** (no `workos:`), producing a silent 401 with no obvious cause. Fixed in both `executors/default.js` and `services/provider.js`.
+- We skipped upstream's `workos:` fix inside `refreshCline`: our `getClineAccessToken` already normalizes the prefix at the point of use, which also repairs tokens stored before the change.
+- Verified live: our generated authorize URL is accepted by Cline (**302**, not 404), and `api.cline.bot/v1/models` answers **401 with a genuine Cline error** — endpoint reachable, headers land.
+
+**CodeBuddy CN** (upstream efd20be8) — Tencent's `copilot.tencent.com` gateway.
+
+We had a dormant `codebuddy` inherited at fork time: commented out of the UI since our initial release, pointed at **v1**. Probing found `v1/chat/completions` returns **404 "Route Not Found"** while **v2** returns 401 — the old config could never have worked. Renamed to `codebuddy-cn` (safe: the UI entry was never enabled, so no connection with the old id can exist) and moved to v2 with the CLI fingerprint headers the gateway gates on.
+
+- New executor absorbs two gateway quirks: non-stream requests are rejected outright (**400, code 11101**), so `stream` is forced true and kRouter re-aggregates the SSE for non-streaming clients; and reasoning only surfaces when the request carries `reasoning_effort` + `reasoning_summary: "auto"`, which our thinking pipeline never sets on its own. `none`/`off` omits the param entirely — the gateway has no such tier.
+- **Verified live end-to-end**: the device-code flow through our own server returned a real Tencent login URL with a valid UUID state — `{"code":0,"msg":"OK"}` — that a user could open right now.
+
+**Kimchi** (upstream 8a664d61 + 76752a43 + 7afaecd6) — OpenAI-shaped gateway fronting several upstreams.
+
+- New `browser_token` flow: the user signs in at `app.kimchi.dev/cli-auth` and the browser returns the token on the callback as `?token=`, so there is no code to exchange — we validate it and read the profile. **No OAuth engine changes were needed**: our `generateAuthData` already falls through to `buildAuthUrl(config, redirectUri, state)` for any non-device/non-PKCE flow.
+- Executor strips what an OpenAI gateway rejects from a Claude-format request: Anthropic-only top-level fields, `cache_control`/`signature` artifacts, and reasoning params for Anthropic-backed models. A top-level `system` is **merged into messages** rather than dropped — dropping it would silently lose the whole prompt.
+- Echoed `reasoning_content` is stripped from assistant turns (>8 chars, so the injected 1-char placeholder survives) — SDKs echo full history and Kimchi bills the scratch block as input, ballooning multi-turn past 100k tokens.
+- Verified live: our authorize URL loads Kimchi's real login page (**200**); the catalog and validation endpoints both answer 401 (exist, need auth).
+
+**Bug found and fixed: Claude clients got OpenAI response bodies (all providers, not just Kimchi).**
+
+While porting Kimchi's handler change we found our `translateNonStreamingResponse` returned the raw body whenever the provider was OpenAI-format — so a Claude-format client on `/v1/messages` received `choices[]` and could not parse it. The streaming path translated correctly; **only non-streaming leaked**. This affected every OpenAI-format provider — most of our 96.
+
+Proven live against a real account before and after:
+
+| | Before | After |
+|---|---|---|
+| keys | `id, object, created, model, choices, usage, system_fingerprint, service_tier` | `id, type, role, model, content, stop_reason, stop_sequence, usage` |
+| body | OpenAI completion | `{"type":"message","content":[{"type":"text","text":"Mango"}],"stop_reason":"end_turn"}` |
+
+The conversion reuses our existing `convertFinishReason` (now exported) so streaming and non-streaming map stop reasons identically, and an `isClaudeMessageResponse` guard keeps the downstream OpenAI-shaping steps from stamping `object`/`created` onto a Claude body.
+
+**Verification:** full suite **1184 pass** (+64 new), production build clean, all four upstream logos ship real PNGs, and `cline` + `codebuddy-cn` + `kimchi` authorize flows were re-checked live after every refactor.
+
+**Grok CLI (Grok Build) lands next.** It is the largest of the four (a 552-line executor with turn-index tracking and `store=false` continuity, plus a usage tracker and models service) and deserves its own release. The groundwork is already proven: xAI's device-code flow returns a real code, `cli-chat-proxy.grok.com` answers **200** for models and billing on an existing xAI OAuth token, and the live catalog shows `grok-4.5` at 500k context with low/medium/high efforts — so it can be verified end-to-end rather than shipped on faith.
 # v0.5.108 (2026-07-17) — Two bugs the massive verification sweep caught
 
 A full end-to-end sweep against a live dev server (every dashboard API, real chat traffic, real image generation, the whole catalog surface) surfaced two real defects that unit tests could not see, because both only exist when talking to the actual provider. Both are fixed here.

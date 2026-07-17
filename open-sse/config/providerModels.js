@@ -225,6 +225,54 @@ export const PROVIDER_MODELS = {
     { id: "mimo-auto", name: "MiMo Auto" },
   ],
 
+  // 0.5.109 (upstream 8a664d61) — Kimchi. Static fallback only; a live
+  // connection replaces this via resolveKimchiModels().
+  kimchi: [  // Kimchi
+    { id: "minimax-m3", name: "MiniMax-M3" },
+    { id: "kimi-k2.7", name: "Kimi-K2.7" },
+    { id: "kimi-k2.6", name: "Kimi-K2.6" },
+    { id: "kimi-k2.5", name: "Kimi-K2.5" },
+    { id: "nemotron-3-ultra-fp4", name: "Nemotron 3 Ultra FP4" },
+    { id: "minimax-m2.7", name: "MiniMax-M2.7" },
+    { id: "claude-opus-4-6", name: "Claude Opus 4.6" },
+    { id: "claude-sonnet-4-6", name: "Claude Sonnet 4.6" },
+  ],
+  // 0.5.109 (upstream efd20be8) — CodeBuddy CN (Tencent). A unified gateway:
+  // every model here is reached through CodeBuddy's own OpenAI-compatible API,
+  // not the vendor's, so they all take OpenAI-style reasoning_effort rather
+  // than their native thinking shape (see capabilities.js).
+  cbcn: [  // CodeBuddy CN
+    { id: "glm-5.2", name: "GLM-5.2" },
+    { id: "glm-5.1", name: "GLM-5.1" },
+    { id: "glm-5.0", name: "GLM-5.0" },
+    { id: "glm-5.0-turbo", name: "GLM-5.0-Turbo" },
+    { id: "glm-5v-turbo", name: "GLM-5v-Turbo" },
+    { id: "glm-4.7", name: "GLM-4.7" },
+    { id: "minimax-m3", name: "MiniMax-M3" },
+    { id: "minimax-m2.7", name: "MiniMax-M2.7" },
+    { id: "kimi-k2.7", name: "Kimi-K2.7-Code" },
+    { id: "kimi-k2.6", name: "Kimi-K2.6" },
+    { id: "kimi-k2.5", name: "Kimi-K2.5" },
+    { id: "hy3-preview", name: "Hy3 Preview" },
+    { id: "deepseek-v4-pro", name: "DeepSeek-V4-Pro" },
+    { id: "deepseek-v4-flash", name: "DeepSeek-V4-Flash" },
+    { id: "deepseek-v3-2-volc", name: "DeepSeek-V3.2" },
+  ],
+  // 0.5.109 (upstream b08751c4) — ClinePass. Static fallback only: a live
+  // connection replaces this via resolveClinepassModels(), which filters
+  // Cline's /models to the cline-pass/ namespace.
+  clinepass: [  // ClinePass
+    { id: "cline-pass/glm-5.2", name: "GLM-5.2" },
+    { id: "cline-pass/kimi-k2.7-code", name: "Kimi K2.7 Code" },
+    { id: "cline-pass/kimi-k2.6", name: "Kimi K2.6" },
+    { id: "cline-pass/deepseek-v4-pro", name: "DeepSeek V4 Pro" },
+    { id: "cline-pass/deepseek-v4-flash", name: "DeepSeek V4 Flash" },
+    { id: "cline-pass/mimo-v2.5", name: "MiMo-V2.5" },
+    { id: "cline-pass/mimo-v2.5-pro", name: "MiMo-V2.5-Pro" },
+    { id: "cline-pass/minimax-m3", name: "MiniMax M3" },
+    { id: "cline-pass/qwen3.7-max", name: "Qwen3.7 Max" },
+    { id: "cline-pass/qwen3.7-plus", name: "Qwen3.7 Plus" },
+  ],
   cl: [  // Cline
     { id: "anthropic/claude-opus-4.7", name: "Claude Opus 4.7" },
     { id: "anthropic/claude-sonnet-4.6", name: "Claude Sonnet 4.6" },
@@ -901,6 +949,9 @@ const OAUTH_ALIASES = {
   "kimi-coding": "kmc",
   kilocode: "kc",
   cline: "cl",
+  clinepass: "clinepass",
+  "codebuddy-cn": "cbcn",
+  kimchi: "kimchi",
   opencode: "oc",
   qoder: "qd",
   "mimo-free": "mmf",

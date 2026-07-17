@@ -36,6 +36,8 @@ import {
   KIMI_CODING_CONFIG,
   KILOCODE_CONFIG,
   CLINE_CONFIG,
+  CLINEPASS_CONFIG,
+  KIMCHI_CONFIG,
   GITLAB_CONFIG,
   CODEBUDDY_CONFIG,
   getOAuthClientMetadata,
@@ -149,6 +151,78 @@ export function extractCodexAccountInfo(idToken) {
     email: payload.email,
     chatgptAccountId: chatgpt.chatgpt_account_id || payload.account_id,
     chatgptPlanType: chatgpt.chatgpt_plan_type || payload.plan_type,
+  };
+}
+
+/**
+ * Cline-family OAuth flow (used by both `cline` and `clinepass`).
+ *
+ * Cline's browser callback does not return a plain authorization code — it
+ * returns the whole token payload base64-encoded in the `code` param, so the
+ * "exchange" is normally a local decode with no network call. The POST to
+ * tokenExchangeUrl is the fallback for when that payload isn't decodable.
+ *
+ * @param {object} config - CLINE_CONFIG or CLINEPASS_CONFIG
+ * @param {string} label  - Provider name, used only in error messages
+ */
+function createClineOAuthFlow(config, label) {
+  return {
+    config,
+    flowType: "authorization_code",
+    buildAuthUrl: (cfg, redirectUri) => {
+      const params = new URLSearchParams({
+        client_type: "extension",
+        callback_url: redirectUri,
+        redirect_uri: redirectUri,
+      });
+      return `${cfg.authorizeUrl}?${params.toString()}`;
+    },
+    exchangeToken: async (cfg, code, redirectUri) => {
+      try {
+        // Cline encodes token data as base64 in the code param.
+        let base64 = code;
+        const padding = 4 - (base64.length % 4);
+        if (padding !== 4) base64 += "=".repeat(padding);
+        const decoded = Buffer.from(base64, "base64").toString("utf-8");
+        const lastBrace = decoded.lastIndexOf("}");
+        if (lastBrace === -1) throw new Error("No JSON found in decoded code");
+        const tokenData = JSON.parse(decoded.substring(0, lastBrace + 1));
+        return {
+          access_token: tokenData.accessToken,
+          refresh_token: tokenData.refreshToken,
+          email: tokenData.email,
+          firstName: tokenData.firstName,
+          lastName: tokenData.lastName,
+          expires_at: tokenData.expiresAt,
+        };
+      } catch {
+        const response = await fetch(cfg.tokenExchangeUrl, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Accept: "application/json" },
+          body: JSON.stringify({ grant_type: "authorization_code", code, client_type: "extension", redirect_uri: redirectUri }),
+        });
+        if (!response.ok) {
+          const error = await response.text();
+          throw new Error(`${label} token exchange failed: ${error}`);
+        }
+        const data = await response.json();
+        return {
+          access_token: data.data?.accessToken || data.accessToken,
+          refresh_token: data.data?.refreshToken || data.refreshToken,
+          email: data.data?.userInfo?.email || "",
+          expires_at: data.data?.expiresAt || data.expiresAt,
+        };
+      }
+    },
+    mapTokens: (tokens) => ({
+      accessToken: tokens.access_token,
+      refreshToken: tokens.refresh_token,
+      expiresIn: tokens.expires_at
+        ? Math.floor((new Date(tokens.expires_at).getTime() - Date.now()) / 1000)
+        : 3600,
+      email: tokens.email,
+      providerSpecificData: { firstName: tokens.firstName, lastName: tokens.lastName },
+    }),
   };
 }
 
@@ -1151,64 +1225,71 @@ const PROVIDERS = {
     }),
   },
 
-  cline: {
-    config: CLINE_CONFIG,
-    flowType: "authorization_code",
-    buildAuthUrl: (config, redirectUri) => {
-      const params = new URLSearchParams({
-        client_type: "extension",
-        callback_url: redirectUri,
-        redirect_uri: redirectUri,
+  cline: createClineOAuthFlow(CLINE_CONFIG, "Cline"),
+
+  // ClinePass (upstream b08751c4) — Cline's subscription pass. It is a separate
+  // provider with its own models and quota, but it authenticates through Cline's
+  // own OAuth endpoints with an identical flow. Upstream ships this as a verbatim
+  // copy of the cline block; deriving both from one factory means a fix to the
+  // exchange (or to Cline's auth host) lands in both at once.
+  clinepass: createClineOAuthFlow(CLINEPASS_CONFIG, "ClinePass"),
+
+  // Kimchi (upstream 8a664d61) — browser token flow. app.kimchi.dev sends the
+  // token back on the callback URL as ?token=..., so there is no code to
+  // exchange: we validate the token against the API and read the profile.
+  kimchi: {
+    config: KIMCHI_CONFIG,
+    flowType: "browser_token",
+    buildAuthUrl: (config, redirectUri, state) => {
+      const baseUrl = (config.webAppUrl || "https://app.kimchi.dev").replace(/\/+$/, "");
+      const params = new URLSearchParams({ callback: redirectUri, state });
+      return `${baseUrl}/cli-auth?${params.toString()}`;
+    },
+    exchangeToken: async (config, token) => {
+      const accessToken = String(token || "").trim();
+      if (!accessToken) throw new Error("Missing Kimchi token");
+
+      // Validate before storing — otherwise a typo'd paste becomes a
+      // connection that only fails later, at request time.
+      const validationRes = await fetch(config.validationUrl, {
+        method: "GET",
+        headers: { Accept: "application/json", Authorization: `Bearer ${accessToken}` },
       });
-      return `${config.authorizeUrl}?${params.toString()}`;
-    },
-    exchangeToken: async (config, code, redirectUri) => {
-      try {
-        // Cline encodes token data as base64 in the code param
-        let base64 = code;
-        const padding = 4 - (base64.length % 4);
-        if (padding !== 4) base64 += "=".repeat(padding);
-        const decoded = Buffer.from(base64, "base64").toString("utf-8");
-        const lastBrace = decoded.lastIndexOf("}");
-        if (lastBrace === -1) throw new Error("No JSON found in decoded code");
-        const tokenData = JSON.parse(decoded.substring(0, lastBrace + 1));
-        return {
-          access_token: tokenData.accessToken,
-          refresh_token: tokenData.refreshToken,
-          email: tokenData.email,
-          firstName: tokenData.firstName,
-          lastName: tokenData.lastName,
-          expires_at: tokenData.expiresAt,
-        };
-      } catch (e) {
-        const response = await fetch(config.tokenExchangeUrl, {
-          method: "POST",
-          headers: { "Content-Type": "application/json", Accept: "application/json" },
-          body: JSON.stringify({ grant_type: "authorization_code", code, client_type: "extension", redirect_uri: redirectUri }),
-        });
-        if (!response.ok) {
-          const error = await response.text();
-          throw new Error(`Cline token exchange failed: ${error}`);
-        }
-        const data = await response.json();
-        return {
-          access_token: data.data?.accessToken || data.accessToken,
-          refresh_token: data.data?.refreshToken || data.refreshToken,
-          email: data.data?.userInfo?.email || "",
-          expires_at: data.data?.expiresAt || data.expiresAt,
-        };
+      if (!validationRes.ok) {
+        throw new Error(`Kimchi token validation failed: ${validationRes.status}`);
       }
+
+      // Profile is a nice-to-have for the connection label; never fatal.
+      let userInfo = {};
+      if (config.userInfoUrl) {
+        try {
+          const userRes = await fetch(config.userInfoUrl, {
+            method: "GET",
+            headers: { Accept: "application/json", Authorization: `Bearer ${accessToken}` },
+          });
+          if (userRes.ok) userInfo = await userRes.json();
+        } catch {
+          userInfo = {};
+        }
+      }
+      return { access_token: accessToken, token_type: "Bearer", _kimchiUser: userInfo };
     },
-    mapTokens: (tokens) => ({
-      accessToken: tokens.access_token,
-      refreshToken: tokens.refresh_token,
-      expiresIn: tokens.expires_at
-        ? Math.floor((new Date(tokens.expires_at).getTime() - Date.now()) / 1000)
-        : 3600,
-      email: tokens.email,
-      providerSpecificData: { firstName: tokens.firstName, lastName: tokens.lastName },
-    }),
+    mapTokens: (tokens) => {
+      const user = tokens._kimchiUser || {};
+      const userId = user.id ? String(user.id) : "";
+      const username = user.username || "";
+      return {
+        accessToken: tokens.access_token,
+        // Kimchi tokens are long-lived browser tokens — there is nothing to
+        // refresh with, so the user re-authenticates when one expires.
+        refreshToken: null,
+        email: user.email || (userId ? `kimchi-user-${userId}` : null),
+        displayName: user.name || username || null,
+        providerSpecificData: { authMethod: "browser_token", userId, username },
+      };
+    },
   },
+
   // GitLab Duo - Authorization Code Flow with PKCE
   // Supports two login modes via loginMode metadata: "oauth" (default) or "pat"
   gitlab: {
@@ -1274,7 +1355,7 @@ const PROVIDERS = {
   // 1. POST stateUrl → get { state, authUrl }
   // 2. Open authUrl in browser
   // 3. Poll tokenUrl with state until success (code 0) or timeout
-  codebuddy: {
+  "codebuddy-cn": {
     config: CODEBUDDY_CONFIG,
     flowType: "device_code",
     requestDeviceCode: async (config) => {

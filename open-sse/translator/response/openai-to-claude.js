@@ -252,8 +252,11 @@ export function openaiToClaudeResponse(chunk, state) {
   return results.length > 0 ? results : null;
 }
 
-// Convert OpenAI finish_reason to Claude stop_reason
-function convertFinishReason(reason) {
+// Convert OpenAI finish_reason to Claude stop_reason.
+// Exported so the non-streaming path (nonStreamingHandler) maps stop reasons
+// identically to the streaming path — a client must not see `end_turn` from
+// one and `stop` from the other for the same underlying response.
+export function convertFinishReason(reason) {
   switch (reason) {
     case "stop": return "end_turn";
     case "length": return "max_tokens";

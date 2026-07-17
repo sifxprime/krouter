@@ -157,7 +157,7 @@ export default function OAuthModal({ isOpen, provider, providerInfo, onSuccess, 
       setError(null);
 
       // Device code flow providers
-      const deviceCodeProviders = ["github", "qwen", "kiro", "kimi-coding", "kilocode", "codebuddy", "qoder"];
+      const deviceCodeProviders = ["github", "qwen", "kiro", "kimi-coding", "kilocode", "codebuddy-cn", "qoder"];
       if (deviceCodeProviders.includes(provider)) {
         setIsDeviceCode(true);
         setStep("waiting");
@@ -387,7 +387,9 @@ export default function OAuthModal({ isOpen, provider, providerInfo, onSuccess, 
     const handleCallback = async (data) => {
       if (callbackProcessedRef.current) return; // Already processed
 
-      const { code, state, error: callbackError, errorDescription } = data;
+      // Kimchi's browser_token flow delivers `token` where other providers
+      // deliver `code`; both go through the same exchange path.
+      const { code, token, state, error: callbackError, errorDescription } = data;
 
       if (callbackError) {
         callbackProcessedRef.current = true;
@@ -396,9 +398,9 @@ export default function OAuthModal({ isOpen, provider, providerInfo, onSuccess, 
         return;
       }
 
-      if (code) {
+      if (token || code) {
         callbackProcessedRef.current = true;
-        await exchangeTokens(code, state);
+        await exchangeTokens(token || code, state);
       }
     };
 
@@ -477,8 +479,16 @@ export default function OAuthModal({ isOpen, provider, providerInfo, onSuccess, 
         return;
       }
 
+      // Kimchi hands the user a bare token, not a URL — accept it directly
+      // rather than failing on `new URL(input)`.
+      if (provider === "kimchi" && input && !input.includes("://") && !input.includes("?")) {
+        await exchangeTokens(input, null);
+        return;
+      }
+
       const url = new URL(input);
       const code = url.searchParams.get("code");
+      const token = url.searchParams.get("token");
       const state = url.searchParams.get("state");
       const errorParam = url.searchParams.get("error");
 
@@ -486,11 +496,17 @@ export default function OAuthModal({ isOpen, provider, providerInfo, onSuccess, 
         throw new Error(url.searchParams.get("error_description") || errorParam);
       }
 
-      if (!code) {
-        throw new Error(provider === "xai" ? "Paste the callback URL or copied xAI code" : "No authorization code found in URL");
+      if (!code && !token) {
+        throw new Error(
+          provider === "xai"
+            ? "Paste the callback URL or copied xAI code"
+            : provider === "kimchi"
+              ? "No Kimchi token found in URL"
+              : "No authorization code found in URL"
+        );
       }
 
-      await exchangeTokens(code, state);
+      await exchangeTokens(token || code, state);
     } catch (err) {
       setError(err.message);
       setStep("error");

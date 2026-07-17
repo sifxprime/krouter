@@ -271,6 +271,18 @@ export const PROVIDERS = {
     tokenUrl: "https://api.cline.bot/api/v1/auth/token",
     refreshUrl: "https://api.cline.bot/api/v1/auth/refresh"
   },
+  // 0.5.109 (upstream b08751c4) — ClinePass rides Cline's API and auth; only
+  // the model namespace (cline-pass/*) and the quota behind it differ.
+  clinepass: {
+    baseUrl: "https://api.cline.bot/api/v1/chat/completions",
+    format: "openai",
+    headers: {
+      "HTTP-Referer": "https://cline.bot",
+      "X-Title": "Cline"
+    },
+    tokenUrl: "https://api.cline.bot/api/v1/auth/token",
+    refreshUrl: "https://api.cline.bot/api/v1/auth/refresh"
+  },
   nvidia: {
     baseUrl: "https://integrate.api.nvidia.com/v1/chat/completions",
     format: "openai"
@@ -398,9 +410,31 @@ export const PROVIDERS = {
     format: "openai",
   },
   // CodeBuddy (Tencent) - uses device_code polling auth, no chat completions baseUrl needed
-  codebuddy: {
-    baseUrl: "https://copilot.tencent.com/v1/chat/completions",
+  // 0.5.109 (upstream 8a664d61) — Kimchi. Plain OpenAI gateway; the executor
+  // strips Anthropic-only fields a Claude-format client would send.
+  kimchi: {
+    baseUrl: "https://llm.kimchi.dev/openai/v1/chat/completions",
     format: "openai",
+    headers: { "User-Agent": "kimchi/0.1.40" },
+  },
+  // 0.5.109 (upstream efd20be8) — CodeBuddy CN (Tencent).
+  // Renamed from `codebuddy` and moved v1 -> v2: we probed the live gateway and
+  // v1/chat/completions now returns 404 "Route Not Found", so the old config
+  // could never have worked. v2 answers 401 for a bad token, as expected.
+  "codebuddy-cn": {
+    baseUrl: "https://copilot.tencent.com/v2/chat/completions",
+    format: "openai",
+    // Tencent's gateway gates on the official CLI's fingerprint.
+    headers: {
+      "User-Agent": "CLI/2.108.1 CodeBuddy/2.108.1",
+      "X-Product": "SaaS",
+      "X-IDE-Type": "CLI",
+      "X-IDE-Name": "CLI",
+      "x-requested-with": "XMLHttpRequest",
+      "x-codebuddy-request": "1",
+    },
+    tokenUrl: "https://copilot.tencent.com/v2/plugin/auth/token",
+    refreshUrl: "https://copilot.tencent.com/v2/plugin/auth/token/refresh",
   },
   opencode: {
     baseUrl: "https://opencode.ai",

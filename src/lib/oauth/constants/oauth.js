@@ -254,6 +254,24 @@ export const CLINE_CONFIG = {
   refreshUrl: "https://api.cline.bot/api/v1/auth/refresh",
 };
 
+// Kimchi OAuth Configuration (upstream 8a664d61) — browser token callback.
+// The user signs in at app.kimchi.dev/cli-auth and the browser hands the token
+// straight back on the callback URL; there is no code-for-token exchange, so
+// "exchange" here means "validate the token and read the profile".
+export const KIMCHI_CONFIG = {
+  webAppUrl: "https://app.kimchi.dev",
+  validationUrl: "https://api.cast.ai/v1/llm/openai/supported-providers",
+  userInfoUrl: "https://app.kimchi.dev/api/v1/me",
+  modelsUrl: "https://llm.kimchi.dev/v1/models/metadata?include_in_cli=true",
+};
+
+// ClinePass OAuth Configuration (upstream b08751c4).
+// ClinePass is Cline's subscription pass — a distinct provider from `cline`,
+// but it authenticates against the exact same endpoints, so the config is
+// derived from CLINE_CONFIG rather than duplicated. If Cline ever moves its
+// auth host, both follow automatically.
+export const CLINEPASS_CONFIG = { ...CLINE_CONFIG };
+
 // GitLab Duo OAuth Configuration (Authorization Code Flow with PKCE)
 // Supports both OAuth (PKCE) and Personal Access Token (PAT) modes
 export const GITLAB_CONFIG = {
@@ -298,6 +316,11 @@ export const PROVIDERS = {
   KIMI_CODING: "kimi-coding",
   KILOCODE: "kilocode",
   CLINE: "cline",
+  CLINEPASS: "clinepass",
   GITLAB: "gitlab",
-  CODEBUDDY: "codebuddy",
+  // 0.5.109 — renamed codebuddy -> codebuddy-cn to match upstream (efd20be8).
+  // Safe: the UI entry was commented out since our initial release, so no
+  // connection with the old id can exist.
+  CODEBUDDY: "codebuddy-cn",
+  KIMCHI: "kimchi",
 };

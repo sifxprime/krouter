@@ -289,6 +289,7 @@ export function buildProviderHeaders(provider, credentials, stream = true, body 
         break;
 
       case "cline":
+      case "clinepass":
         Object.assign(headers, buildClineHeaders(credentials.apiKey || credentials.accessToken));
         break;
   

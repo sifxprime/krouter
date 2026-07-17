@@ -146,14 +146,17 @@ export class DefaultExecutor extends BaseExecutor {
         } else if (this.provider === "gitlab") {
           // GitLab Duo uses Bearer token (PAT with ai_features scope, or OAuth access token)
           headers["Authorization"] = `Bearer ${credentials.apiKey || credentials.accessToken}`;
-        } else if (this.provider === "codebuddy") {
+        } else if (this.provider === "codebuddy-cn") {
           headers["Authorization"] = `Bearer ${credentials.apiKey || credentials.accessToken}`;
         } else if (this.provider === "kilocode") {
           headers["Authorization"] = `Bearer ${credentials.apiKey || credentials.accessToken}`;
           if (credentials.providerSpecificData?.orgId) {
             headers["X-Kilocode-OrganizationID"] = credentials.providerSpecificData.orgId;
           }
-        } else if (this.provider === "cline") {
+        } else if (this.provider === "cline" || this.provider === "clinepass") {
+          // Both hit Cline's API and need the workos:-prefixed token + Cline
+          // client headers. Falling through to the generic Bearer branch would
+          // send an unprefixed token and get rejected.
           Object.assign(headers, buildClineHeaders(credentials.apiKey || credentials.accessToken));
         } else if (this.config?.format === "claude") {
           // Generic claude-format provider (e.g. agentrouter): x-api-key + anthropic-version
@@ -212,8 +215,11 @@ export class DefaultExecutor extends BaseExecutor {
       gemini: () => this.refreshGoogle(credentials.refreshToken, proxyOptions),
       kiro: () => this.refreshKiro(credentials.refreshToken, proxyOptions),
       cline: () => this.refreshCline(credentials.refreshToken, proxyOptions),
+      // ClinePass shares Cline's auth backend, so it shares the refresh path.
+      clinepass: () => this.refreshCline(credentials.refreshToken, proxyOptions),
       "kimi-coding": () => this.refreshKimiCoding(credentials.refreshToken, proxyOptions),
-      kilocode: () => this.refreshKilocode(credentials.refreshToken, proxyOptions)
+      kilocode: () => this.refreshKilocode(credentials.refreshToken, proxyOptions),
+      "codebuddy-cn": () => this.refreshCodebuddy(credentials.refreshToken, proxyOptions)
     };
 
     const refresher = refreshers[this.provider];
@@ -305,6 +311,39 @@ export class DefaultExecutor extends BaseExecutor {
     const expiresIn = expiresAtIso ? Math.max(1, Math.floor((new Date(expiresAtIso).getTime() - Date.now()) / 1000)) : undefined;
     console.log('[DEBUG] Cline refresh success, expiresIn:', expiresIn);
     return { accessToken: data?.accessToken, refreshToken: data?.refreshToken || refreshToken, expiresIn };
+  }
+
+  // 0.5.109 (upstream efd20be8) — CodeBuddy CN refresh.
+  // Unlike every other provider here, Tencent takes the refresh token in an
+  // X-Refresh-Token *header* with an empty JSON body, and answers
+  // { code: 0, data: {...} } — a non-zero code is a failure even on HTTP 200.
+  async refreshCodebuddy(refreshToken, proxyOptions = null) {
+    if (!refreshToken) return null;
+    const cfg = PROVIDERS["codebuddy-cn"] || {};
+    const response = await proxyAwareFetch(cfg.refreshUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+        "User-Agent": "CLI/2.108.1 CodeBuddy/2.108.1",
+        "X-Requested-With": "XMLHttpRequest",
+        "X-Domain": "copilot.tencent.com",
+        "X-Refresh-Token": refreshToken,
+        "X-Auth-Refresh-Source": "plugin",
+        "X-Product": "SaaS",
+      },
+      body: "{}",
+    }, proxyOptions);
+
+    if (!response.ok) return null;
+    const data = await response.json();
+    if (data?.code !== 0 || !data?.data?.accessToken) return null;
+
+    return {
+      accessToken: data.data.accessToken,
+      refreshToken: data.data.refreshToken || refreshToken,
+      expiresIn: data.data.expiresIn,
+    };
   }
 
   async refreshKimiCoding(refreshToken, proxyOptions = null) {
