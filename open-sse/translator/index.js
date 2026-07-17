@@ -38,6 +38,7 @@ function ensureInitialized() {
   require("./request/antigravity-to-openai.js");
   require("./request/openai-responses.js");
   require("./request/openai-to-kiro.js");
+  require("./request/claude-to-kiro.js"); // 0.5.117 — direct claude:kiro route
   require("./request/openai-to-cursor.js");
   require("./request/openai-to-ollama.js");
   require("./request/openai-to-commandcode.js");
@@ -49,6 +50,7 @@ function ensureInitialized() {
   require("./response/openai-to-antigravity.js");
   require("./response/openai-responses.js");
   require("./response/kiro-to-openai.js");
+  require("./response/kiro-to-claude.js"); // 0.5.117 — direct kiro:claude route
   require("./response/cursor-to-openai.js");
   require("./response/ollama-to-openai.js");
   require("./response/commandcode-to-openai.js");
@@ -94,21 +96,34 @@ export function translateRequest(sourceFormat, targetFormat, model, body, stream
 
   // If same format, skip translation steps
   if (sourceFormat !== targetFormat) {
-    // Step 1: source -> openai (if source is not openai)
-    if (sourceFormat !== FORMATS.OPENAI) {
-      const toOpenAI = requestRegistry.get(`${sourceFormat}:${FORMATS.OPENAI}`);
-      if (toOpenAI) {
-        result = toOpenAI(model, result, stream, credentials);
-        // Log OpenAI intermediate format
-        reqLogger?.logOpenAIRequest?.(result);
+    // 0.5.117 (upstream 706e6513) — direct route: if a translator is registered
+    // for this exact source:target pair, use it instead of pivoting through
+    // OpenAI. Lossless for pairs like claude:kiro (avoids the claude->openai->
+    // kiro double-hop). Purely additive: for every pair where either side is
+    // OpenAI the two-step pivot already degenerates to a single hop identical to
+    // this lookup, so only a genuinely-new two-hop pair (claude:kiro) changes
+    // behavior. Pairs with no direct translator fall through to the pivot below.
+    const directFn = requestRegistry.get(`${sourceFormat}:${targetFormat}`);
+    if (directFn) {
+      result = directFn(model, result, stream, credentials);
+      reqLogger?.logOpenAIRequest?.(result);
+    } else {
+      // Step 1: source -> openai (if source is not openai)
+      if (sourceFormat !== FORMATS.OPENAI) {
+        const toOpenAI = requestRegistry.get(`${sourceFormat}:${FORMATS.OPENAI}`);
+        if (toOpenAI) {
+          result = toOpenAI(model, result, stream, credentials);
+          // Log OpenAI intermediate format
+          reqLogger?.logOpenAIRequest?.(result);
+        }
       }
-    }
 
-    // Step 2: openai -> target (if target is not openai)
-    if (targetFormat !== FORMATS.OPENAI) {
-      const fromOpenAI = requestRegistry.get(`${FORMATS.OPENAI}:${targetFormat}`);
-      if (fromOpenAI) {
-        result = fromOpenAI(model, result, stream, credentials);
+      // Step 2: openai -> target (if target is not openai)
+      if (targetFormat !== FORMATS.OPENAI) {
+        const fromOpenAI = requestRegistry.get(`${FORMATS.OPENAI}:${targetFormat}`);
+        if (fromOpenAI) {
+          result = fromOpenAI(model, result, stream, credentials);
+        }
       }
     }
   }
@@ -160,6 +175,18 @@ export function translateResponse(targetFormat, sourceFormat, chunk, state) {
 
   let results = [chunk];
   let openaiResults = null; // Store OpenAI intermediate results
+
+  // 0.5.117 (upstream 706e6513) — direct route: if a response translator is
+  // registered for this exact target:source pair, use it and skip the pivot.
+  // Mirrors the request side (e.g. kiro:claude — the KiroExecutor emits
+  // OpenAI-shaped chunks and this converts them straight to Claude SSE). Proven
+  // equivalent for existing single-hop pairs: whenever either side is OpenAI the
+  // pivot collapses to exactly this one translator call on the same chunk.
+  const directFn = responseRegistry.get(`${targetFormat}:${sourceFormat}`);
+  if (directFn) {
+    const converted = directFn(chunk, state);
+    return converted ? (Array.isArray(converted) ? converted : [converted]) : [];
+  }
 
   // Step 1: target -> openai (if target is not openai)
   if (targetFormat !== FORMATS.OPENAI) {

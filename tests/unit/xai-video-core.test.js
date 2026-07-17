@@ -319,3 +319,28 @@ describe("video model listing (0.5.111 wiring)", () => {
     expect(src).toMatch(/video:\s*"video"/); // present in MODEL_TYPE_TO_KIND
   });
 });
+
+describe("kiro non-streaming claude conversion (0.5.117)", () => {
+  it("converts a buffered OpenAI kiro body to a Claude message for a claude client", async () => {
+    const { translateNonStreamingResponse } = await import("../../open-sse/handlers/chatCore/nonStreamingHandler.js");
+    const { FORMATS } = await import("../../open-sse/translator/formats.js");
+    const openaiBody = {
+      id: "x", object: "chat.completion", model: "claude-sonnet-4.5",
+      choices: [{ index: 0, message: { role: "assistant", content: "mango" }, finish_reason: "stop" }],
+      usage: { prompt_tokens: 5, completion_tokens: 1 },
+    };
+    const out = translateNonStreamingResponse(openaiBody, FORMATS.KIRO, FORMATS.CLAUDE);
+    expect(out.type).toBe("message");
+    expect(out.content).toEqual([{ type: "text", text: "mango" }]);
+    expect(out.stop_reason).toBe("end_turn");
+    expect(out.choices).toBeUndefined(); // no openai leak
+  });
+
+  it("leaves an openai-client kiro body untouched (no regression)", async () => {
+    const { translateNonStreamingResponse } = await import("../../open-sse/handlers/chatCore/nonStreamingHandler.js");
+    const { FORMATS } = await import("../../open-sse/translator/formats.js");
+    const body = { choices: [{ message: { content: "OK" } }] };
+    // kiro provider + openai client → target=kiro, source=openai → passthrough
+    expect(translateNonStreamingResponse(body, FORMATS.KIRO, FORMATS.OPENAI)).toBe(body);
+  });
+});

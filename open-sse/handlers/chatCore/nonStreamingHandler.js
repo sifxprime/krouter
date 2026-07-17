@@ -81,6 +81,15 @@ export function translateNonStreamingResponse(responseBody, targetFormat, source
   if (targetFormat === FORMATS.OPENAI && sourceFormat === FORMATS.CLAUDE) {
     return openAICompletionToClaudeMessage(responseBody);
   }
+  // 0.5.117 — Kiro serves a Claude client. The KiroExecutor emits OpenAI-shaped
+  // chunks, so the buffered non-streaming body is an OpenAI completion; convert
+  // it to a Claude message (the streaming path handles this via the direct
+  // kiro:claude route, but non-streaming buffers to JSON separately). Without
+  // this a Claude client got the raw OpenAI {choices:[]} body it can't parse —
+  // a pre-existing gap the direct-route work surfaced.
+  if (targetFormat === FORMATS.KIRO && sourceFormat === FORMATS.CLAUDE) {
+    return openAICompletionToClaudeMessage(responseBody);
+  }
   if (targetFormat === FORMATS.OPENAI) return responseBody;
 
   // Gemini / Antigravity

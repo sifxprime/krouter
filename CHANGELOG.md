@@ -1,3 +1,24 @@
+# v0.5.117 (2026-07-18) — Kiro direct claude↔kiro route (the half of 706e6513 that was deferred)
+
+Completes the direct-route half of the Kiro headless commit I deferred in v0.5.116. Claude clients on Kiro now translate **straight** to/from Kiro's CodeWhisperer format instead of pivoting through OpenAI (`claude→openai→kiro` and back), which is lossy for tool-use and thinking blocks.
+
+**Why it was safe to do now (the deferral concern, resolved):** I deferred this overnight worried the response-side direct dispatch would collide with the common `openai:claude` path. Re-reading the full `translateResponse`, the short-circuit is **provably equivalent** for every existing pair: whenever either side is OpenAI the two-step pivot already collapses to exactly one translator call on the same chunk — the same call the direct route makes. Only a genuinely-new two-hop registration (`kiro:claude`) changes behavior. The full suite (1288) confirms no regression across all translators.
+
+**What landed:**
+- `translator/request/claude-to-kiro.js` + `translator/response/kiro-to-claude.js` — the direct translators (with the two 400-guards that fold orphaned/toolless `tool_result` blocks back to text so Kiro's schema validator doesn't reject follow-up turns).
+- `translator/schema/index.js` — the three constants (`ROLE`, `CLAUDE_BLOCK`, `DEFAULT_IMAGE_MIME`) the translators need, rather than porting upstream's whole schema subsystem.
+- `translator/index.js` — additive direct-route dispatch on both request and response sides, registered the two translators.
+- **Non-streaming fix**: `translateNonStreamingResponse` now converts a buffered Kiro (OpenAI-shaped) body to a Claude message for Claude clients. This was a **pre-existing gap** the direct-route work surfaced — a non-streaming Claude client on Kiro was getting the raw `{choices:[]}` OpenAI body it can't parse. The streaming path is handled by the new `kiro:claude` route; non-streaming buffers to JSON separately, so it needed its own case.
+
+**Verified live against a real Kiro OAuth account — all four paths:**
+- Streaming Claude client → Kiro: proper Claude SSE (`message_start` → `content_block_delta` "mango"), 0 OpenAI leaks.
+- Non-streaming Claude client → Kiro: proper Claude message, `stop_reason: end_turn`, reply "mango" (was an empty OpenAI body before the fix).
+- Streaming OpenAI client → Kiro (Cline/Cursor path): unchanged — clean OpenAI chunks, 0 Claude leaks.
+- Non-streaming OpenAI client → Kiro: unchanged — clean OpenAI completion.
+
+**Still deferred:** the Kiro **API-key (`ksk_`) auth** half of 706e6513 — there's no Kiro API key on this instance to verify the `ListAvailableProfiles` validation, and shipping unverified auth is the anti-pattern that bit PXPIPE. That half is a clean task for whenever a `ksk_` key is available.
+
+**Verification:** full suite **1288 pass** (+10: 8 upstream direct-route tests + 2 non-streaming), production build clean, and all four Claude/OpenAI × streaming/non-streaming paths verified live on a real Kiro account.
 # v0.5.116 (2026-07-18) — Fix a backwards arg order in v0.5.114; defer the Kiro headless port
 
 Two things: a real bug fix in the v0.5.114 GitHub Copilot port, and an honest deferral of the Kiro headless port after its risk surfaced during the work.
