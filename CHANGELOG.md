@@ -1,3 +1,16 @@
+# v0.5.114 (2026-07-18) — GitHub Copilot: route Claude through the native /v1/messages shim
+
+Port of upstream 542a088c. Claude models on GitHub Copilot now go to Copilot's Anthropic-native `/v1/messages` endpoint instead of `/chat/completions` — the only Copilot endpoint that surfaces prompt-cache token counts for Claude, and the path that lets `cache_control` actually get injected.
+
+**How it works:**
+- `execute()` detects Claude models by name (`/claude/i`) — not a static registry field, because Copilot's live catalog regularly exposes `claude-*` variants ahead of our static list — and routes them to the new `executeWithMessagesEndpoint`.
+- Claude requests arrive OpenAI-shaped (chatCore targets `openai` for github), so the method translates OpenAI→Claude for the shim, forces `stream:true` upstream (chatCore buffers to JSON when the client asked for non-streaming), strips the internal `_toolNameMap` before dispatch (Anthropic 400s on the extra field), and translates the Claude SSE back to OpenAI for the client.
+- `buildHeaders` now sends `anthropic-version` (a no-op on the other endpoints, required by `/v1/messages`), and the backend config gains `messagesUrl`.
+- gpt / gemini / grok models are unchanged — they stay on `/chat/completions` (or `/responses`).
+
+**Fork adaptation:** upstream's `translateResponse(source, target)` is the reverse of ours — our signature is `translateResponse(targetFormat, sourceFormat, …)`. Verified against our translator's actual signature and existing call sites (`bypassHandler`, `stream.js`), so the response call reads `(OPENAI, CLAUDE)` here, not upstream's `(CLAUDE, OPENAI)`. Getting this backwards would have silently corrupted every Copilot+Claude response.
+
+**Verification:** full suite **1271 pass** (+4), production build clean (all imports resolve, executor compiles). Routing, headers, config, and the arg-order are covered by tests. **Not live-verified:** there's no GitHub Copilot connection on this instance, so a real `/v1/messages` round-trip couldn't be exercised — the verification here is static (build + logic + translator-signature match), not an end-to-end request.
 # v0.5.113 (2026-07-18) — Upstream quick-wins batch
 
 Six small upstream features/fixes we were missing, verified together.

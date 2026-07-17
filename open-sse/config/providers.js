@@ -185,6 +185,9 @@ export const PROVIDERS = {
   github: {
     baseUrl: "https://api.githubcopilot.com/chat/completions",
     responsesUrl: "https://api.githubcopilot.com/responses",
+    // 0.5.114 (upstream 542a088c) — Anthropic-native shim for Claude models
+    // (surfaces prompt-cache token counts; see executors/github.js).
+    messagesUrl: "https://api.githubcopilot.com/v1/messages",
     format: "openai",
     headers: {
       "copilot-integration-id": "vscode-chat",

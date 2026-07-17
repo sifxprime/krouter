@@ -4,7 +4,8 @@ import { OAUTH_ENDPOINTS, GITHUB_COPILOT } from "../config/appConstants.js";
 import { HTTP_STATUS } from "../config/runtimeConfig.js";
 import { openaiToOpenAIResponsesRequest } from "../translator/request/openai-responses.js";
 import { openaiResponsesToOpenAIResponse } from "../translator/response/openai-responses.js";
-import { initState } from "../translator/index.js";
+import { initState, translateRequest, translateResponse } from "../translator/index.js";
+import { FORMATS } from "../translator/formats.js";
 import { parseSSELine, formatSSE } from "../utils/streamHelpers.js";
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
 import { stripUnsupportedParams } from "../translator/helpers/paramSupport.js";
@@ -34,8 +35,18 @@ export class GithubExecutor extends BaseExecutor {
       "x-request-id": crypto.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`,
       "x-vscode-user-agent-library-version": "electron-fetch",
       "X-Initiator": "user",
+      // Harmless no-op on /chat/completions and /responses; required by /v1/messages.
+      "anthropic-version": "2023-06-01",
       "Accept": stream ? "text/event-stream" : "application/json"
     };
+  }
+
+  // Claude models route to Copilot's Anthropic-native /v1/messages shim (the only
+  // Copilot endpoint that surfaces prompt-cache token counts). gpt/gemini/grok stay
+  // on /chat/completions (or /responses). Detected by model NAME, not a registry
+  // field: Copilot's live catalog exposes claude-* variants ahead of the static list.
+  isClaudeModel(model) {
+    return /claude/i.test(model || "");
   }
 
   // Sanitize messages for GitHub Copilot /chat/completions endpoint.
@@ -141,6 +152,14 @@ export class GithubExecutor extends BaseExecutor {
   async execute(options) {
     const { model, log } = options;
 
+    // 0.5.114 (upstream 542a088c) — Claude models go to Copilot's Anthropic-native
+    // /v1/messages shim, the only Copilot endpoint that surfaces prompt-cache token
+    // counts for Claude. Everything else stays on /chat/completions (or /responses).
+    if (this.isClaudeModel(model)) {
+      log?.debug("GITHUB", `Using /v1/messages route for ${model}`);
+      return this.executeWithMessagesEndpoint(options);
+    }
+
     // Only use /responses for models that are explicitly known to need it (e.g. gpt codex models)
     // and that the /responses endpoint actually serves (excludes Gemini/Claude, see #1062).
     if (this.knownCodexModels.has(model) && this.supportsResponsesEndpoint(model)) {
@@ -232,6 +251,99 @@ export class GithubExecutor extends BaseExecutor {
             if (converted) {
               controller.enqueue(new TextEncoder().encode(formatSSE(converted, "openai")));
             }
+          }
+        }
+      }
+    });
+
+    if (!response.body) {
+      return { response: new Response("", { status: response.status, headers: response.headers }), url, headers, transformedBody };
+    }
+    const convertedStream = response.body.pipeThrough(transformStream);
+
+    return {
+      response: new Response(convertedStream, {
+        status: response.status,
+        statusText: response.statusText,
+        headers: response.headers
+      }),
+      url,
+      headers,
+      transformedBody
+    };
+  }
+
+  // 0.5.114 (upstream 542a088c) — Claude models arrive OpenAI-shaped (chatCore
+  // targets "openai" for github), so translate to Anthropic-native ourselves for
+  // the /v1/messages shim. This is what makes cache_control get injected (the
+  // /chat/completions path never sees cache tokens). NOTE: our translateResponse
+  // takes (targetFormat, sourceFormat, ...) — the reverse of translateRequest —
+  // so the response call reads (OPENAI, CLAUDE), not upstream's (CLAUDE, OPENAI).
+  async executeWithMessagesEndpoint({ model, body, stream, credentials, signal, log, proxyOptions = null }) {
+    const url = this.config.messagesUrl;
+    const headers = this.buildHeaders(credentials, stream);
+
+    // Force stream:true upstream regardless of client preference — chatCore's
+    // non-streaming handler buffers the SSE into a single JSON reply when needed.
+    const transformedBody = translateRequest(FORMATS.OPENAI, FORMATS.CLAUDE, model, body, true, credentials, "github");
+    // _toolNameMap is internal bookkeeping; strip it before dispatch (Anthropic's
+    // strict schema 400s on the extra field) and thread it into the response state.
+    const toolNameMap = transformedBody._toolNameMap;
+    delete transformedBody._toolNameMap;
+
+    log?.debug("GITHUB", "Sending translated request to /v1/messages");
+
+    const response = await proxyAwareFetch(url, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(transformedBody),
+      signal
+    }, proxyOptions);
+
+    if (!response.ok) {
+      return { response, url, headers, transformedBody };
+    }
+
+    const state = initState(FORMATS.CLAUDE);
+    state.model = model;
+    if (toolNameMap) state.toolNameMap = toolNameMap;
+
+    const decoder = new TextDecoder();
+    let buffer = "";
+
+    const emitAll = (controller, chunks) => {
+      for (const c of chunks) {
+        controller.enqueue(new TextEncoder().encode(formatSSE(c, "openai")));
+      }
+    };
+
+    const transformStream = new TransformStream({
+      async transform(chunk, controller) {
+        buffer += decoder.decode(chunk, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() || "";
+
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (!trimmed) continue;
+
+          const parsed = parseSSELine(trimmed);
+          if (!parsed) continue;
+
+          if (parsed.done && stream === true) {
+            controller.enqueue(new TextEncoder().encode("data: [DONE]\n\n"));
+            continue;
+          }
+
+          // Claude response → OpenAI for the client (our arg order: target, source).
+          emitAll(controller, translateResponse(FORMATS.OPENAI, FORMATS.CLAUDE, parsed, state));
+        }
+      },
+      flush(controller) {
+        if (buffer.trim()) {
+          const parsed = parseSSELine(buffer.trim());
+          if (parsed && !parsed.done) {
+            emitAll(controller, translateResponse(FORMATS.OPENAI, FORMATS.CLAUDE, parsed, state));
           }
         }
       }
