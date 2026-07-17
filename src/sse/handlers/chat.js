@@ -14,8 +14,17 @@ import { handleChatCore } from "open-sse/handlers/chatCore.js";
 import { errorResponse, unavailableResponse } from "open-sse/utils/error.js";
 import { handleComboChat, handleFusionChat } from "open-sse/services/combo.js";
 import { handleBypassRequest } from "open-sse/utils/bypassHandler.js";
-import { getTransform as getPxpipeTransform } from "@/lib/pxpipe/loader.js";
+import { getTransform as getPxpipeTransform, configureModelBases as configurePxpipeModels } from "@/lib/pxpipe/loader.js";
 import { appendPxpipeEvent } from "@/lib/pxpipe/events.js";
+
+// Load the pxpipe transform AND push the configured model allowlist, so the
+// feature actually fires for the user's models (the package defaults to
+// claude-fable-5 only). Returns null when disabled/not installed (fail-open).
+async function resolvePxpipeTransform(settings) {
+  if (!settings?.pxpipeEnabled) return null;
+  await configurePxpipeModels(settings.pxpipeModels);
+  return getPxpipeTransform();
+}
 import { lookupCache, saveToCache } from "open-sse/services/responseCache.js";
 import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
 import { recordOutcome } from "@/shared/services/connectionHealth";
@@ -336,7 +345,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
       pxpipeMinChars: settings.pxpipeMinChars,
       pxpipeTimeoutMs: settings.pxpipeTimeoutMs,
       // Lazily warms the in-process module on first use; null when not installed (fail-open).
-      pxpipeTransform: settings.pxpipeEnabled ? await getPxpipeTransform() : null,
+      pxpipeTransform: await resolvePxpipeTransform(settings),
       onPxpipeEvent: appendPxpipeEvent,
       providerThinking,
       settings, // for emergencyFallback config (0.5.28)
@@ -426,7 +435,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
             pxpipeEnabled: !!settings.pxpipeEnabled,
             pxpipeMinChars: settings.pxpipeMinChars,
             pxpipeTimeoutMs: settings.pxpipeTimeoutMs,
-            pxpipeTransform: settings.pxpipeEnabled ? await getPxpipeTransform() : null,
+            pxpipeTransform: await resolvePxpipeTransform(settings),
             onPxpipeEvent: appendPxpipeEvent,
             providerThinking: (settings.providerThinking || {})[fb.provider] || null,
             sourceFormatOverride: request?.url ? detectFormatByEndpoint(new URL(request.url).pathname, body) : null,

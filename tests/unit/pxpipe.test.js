@@ -99,7 +99,8 @@ describe("pxpipe integration wiring (0.5.111)", () => {
     const { readFileSync } = await import("node:fs");
     const src = readFileSync("src/sse/handlers/chat.js", "utf8");
     // Loaded lazily and only when enabled (fail-open when not installed).
-    expect(src).toMatch(/pxpipeTransform: settings\.pxpipeEnabled \? await getPxpipeTransform\(\)/);
+    // resolvePxpipeTransform configures the model allowlist then loads the transform.
+    expect(src).toMatch(/pxpipeTransform: await resolvePxpipeTransform\(settings\)/);
     expect(src).toMatch(/onPxpipeEvent: appendPxpipeEvent/);
     // Both the primary and fallback handleChatCore calls must be wired.
     const occurrences = src.match(/pxpipeTransform:/g) || [];
@@ -119,5 +120,32 @@ describe("pxpipe integration wiring (0.5.111)", () => {
     const src = readFileSync("src/lib/db/repos/settingsRepo.js", "utf8");
     expect(src).toMatch(/pxpipeEnabled: false/);
     expect(src).toMatch(/pxpipeMinChars: 25000/);
+  });
+});
+
+describe("pxpipe model allowlist (0.5.112 fix — feature was inert without it)", () => {
+  it("chat.js configures the allowlist before loading the transform", async () => {
+    const { readFileSync } = await import("node:fs");
+    const src = readFileSync("src/sse/handlers/chat.js", "utf8");
+    // Without this, pxpipe-proxy images ONLY claude-fable-5 and real traffic
+    // (claude-opus-4-8, …) returns unsupported_model — the feature does nothing.
+    expect(src).toMatch(/configurePxpipeModels\(settings\.pxpipeModels\)/);
+    expect(src).toMatch(/resolvePxpipeTransform\(settings\)/);
+  });
+
+  it("settings default the allowlist to vision-capable Claude bases", async () => {
+    const { readFileSync } = await import("node:fs");
+    const src = readFileSync("src/lib/db/repos/settingsRepo.js", "utf8");
+    expect(src).toMatch(/pxpipeModels:\s*\[/);
+    expect(src).toMatch(/claude-opus-4/);
+  });
+
+  it("the loader exposes configureModelBases + install exposes applicabilityEntry", async () => {
+    const loader = await import("@/lib/pxpipe/loader.js");
+    const install = await import("@/lib/pxpipe/install.js");
+    expect(typeof loader.configureModelBases).toBe("function");
+    expect(typeof install.applicabilityEntry).toBe("function");
+    // configureModelBases must not throw when the package isn't loadable.
+    await loader.configureModelBases(["claude-opus-4"]);
   });
 });

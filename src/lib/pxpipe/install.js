@@ -32,6 +32,14 @@ export function libraryEntry() {
   return path.join(packageRoot(), "dist", "core", "library.js");
 }
 
+// The model-allowlist setter (setAllowedModelBases) lives here, NOT in
+// library.js. library.js imports this module internally with no cache-bust
+// query, so importing it by the same path shares the one instance whose
+// runtime state the transform actually reads.
+export function applicabilityEntry() {
+  return path.join(packageRoot(), "dist", "core", "applicability.js");
+}
+
 export function findNpm() {
   try {
     const out = execSync(`${IS_WIN ? "where" : "which"} npm`, {

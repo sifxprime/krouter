@@ -46,6 +46,10 @@ const DEFAULT_SETTINGS = {
   pxpipeAutoInstall: true,
   pxpipeMinChars: 25000,
   pxpipeTimeoutMs: 15000,
+  // Model families PXPIPE may image. The package defaults to claude-fable-5
+  // ONLY, so without this the feature never fires for real traffic. Limited to
+  // vision-capable Claude-family bases (imaging needs a model that reads images).
+  pxpipeModels: ["claude-fable-5", "claude-opus-4", "claude-sonnet-4", "claude-haiku-4"],
   responseCacheEnabled: false,
   responseCacheTtlSec: 300,
   // 0.5.28 — emergency fallback redirect on 402 / budget exhaustion

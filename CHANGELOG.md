@@ -1,3 +1,31 @@
+# v0.5.112 (2026-07-18) — PXPIPE was inert for real traffic; now it actually compresses
+
+A correction to v0.5.111. PXPIPE shipped wired and fail-open, but **it never compressed a real request** — and the v0.5.111 verification missed it because the checks only exercised fail-open paths and the package's own self-test.
+
+**The gap:** `pxpipe-proxy@0.9.0` images **only `claude-fable-5`** by default. Every real model — `claude-opus-4-8`, `claude-sonnet-4-6`, and every claude-format provider — returns `unsupported_model` and passes through untouched. The package exposes `setAllowedModelBases()` to widen the allowlist, but nothing called it: not the upstream commit, not our port. A user could enable PXPIPE, send their normal Claude Code request, and get exactly zero compression with no error — the dashboard's own "Model not in allowlist" status was the only hint.
+
+**The fix:**
+- New `configureModelBases()` in the pxpipe loader pushes the operator's allowlist into the package (via `applicability.js`, which `library.js` imports internally — same module instance, so the transform actually reads it).
+- New `pxpipeModels` setting, defaulting to vision-capable Claude bases (`claude-fable-5`, `claude-opus-4`, `claude-sonnet-4`, `claude-haiku-4`). The list is an explicit allowlist, never "all models" — imaging only works for models that can read images.
+- `chat.js` configures the allowlist before loading the transform on every enabled request.
+
+**Verified end-to-end on a live Claude connection — the proof is in the billing:**
+
+Sent a real `/v1/messages` request to `cc/claude-opus-4-8` with a 123,634-char system prompt and PXPIPE enabled:
+
+```
+[PXPIPE] imaged 124593ch → 5 image(s) | est 31289→6964 tokens (-77.74%) | 402ms
+```
+
+- Claude **accepted** the 5-PNG body (no error) and streamed a response.
+- Actual provider-billed `input_tokens: 8726` — that raw system prompt would bill ~30k tokens; as PNGs it billed 8,726. The saving is real, confirmed by billing, not just the pre-send estimate.
+- Claude **read** the imaged content (it answered about what was in the images), proving vision-decode of the compressed context worked.
+
+Before this fix, the identical request returned `unsupported_model` and compressed nothing.
+
+**Why v0.5.111's verification missed it:** every check I ran was either fail-open (works whether or not compression happens) or used the package's default `claude-fable-5` self-test. I never sent a real model through the full path, so "inert for all real traffic" looked identical to "working." The lesson is now a standing test: the allowlist must be configured, asserted against the real transform with a real model id, not just against the package loading.
+
+Full suite: **1259 pass** (+3), production build clean.
 # v0.5.111 (2026-07-18) — Grok Imagine video + PXPIPE, plus two bugs the live tests caught
 
 Two Tier B features land together, each verified against real endpoints on a live account, plus two real bugs surfaced along the way.
