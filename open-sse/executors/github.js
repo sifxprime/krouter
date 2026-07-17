@@ -276,9 +276,15 @@ export class GithubExecutor extends BaseExecutor {
   // 0.5.114 (upstream 542a088c) — Claude models arrive OpenAI-shaped (chatCore
   // targets "openai" for github), so translate to Anthropic-native ourselves for
   // the /v1/messages shim. This is what makes cache_control get injected (the
-  // /chat/completions path never sees cache tokens). NOTE: our translateResponse
-  // takes (targetFormat, sourceFormat, ...) — the reverse of translateRequest —
-  // so the response call reads (OPENAI, CLAUDE), not upstream's (CLAUDE, OPENAI).
+  // /chat/completions path never sees cache tokens).
+  //
+  // Arg conventions (verified against the production streaming path): translateRequest
+  // is (sourceFormat, targetFormat) so OPENAI->CLAUDE reads (OPENAI, CLAUDE). But
+  // translateResponse is (targetFormat=PROVIDER, sourceFormat=CLIENT) — the shim
+  // returns CLAUDE (provider) to an OPENAI client, so the response call is
+  // (CLAUDE, OPENAI). 0.5.116 fix: this was shipped backwards in 0.5.114 (never
+  // live-verified — no Copilot connection), which would have left every
+  // Copilot+Claude response un-converted.
   async executeWithMessagesEndpoint({ model, body, stream, credentials, signal, log, proxyOptions = null }) {
     const url = this.config.messagesUrl;
     const headers = this.buildHeaders(credentials, stream);
@@ -336,14 +342,14 @@ export class GithubExecutor extends BaseExecutor {
           }
 
           // Claude response → OpenAI for the client (our arg order: target, source).
-          emitAll(controller, translateResponse(FORMATS.OPENAI, FORMATS.CLAUDE, parsed, state));
+          emitAll(controller, translateResponse(FORMATS.CLAUDE, FORMATS.OPENAI, parsed, state));
         }
       },
       flush(controller) {
         if (buffer.trim()) {
           const parsed = parseSSELine(buffer.trim());
           if (parsed && !parsed.done) {
-            emitAll(controller, translateResponse(FORMATS.OPENAI, FORMATS.CLAUDE, parsed, state));
+            emitAll(controller, translateResponse(FORMATS.CLAUDE, FORMATS.OPENAI, parsed, state));
           }
         }
       }

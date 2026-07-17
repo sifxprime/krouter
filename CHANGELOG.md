@@ -1,3 +1,25 @@
+# v0.5.116 (2026-07-18) — Fix a backwards arg order in v0.5.114; defer the Kiro headless port
+
+Two things: a real bug fix in the v0.5.114 GitHub Copilot port, and an honest deferral of the Kiro headless port after its risk surfaced during the work.
+
+## Bug fix: GitHub Copilot /v1/messages response translation was backwards
+
+v0.5.114 routed Claude models through Copilot's `/v1/messages` shim and translated the Claude SSE back to OpenAI for the client with `translateResponse(FORMATS.OPENAI, FORMATS.CLAUDE, …)`. That is backwards.
+
+Verified against the production streaming path (`chatCore` sets `sourceFormat = detectFormat(body)` = the **client** format, `targetFormat = getTargetFormat(provider)` = the **provider** format, and calls `translateResponse(targetFormat, sourceFormat, …)`): `translateResponse` is `(targetFormat = PROVIDER, sourceFormat = CLIENT)`. The shim returns CLAUDE (provider) to an OPENAI client, so the call must be `translateResponse(FORMATS.CLAUDE, FORMATS.OPENAI, …)`.
+
+With the backwards args, step 1 (`target → openai`) was skipped because target was OPENAI, and step 2 then applied `openai → claude` to an already-Claude chunk — so a Copilot+Claude response would have reached the client un-converted (double-wrong). v0.5.114 shipped it because there was no GitHub Copilot connection to live-verify against, so the mistake rode in on static-only verification. Both call sites are fixed and the test now pins the correct order.
+
+## Deferred: Kiro headless API-key auth + direct claude↔kiro route (upstream 706e6513)
+
+This 1437-line, 20-file commit bundles two features, and both hit a wall that makes an unattended overnight port irresponsible:
+
+- **API-key (`ksk_`) auth** — validates a key via CodeWhisperer `ListAvailableProfiles`. There is no Kiro API key on this instance, so the positive path is unverifiable. Shipping unverified auth code is exactly the anti-pattern that bit PXPIPE.
+- **Direct claude↔kiro translation route** — the request side is safely additive, but the *response*-side dispatch key (`${targetFormat}:${sourceFormat}`) can collide with the common `openai:claude` response translator, i.e. it changes behavior for **every** OpenAI-format provider with a Claude client, not just Kiro. It also needs a `translator/schema/` module this fork lacks and reroutes existing Kiro+Claude traffic. Whether the short-circuit is truly equivalent to the two-step pivot needs careful, attended verification across providers — not a rushed overnight change.
+
+After finding one backwards-arg bug tonight from exactly this kind of subtle translator reasoning, forcing a second, broader-blast-radius change into the same release would be reckless. The Kiro headless port is a clean, self-contained task for an attended session (with a `ksk_` key for the auth half). The exploratory changes were reverted; the tree is clean.
+
+**Verification:** full suite **1278 pass** (stable across two runs), production build clean.
 # v0.5.115 (2026-07-18) — Headroom token saver (completed the half-ported feature)
 
 Our fork already shipped the Headroom **UI** (a card in the Token Saver page calling `/api/headroom/*`), but the entire **backend was missing** — those routes 404'd and the compression never ran. This release adds the backend and wires it into the request pipeline, completing the feature end to end.

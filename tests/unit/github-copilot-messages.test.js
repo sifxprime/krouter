@@ -29,8 +29,9 @@ describe("v0.5.114 GitHub Copilot /v1/messages for Claude", () => {
     const { readFileSync } = await import("node:fs");
     const src = readFileSync("open-sse/executors/github.js", "utf8");
     expect(src).toMatch(/if \(this\.isClaudeModel\(model\)\)\s*\{[\s\S]*?executeWithMessagesEndpoint/);
-    // Our translateResponse order is (target, source) — must be (OPENAI, CLAUDE).
-    expect(src).toMatch(/translateResponse\(FORMATS\.OPENAI, FORMATS\.CLAUDE, parsed, state\)/);
+    // translateResponse is (targetFormat=PROVIDER, sourceFormat=CLIENT): the shim
+    // returns CLAUDE to an OPENAI client, so this must be (CLAUDE, OPENAI).
+    expect(src).toMatch(/translateResponse\(FORMATS\.CLAUDE, FORMATS\.OPENAI, parsed, state\)/);
     // Request translation is (source, target) = (OPENAI, CLAUDE).
     expect(src).toMatch(/translateRequest\(FORMATS\.OPENAI, FORMATS\.CLAUDE, model, body, true/);
   });
