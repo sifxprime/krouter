@@ -548,8 +548,15 @@ export function buildKiroPayload(model, body, stream, credentials) {
 
   const { history, currentMessage } = convertMessages(messages, tools, upstreamModel);
 
+  // 0.5.118 (upstream 706e6513) — api-key profileArns are account-specific and
+  // resolved at import time via ListAvailableProfiles. Injecting the shared
+  // builder-id/social *default* placeholder for an api-key connection 403s
+  // (the ARN doesn't belong to the key's account). So for api_key, only send a
+  // profileArn that was actually resolved for this connection — never the
+  // default. OAuth/social keep the default fallback (their tokens accept it).
+  const isApiKey = credentials?.providerSpecificData?.authMethod === "api_key";
   const profileArn = credentials?.providerSpecificData?.profileArn
-    || resolveDefaultProfileArn(credentials?.providerSpecificData?.authMethod);
+    || (isApiKey ? "" : resolveDefaultProfileArn(credentials?.providerSpecificData?.authMethod));
 
   let finalContent = currentMessage?.userInputMessage?.content || "";
 

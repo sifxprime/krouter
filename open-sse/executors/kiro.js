@@ -26,11 +26,47 @@ export class KiroExecutor extends BaseExecutor {
       "x-request-source": "local"
     };
 
-    if (credentials.accessToken) {
+    // 0.5.118 (upstream 706e6513) — API-key (ksk_) auth: the key is stored as
+    // accessToken and sent as a bearer token like an OAuth access token, but
+    // with an extra `tokentype: API_KEY` header so CodeWhisperer treats it as a
+    // long-lived API key rather than an OIDC/social token. Mirrors Kiro IDE
+    // headless auth.
+    const isApiKey = credentials?.providerSpecificData?.authMethod === "api_key";
+    const apiKey = credentials?.apiKey || (isApiKey ? credentials?.accessToken : null);
+    if (isApiKey && apiKey) {
+      headers["Authorization"] = `Bearer ${apiKey}`;
+      headers["tokentype"] = "API_KEY";
+    } else if (credentials.accessToken) {
       headers["Authorization"] = `Bearer ${credentials.accessToken}`;
     }
 
     return headers;
+  }
+
+  /**
+   * 0.5.118 (upstream 706e6513) — auth-aware endpoint ordering.
+   *
+   * API-key Kiro connections store a raw CodeWhisperer credential (validated
+   * against codewhisperer.us-east-1.amazonaws.com via ListAvailableProfiles).
+   * The Kiro IDE gateway (runtime.*.kiro.dev) expects Kiro OIDC/social tokens
+   * and rejects a `tokentype: API_KEY` token with 401/403 — which
+   * BaseExecutor.execute() returns immediately (only 429 / network errors fall
+   * through to the next host). So for api-key auth we try the *.amazonaws.com
+   * CodeWhisperer hosts FIRST. OAuth keeps the default order (kiro.dev first)
+   * since its token is what that gateway accepts.
+   */
+  getOrderedBaseUrls(credentials) {
+    const baseUrls = this.getBaseUrls();
+    const isApiKey = credentials?.providerSpecificData?.authMethod === "api_key";
+    if (!isApiKey) return baseUrls;
+    const amazon = baseUrls.filter((u) => u.includes("amazonaws.com"));
+    const others = baseUrls.filter((u) => !u.includes("amazonaws.com"));
+    return amazon.length > 0 ? [...amazon, ...others] : baseUrls;
+  }
+
+  buildUrl(model, stream, urlIndex = 0, credentials = null) {
+    const baseUrls = this.getOrderedBaseUrls(credentials);
+    return baseUrls[urlIndex] || baseUrls[0] || this.config.baseUrl;
   }
 
   transformRequest(model, body, stream, credentials) {

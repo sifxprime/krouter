@@ -1,3 +1,19 @@
+# v0.5.118 (2026-07-18) — Kiro API-key (ksk_) headless auth (the last half of 706e6513)
+
+Completes the Kiro headless commit. Kiro can now authenticate with a long-lived API key (`ksk_…`) instead of an OAuth/social login — no refresh token, no browser flow.
+
+**What landed:**
+- `KiroService.validateApiKey` + `listAvailableProfiles` — validate a key by calling CodeWhisperer `ListAvailableProfiles` (the only way to check a keyless bearer credential) and resolve its account-specific `profileArn`. Accepts both `arn` and `profileArn` response fields (the API-key JSON-1.0 surface returns `arn`).
+- `POST /api/oauth/kiro/api-key` — validates + imports the key, stores it as a `kiro` connection with `authMethod:"api_key"`, `refreshToken:null`, and a 1-year expiry so the proactive-refresh path (which needs a refresh token) is skipped.
+- Executor: sends `Authorization: Bearer <key>` **plus** `tokentype: API_KEY` for api-key connections, and reorders base URLs to try the `*.amazonaws.com` CodeWhisperer hosts FIRST (the `runtime.*.kiro.dev` gateway rejects an `API_KEY` token with 401/403, which BaseExecutor returns immediately). OAuth keeps the default order.
+- profileArn guard: for api-key connections, never fall back to the shared builder-id/social *default* placeholder ARN (it 403s — it isn't owned by the key's account); send only the ARN resolved at import.
+- UI: an "API Key" method in the Kiro connect modal (paste `ksk_…` + region → validate → import).
+
+**Verification — honest split:**
+- **Verified live (regression / inertness):** on a real Kiro **OAuth** account, all four paths still work with these changes in place — streaming and non-streaming, Claude and OpenAI clients (each returned "Mango."). The api-key branches are gated on `authMethod === "api_key"`, so for every existing connection they are provably inert: `buildHeaders` falls to the OAuth branch, `getOrderedBaseUrls` returns the default order, and the profileArn guard doesn't change anything. Grok-CLI (which shares Kiro's account) also still chats.
+- **NOT live-verified:** the api-key path itself — there is no `ksk_` key available on this instance to exercise `validateApiKey` / the `API_KEY` request end-to-end. It is a faithful port of upstream's verified feature and is covered by unit tests (tokentype header, AWS-first host ordering, profileArn field parsing, OAuth-unchanged), but a real `ksk_` request was not sent. When a key is available, the flow is: dashboard → Kiro → "API Key" → paste → Import.
+
+**Verification:** full suite **1296 pass** (+8: 5 executor + 3 profile-arn), production build clean, `/api/oauth/kiro/api-key` route registered, and the whole recent-session surface re-checked live (all API endpoints 200, video listing, headroom, providers) — nothing regressed.
 # v0.5.117 (2026-07-18) — Kiro direct claude↔kiro route (the half of 706e6513 that was deferred)
 
 Completes the direct-route half of the Kiro headless commit I deferred in v0.5.116. Claude clients on Kiro now translate **straight** to/from Kiro's CodeWhisperer format instead of pivoting through OpenAI (`claude→openai→kiro` and back), which is lossy for tool-use and thinking blocks.

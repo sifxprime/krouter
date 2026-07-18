@@ -13,6 +13,8 @@ export default function KiroAuthModal({ isOpen, onMethodSelect, onClose }) {
   const [idcStartUrl, setIdcStartUrl] = useState("");
   const [idcRegion, setIdcRegion] = useState("us-east-1");
   const [refreshToken, setRefreshToken] = useState("");
+  const [apiKey, setApiKey] = useState("");
+  const [apiKeyRegion, setApiKeyRegion] = useState("us-east-1");
   const [error, setError] = useState(null);
   const [importing, setImporting] = useState(false);
   const [autoDetecting, setAutoDetecting] = useState(false);
@@ -81,6 +83,38 @@ export default function KiroAuthModal({ isOpen, onMethodSelect, onClose }) {
 
       // Success - notify parent to refresh connections
       onMethodSelect("import");
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setImporting(false);
+    }
+  };
+
+  // 0.5.118 — headless API-key (ksk_) auth. Validates + imports via
+  // /api/oauth/kiro/api-key, then closes like the import flow.
+  const handleApiKeyImport = async () => {
+    if (!apiKey.trim()) {
+      setError("Please enter your Kiro API key");
+      return;
+    }
+
+    setImporting(true);
+    setError(null);
+
+    try {
+      const res = await fetch("/api/oauth/kiro/api-key", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ apiKey: apiKey.trim(), region: apiKeyRegion }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data.error || "API key import failed");
+      }
+
+      onMethodSelect("api-key");
     } catch (err) {
       setError(err.message);
     } finally {
@@ -189,6 +223,60 @@ export default function KiroAuthModal({ isOpen, onMethodSelect, onClose }) {
                 </div>
               </div>
             </button>
+
+            {/* API Key (headless) — 0.5.118 */}
+            <button
+              onClick={() => handleMethodSelect("api-key")}
+              className="w-full p-4 text-left border border-border rounded-lg hover:bg-sidebar transition-colors"
+            >
+              <div className="flex items-start gap-3">
+                <span className="material-symbols-outlined text-primary mt-0.5">key</span>
+                <div className="flex-1">
+                  <h3 className="font-semibold mb-1">API Key</h3>
+                  <p className="text-sm text-text-muted">
+                    Paste a long-lived Kiro API key (ksk_…). No refresh needed.
+                  </p>
+                </div>
+              </div>
+            </button>
+          </div>
+        )}
+
+        {/* API Key form — 0.5.118 */}
+        {selectedMethod === "api-key" && (
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium mb-1.5">Kiro API Key</label>
+              <Input
+                type="password"
+                value={apiKey}
+                onChange={(e) => setApiKey(e.target.value)}
+                placeholder="ksk_..."
+                disabled={importing}
+              />
+              <p className="text-xs text-text-muted mt-1">
+                Validated against CodeWhisperer (ListAvailableProfiles). Stored as a
+                long-lived credential with no refresh token.
+              </p>
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1.5">Region</label>
+              <Input
+                value={apiKeyRegion}
+                onChange={(e) => setApiKeyRegion(e.target.value)}
+                placeholder="us-east-1"
+                disabled={importing}
+              />
+            </div>
+            {error && <p className="text-sm text-danger">{error}</p>}
+            <div className="flex gap-2">
+              <Button variant="secondary" onClick={handleBack} disabled={importing}>
+                Back
+              </Button>
+              <Button onClick={handleApiKeyImport} disabled={importing || !apiKey.trim()}>
+                {importing ? "Validating..." : "Import API Key"}
+              </Button>
+            </div>
           </div>
         )}
 
