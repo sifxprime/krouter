@@ -12,6 +12,8 @@ import { getSettings } from "@/lib/localDb";
 import { getModelInfo, getComboModels } from "../services/model.js";
 import { handleChatCore } from "open-sse/handlers/chatCore.js";
 import { errorResponse, unavailableResponse } from "open-sse/utils/error.js";
+import { getRetiredModelError } from "open-sse/config/retiredModels.js";
+import { getEffectiveFallbackStrategy } from "open-sse/config/providerStrategy.js";
 import { handleComboChat, handleFusionChat } from "open-sse/services/combo.js";
 import { handleBypassRequest } from "open-sse/utils/bypassHandler.js";
 import { getTransform as getPxpipeTransform, configureModelBases as configurePxpipeModels } from "@/lib/pxpipe/loader.js";
@@ -245,6 +247,16 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
 
   const { provider, model } = modelInfo;
 
+  // 0.5.119 — Reject models the upstream has retired with a clear, actionable
+  // message instead of forwarding to the provider and surfacing its opaque
+  // reply (OpenCode returns `ModelError: Model <x> is not supported`). Their
+  // free tier is dead; the live equivalents are on paid opencode-go (API key).
+  const retiredError = getRetiredModelError(model);
+  if (retiredError) {
+    log.warn("CHAT", `Retired model "${model}" requested → ${retiredError}`);
+    return errorResponse(HTTP_STATUS.BAD_REQUEST, retiredError);
+  }
+
   // Log model routing (alias → actual model)
   if (modelStr !== `${provider}/${model}`) {
     log.info("ROUTING", `${modelStr} → ${provider}/${model}`);
@@ -276,8 +288,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
   // toggled Round Robin on a provider, they clearly want traffic distributed
   // across accounts (e.g. Antigravity subscription accounts on different
   // Gmails), so skip the conversation binding for that provider.
-  const providerOverride = (settings.providerStrategies || {})[provider] || {};
-  const userWantsRoundRobin = providerOverride.fallbackStrategy === "round-robin";
+  const userWantsRoundRobin = getEffectiveFallbackStrategy(settings, provider) === "round-robin";
   const conversationFingerprint = generateConversationFingerprint(body, { provider });
   let stickyConnectionId = (!userWantsRoundRobin && conversationFingerprint)
     ? getStickyConnection(conversationFingerprint)

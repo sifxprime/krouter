@@ -4,13 +4,71 @@ import { resolveConnectionProxyConfig } from "@/lib/network/connectionProxy";
 import { formatRetryAfter, checkFallbackError, isModelLockActive, buildModelLockUpdate, getEarliestModelLockUntil } from "open-sse/services/accountFallback.js";
 import { isAccountAboveThreshold, warmQuotaCache, invalidateQuotaCache, recordQuotaCacheHit } from "open-sse/services/quotaPreflight.js";
 import { selectAccount, getRoundRobinState } from "open-sse/services/accountSelector.js";
+import { getEffectiveFallbackStrategy } from "open-sse/config/providerStrategy.js";
 import { scoreOf } from "@/shared/services/connectionHealth";
-import { MAX_RATE_LIMIT_COOLDOWN_MS } from "open-sse/config/errorConfig.js";
+import { MAX_QUOTA_RESET_COOLDOWN_MS } from "open-sse/config/errorConfig.js";
 import { resolveProviderId, FREE_PROVIDERS } from "@/shared/constants/providers.js";
 import * as log from "../utils/logger.js";
 
 // Mutex to prevent race conditions during account selection
 let selectionMutex = Promise.resolve();
+
+/**
+ * 0.5.119 — Pure reason-derivation for the "nothing selectable" failure path.
+ * Given the FULL active account list (including the locked/banned accounts the
+ * normal picker filter removes), decide what to tell the caller instead of a
+ * bare null → the unhelpful "No active credentials" 503:
+ *   - all rate-limited  → { allRateLimited, retryAfter, retryAfterHuman, ... }
+ *                         so the client shows "retry in Xm" and can back off
+ *   - all banned        → allRateLimited with a re-verify hint (403)
+ *   - genuinely none    → null (the real "add an account" case)
+ * Pure (no I/O) so it is unit-testable with synthetic connections.
+ * @returns {{allRateLimited:true, retryAfter, retryAfterHuman, lastError, lastErrorCode}|null}
+ */
+export function deriveUnavailableResult(allConns, provider, model) {
+  if (!Array.isArray(allConns) || allConns.length === 0) return null;
+  const lockedConns = allConns.filter(c => isModelLockActive(c, model));
+  const earliest = lockedConns.map(c => getEarliestModelLockUntil(c)).filter(Boolean).sort()[0] || null;
+  if (earliest) {
+    const earliestConn = lockedConns[0];
+    return {
+      allRateLimited: true,
+      retryAfter: earliest,
+      retryAfterHuman: formatRetryAfter(earliest),
+      lastError: earliestConn?.lastError || null,
+      lastErrorCode: earliestConn?.errorCode || null,
+    };
+  }
+  if (allConns.some(c => c.isPermanentlyBanned)) {
+    return {
+      allRateLimited: true,
+      retryAfter: null,
+      retryAfterHuman: null,
+      lastError: `All ${provider} accounts need re-verification — re-auth in the dashboard or add a fresh account.`,
+      lastErrorCode: 403,
+    };
+  }
+  return null;
+}
+
+/**
+ * I/O wrapper around deriveUnavailableResult — fetches the full active list
+ * (bypassing the lock/ban filter) on the failure path only. Skipped for
+ * bypassModelLock (Test-connection), which wants the raw null.
+ */
+async function buildUnavailableResult(providerId, provider, excludeSet, model, bypassModelLock) {
+  if (bypassModelLock) return null;
+  const allConns = await getCachedConnections(providerId, excludeSet, null, true);
+  const result = deriveUnavailableResult(allConns, provider, model);
+  if (!result) {
+    log.warn("AUTH", `No credentials for ${provider}`);
+  } else if (result.retryAfter) {
+    log.warn("AUTH", `${provider} | all ${allConns.length} accounts rate-limited (${result.retryAfterHuman}) | lastError=${(result.lastError || "").slice(0, 50)}`);
+  } else {
+    log.warn("AUTH", `${provider} | all ${allConns.length} accounts unavailable (banned — need re-verification)`);
+  }
+  return result;
+}
 
 /**
  * Get provider credentials from localDb
@@ -66,8 +124,9 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
     log.debug("AUTH", `${provider} | total active: ${connections.length}, excludeIds: ${excludeSet.size > 0 ? [...excludeSet].join(",") : "none"}, model: ${model || "any"}`);
 
     if (connections.length === 0) {
-      log.warn("AUTH", `No credentials for ${provider}`);
-      return null;
+      // All accounts are locked/banned (or none exist). Surface WHY + a
+      // retry-after instead of a bare "No active credentials" 503.
+      return await buildUnavailableResult(providerId, provider, excludeSet, model, options.bypassModelLock);
     }
 
     // Warm the quota cache for all this provider's connections so the
@@ -114,29 +173,18 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
     });
 
     if (availableConnections.length === 0) {
-      // Find earliest lock expiry across all connections for retry timing
-      const lockedConns = connections.filter(c => isModelLockActive(c, model));
-      const expiries = lockedConns.map(c => getEarliestModelLockUntil(c)).filter(Boolean);
-      const earliest = expiries.sort()[0] || null;
-      if (earliest) {
-        const earliestConn = lockedConns[0];
-        log.warn("AUTH", `${provider} | all ${connections.length} accounts locked for ${model || "all"} (${formatRetryAfter(earliest)}) | lastError=${earliestConn?.lastError?.slice(0, 50)}`);
-        return {
-          allRateLimited: true,
-          retryAfter: earliest,
-          retryAfterHuman: formatRetryAfter(earliest),
-          lastError: earliestConn?.lastError || null,
-          lastErrorCode: earliestConn?.errorCode || null
-        };
-      }
-      log.warn("AUTH", `${provider} | all ${connections.length} accounts unavailable`);
-      return null;
+      // Everything that passed the lock/ban filter was quota-preflight-skipped.
+      // Re-derive the reason from the FULL list (getCachedConnections already
+      // dropped the locked accounts, so the old in-place filter here always saw
+      // an empty set and could never surface a retry-after — 0.5.119 fix).
+      return await buildUnavailableResult(providerId, provider, excludeSet, model, options.bypassModelLock);
     }
 
     const settings = await getSettings();
-    // Per-provider strategy overrides global setting
+    // Per-provider explicit override > per-provider smart default (e.g.
+    // antigravity→round-robin to dodge its per-minute limit) > global > fill-first.
     const providerOverride = (settings.providerStrategies || {})[providerId] || {};
-    const strategy = providerOverride.fallbackStrategy || settings.fallbackStrategy || "fill-first";
+    const strategy = getEffectiveFallbackStrategy(settings, providerId);
 
     let connection;
     // Pin to preferred connection if specified and available
@@ -284,7 +332,13 @@ export async function markAccountUnavailable(connectionId, status, errorText, pr
     let shouldFallback, cooldownMs, newBackoffLevel, accountLock, permanent;
     if (resetsAtMs && resetsAtMs > Date.now()) {
       shouldFallback = true;
-      cooldownMs = Math.min(resetsAtMs - Date.now(), MAX_RATE_LIMIT_COOLDOWN_MS);
+      // 0.5.119 — Park the exhausted MODEL until its real reset (bounded 6h),
+      // not the old 30-min rate-limit cap. A daily/weekly-exhausted account
+      // (e.g. Antigravity "Resets in 104h") must stay out of rotation so the
+      // picker uses fresh accounts instead of re-selecting the dead one every
+      // 30 min. The TPM (per-minute) downgrade below still overrides this with
+      // ~90s when the 429 is really a minute-window limit on a healthy account.
+      cooldownMs = Math.min(resetsAtMs - Date.now(), MAX_QUOTA_RESET_COOLDOWN_MS);
       newBackoffLevel = 0;
       permanent = false;
     } else {

@@ -41,6 +41,18 @@ export const TRANSIENT_COOLDOWN_MS = 30 * 1000;
 // Hard cap for provider-reported rate limit cooldown (e.g. codex resets_at can be 5-6h)
 export const MAX_RATE_LIMIT_COOLDOWN_MS = 30 * 60 * 1000;
 
+// 0.5.119 — Cap for GENUINE quota-reset locks (upstream told us a precise
+// "Resets in Xh/Xd" time). Antigravity/Codex parse an exact resetsAtMs from the
+// 429 body; when a model is daily/weekly exhausted (e.g. "Resets in 104h") the
+// 30-min MAX_RATE_LIMIT_COOLDOWN_MS above was WAY too short — the dead account's
+// per-model lock expired every 30 min, so fill-first kept re-selecting the
+// exhausted account, 429'd again, and blipped "No more accounts → fallback" on a
+// loop for days while fresh accounts sat unused. Park the exhausted MODEL until
+// its real reset, bounded at 6h so a wrong upstream estimate can't strand an
+// account longer than a quarter-day. Per-model only — other models on the same
+// account stay usable. TPM (per-minute) 429s are downgraded to ~90s separately.
+export const MAX_QUOTA_RESET_COOLDOWN_MS = 6 * 60 * 60 * 1000;
+
 // Cooldown for Google "Verify your account" 403. The whole account needs human
 // intervention — lock ALL models on the account for 1hr so no further requests
 // are wasted on it. Auto-clears after 1hr OR when user clicks "Test connection".

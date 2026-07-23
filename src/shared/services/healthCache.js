@@ -37,6 +37,31 @@ export async function syncHealthCache() {
 }
 
 /**
+ * Pure selectability predicate for a cached connection. Exported so the picker
+ * filter is unit-testable with synthetic connections (no DB or cache needed).
+ *
+ * A connection is selectable when it is:
+ *   - not in the exclude set (already tried this fallback round), AND
+ *   - not permanently banned (0.5.119 — Google "Verify your account", account
+ *     suspended/deactivated) — UNLESS we're bypassing locks for a "Test
+ *     connection" probe. Before this gate, a banned account's 24h
+ *     modelLock___all would expire and silently re-admit the dead account,
+ *     wasting a real request every cycle. The flag is set by
+ *     markAccountUnavailable on a permanent-ban signal and cleared by
+ *     clearAccountError on the next successful request, so Test-connection
+ *     (bypassModelLock=true) can still probe upstream and revive it, AND
+ *   - not currently model-locked for the requested model (again unless bypassing).
+ *
+ * 0.5.27 quota preflight stays separate in quotaPreflight.js (handled by caller).
+ */
+export function isConnectionSelectable(c, { excludeConnectionIds, model = null, bypassModelLock = false } = {}) {
+  if (excludeConnectionIds && excludeConnectionIds.has(c.id)) return false;
+  if (!bypassModelLock && c.isPermanentlyBanned) return false;
+  if (!bypassModelLock && isModelLockActive(c, model)) return false;
+  return true;
+}
+
+/**
  * Get all active, unlocked connections for a provider directly from RAM.
  * Re-syncs from DB only if the cache is older than CACHE_TTL_MS.
  */
@@ -47,12 +72,9 @@ export async function getCachedConnections(provider, excludeConnectionIds = new 
 
   const connections = _cache.get(provider) || [];
 
-  const available = connections.filter(c => {
-    if (excludeConnectionIds && excludeConnectionIds.has(c.id)) return false;
-    if (!bypassModelLock && isModelLockActive(c, model)) return false;
-    // 0.5.27 quota preflight is kept separate in quotaPreflight.js, handled by caller
-    return true;
-  });
+  const available = connections.filter(c =>
+    isConnectionSelectable(c, { excludeConnectionIds, model, bypassModelLock })
+  );
 
   return available;
 }
