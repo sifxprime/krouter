@@ -37,6 +37,21 @@ import { compressMessages, formatRtkLog } from "../rtk/index.js";
  * @param {object} options.credentials - Provider credentials
  * @param {string} options.sourceFormatOverride - Override detected source format (e.g. "openai-responses")
  */
+// 0.5.124 (upstream aa0448f7, adapted) — return the working credentials to use for the
+// NEXT refresh attempt. Rotating-RT providers issue a new refresh_token each refresh; if
+// it changed, fold it (and any new access token) into a FRESH copy so retries use the
+// live RT. Immutable: never mutates the caller's shared credentials object.
+export function rotateWorkingCreds(workingCreds, result) {
+  if (result?.refreshToken && result.refreshToken !== workingCreds?.refreshToken) {
+    return {
+      ...workingCreds,
+      refreshToken: result.refreshToken,
+      ...(result.accessToken ? { accessToken: result.accessToken } : {}),
+    };
+  }
+  return workingCreds;
+}
+
 export async function handleChatCore({ body, modelInfo, credentials, log, onCredentialsRefreshed, onRequestSuccess, onDisconnect, clientRawRequest, connectionId, userAgent, apiKey, ccFilterNaming, rtkEnabled, headroomEnabled = false, headroomUrl, headroomCompressUserMessages = false, cavemanEnabled, cavemanLevel, ponytailEnabled, ponytailLevel, pxpipeEnabled = false, pxpipeMinChars, pxpipeTimeoutMs, pxpipeTransform = null, onPxpipeEvent = null, sourceFormatOverride, providerThinking, settings = null }) {
   const { provider, model } = modelInfo;
   const requestStartTime = Date.now();
@@ -444,7 +459,18 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
   // Handle 401/403 - try token refresh (skip for noAuth providers)
   if (!executor.noAuth && (providerResponse.status === HTTP_STATUS.UNAUTHORIZED || providerResponse.status === HTTP_STATUS.FORBIDDEN)) {
     try {
-      const newCredentials = await refreshWithRetry(() => executor.refreshCredentials(credentials, log), 3, log);
+      // 0.5.124 (upstream aa0448f7, adapted) — rotating-refresh-token providers
+      // (xAI/grok-cli) issue a NEW refresh_token on every refresh, so
+      // refreshWithRetry's 2nd/3rd attempt would reuse the already-consumed RT →
+      // invalid_grant. Thread the rotated RT through a LOCAL workingCreds (a fresh
+      // immutable copy per rotation) so the next attempt uses it — WITHOUT mutating
+      // the caller's shared credentials object (our concurrency-safety invariant).
+      let workingCreds = credentials;
+      const newCredentials = await refreshWithRetry(async () => {
+        const result = await executor.refreshCredentials(workingCreds, log);
+        workingCreds = rotateWorkingCreds(workingCreds, result);
+        return result;
+      }, 3, log);
       if (newCredentials?.accessToken || newCredentials?.copilotToken) {
         log?.info?.("TOKEN", `${provider.toUpperCase()} | refreshed`);
         // Immutable update — never mutate the caller's credentials object.

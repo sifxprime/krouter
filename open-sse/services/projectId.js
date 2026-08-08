@@ -7,7 +7,14 @@
  * This significantly reduces the risk of being flagged by Google's anti-abuse systems.
  */
 
-import { CLOUD_CODE_API, LOAD_CODE_ASSIST_HEADERS, LOAD_CODE_ASSIST_METADATA } from "../config/appConstants.js";
+import { CLOUD_CODE_API, LOAD_CODE_ASSIST_HEADERS, ANTIGRAVITY_LOAD_CODE_ASSIST_HEADERS, LOAD_CODE_ASSIST_METADATA } from "../config/appConstants.js";
+
+// 0.5.124 (upstream 35f86e58) — pick the provisioning headers by provider. Antigravity
+// must NOT send the X-Goog-Api-Client/Client-Metadata SDK fingerprint (Google refuses
+// to provision when it sees them); gemini-cli keeps the original headers.
+function loadCodeAssistHeadersFor(provider) {
+  return provider === "antigravity" ? ANTIGRAVITY_LOAD_CODE_ASSIST_HEADERS : LOAD_CODE_ASSIST_HEADERS;
+}
 
 // ─── Cache ────────────────────────────────────────────────────────────────────
 // connectionId -> { projectId: string, fetchedAt: number }
@@ -83,7 +90,7 @@ startCacheCleanup();
  * @param {string} accessToken  - Valid OAuth access token
  * @returns {Promise<string|null>} Real project ID or null
  */
-export async function getProjectIdForConnection(connectionId, accessToken) {
+export async function getProjectIdForConnection(connectionId, accessToken, provider = null) {
     if (!connectionId || !accessToken) return null;
 
     // Return cached value if still fresh
@@ -102,7 +109,7 @@ export async function getProjectIdForConnection(connectionId, accessToken) {
 
     const promise = (async () => {
         try {
-            const projectId = await fetchProjectId(accessToken, controller.signal);
+            const projectId = await fetchProjectId(accessToken, controller.signal, provider);
             if (projectId) {
                 projectIdCache.set(connectionId, {projectId, fetchedAt: Date.now()});
                 return projectId;
@@ -155,10 +162,10 @@ export function removeConnection(connectionId) {
  * @param {AbortSignal} signal
  * @returns {Promise<string|null>}
  */
-async function fetchProjectId(accessToken, signal) {
+async function fetchProjectId(accessToken, signal, provider = null) {
     const response = await fetch(CLOUD_CODE_API.loadCodeAssist, {
         method: "POST",
-        headers: { ...LOAD_CODE_ASSIST_HEADERS, "Authorization": `Bearer ${accessToken}` },
+        headers: { ...loadCodeAssistHeadersFor(provider), "Authorization": `Bearer ${accessToken}` },
         body: JSON.stringify({ metadata: LOAD_CODE_ASSIST_METADATA }),
         signal
     });
@@ -185,7 +192,7 @@ async function fetchProjectId(accessToken, signal) {
         }
     }
 
-    return onboardUser(accessToken, tierID, signal);
+    return onboardUser(accessToken, tierID, signal, provider);
 }
 
 /**
@@ -196,7 +203,7 @@ async function fetchProjectId(accessToken, signal) {
  * @param {AbortSignal} externalSignal  – propagated from the connection's AbortController
  * @returns {Promise<string|null>}
  */
-async function onboardUser(accessToken, tierID, externalSignal) {
+async function onboardUser(accessToken, tierID, externalSignal, provider = null) {
     console.log(`[ProjectId] Onboarding user with tier: ${tierID}`);
 
     const reqBody = { tierId: tierID, metadata: LOAD_CODE_ASSIST_METADATA };
@@ -215,7 +222,7 @@ async function onboardUser(accessToken, tierID, externalSignal) {
         try {
             const response = await fetch(CLOUD_CODE_API.onboardUser, {
                 method: "POST",
-                headers: { ...LOAD_CODE_ASSIST_HEADERS, "Authorization": `Bearer ${accessToken}` },
+                headers: { ...loadCodeAssistHeadersFor(provider), "Authorization": `Bearer ${accessToken}` },
                 body: JSON.stringify(reqBody),
                 signal: localCtrl.signal
             });

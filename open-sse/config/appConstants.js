@@ -142,6 +142,17 @@ export const LOAD_CODE_ASSIST_HEADERS = {
   "Client-Metadata": JSON.stringify({ ideType: IDE_TYPE.ANTIGRAVITY, platform: getPlatformEnum(), pluginType: PLUGIN_TYPE.GEMINI }),
 };
 
+// 0.5.124 (upstream 35f86e58) — the real Antigravity IDE does NOT send
+// X-Goog-Api-Client / Client-Metadata on loadCodeAssist/onboardUser. Those identify
+// the google-api-nodejs-client SDK, not the IDE; Google fingerprints them and
+// silently refuses to provision a cloudaicompanionProject — so a fresh Antigravity
+// account never gets a project id and every chat fails. Send only Content-Type +
+// the real Antigravity IDE User-Agent when provisioning for antigravity.
+export const ANTIGRAVITY_LOAD_CODE_ASSIST_HEADERS = {
+  "Content-Type": "application/json",
+  "User-Agent": `antigravity/1.107.0 ${platform()}/${arch()}`,
+};
+
 export const LOAD_CODE_ASSIST_METADATA = {
   ideType: IDE_TYPE.ANTIGRAVITY,
   platform: getPlatformEnum(),
