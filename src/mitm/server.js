@@ -14,7 +14,13 @@ const { getMitmAlias } = require("./dbReader");
 const { applyAntigravityIdeVersionOverride } = require("./antigravityIdeVersion");
 const LOCAL_PORT = 443;
 const IS_WIN = process.platform === "win32";
-const ENABLE_FILE_LOG = true; // temporarily enabled for Antigravity auth debugging
+// 0.5.120 — Raw request/response dumps to ~/.krouter/logs/mitm. OFF by default.
+// This was hardcoded `true` ("temporarily … for Antigravity auth debugging") and
+// shipped, writing live auth tokens (Authorization / API keys / AWS SigV4) to disk
+// and growing unbounded (Antigravity polls every few seconds). Opt in with
+// DEBUG_MITM=1 or MITM_FILE_LOG=1; even then, sensitive headers are redacted
+// (logger.js redactHeaders) and the dir is size-capped (maybePruneDumpDir).
+const ENABLE_FILE_LOG = process.env.MITM_FILE_LOG === "1" || process.env.DEBUG_MITM === "1";
 
 // Clear stale dump files on every MITM start (prevents unbounded disk usage)
 clearDumpDir();

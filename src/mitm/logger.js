@@ -24,6 +24,38 @@ function clearDumpDir() {
   } catch { /* ignore */ }
 }
 
+// 0.5.120 — Never persist live credentials to disk. Even when raw dumps are
+// explicitly enabled (DEBUG_MITM=1), redact any header whose value is a secret
+// (Bearer tokens, API keys, AWS SigV4 creds, cookies). The whole point of the
+// dumps is to inspect request/response shape, not to archive auth material.
+const SENSITIVE_HEADER_RE = /^(authorization|proxy-authorization|cookie|set-cookie|x-api-key|api-key|x-goog-api-key|x-aws-.*|x-amz-.*|x-amzn-.*|x-stainless-api-key|openai-api-key|anthropic-api-key)$/i;
+
+function redactHeaders(headers) {
+  if (!headers || typeof headers !== "object") return headers;
+  const out = {};
+  for (const [k, v] of Object.entries(headers)) {
+    out[k] = SENSITIVE_HEADER_RE.test(k) ? "[REDACTED]" : v;
+  }
+  return out;
+}
+
+// 0.5.120 — Size-cap the dump dir so a long debug session can't grow without
+// bound (clearDumpDir only runs at startup; Antigravity polls every few seconds).
+// Amortized: only readdir every 100th write.
+const MAX_DUMP_FILES = Number(process.env.MITM_MAX_DUMP_FILES) || 1000;
+let _writeCount = 0;
+function maybePruneDumpDir() {
+  if (++_writeCount % 100 !== 0) return;
+  try {
+    const files = fs.readdirSync(DUMP_DIR)
+      .map(f => ({ f, t: fs.statSync(path.join(DUMP_DIR, f)).mtimeMs }))
+      .sort((a, b) => b.t - a.t);
+    for (const { f } of files.slice(MAX_DUMP_FILES)) {
+      try { fs.rmSync(path.join(DUMP_DIR, f), { force: true }); } catch { /* ignore */ }
+    }
+  } catch { /* ignore */ }
+}
+
 const EMPTY_BODY_RE = /^\s*(\{\s*\}|\[\s*\]|null)?\s*$/;
 
 function slugify(s, max = 80) {
@@ -60,9 +92,10 @@ function dumpRequest(req, bodyBuffer, tag = "raw") {
       method: req.method,
       url: req.url,
       host: req.headers.host,
-      headers: req.headers,
+      headers: redactHeaders(req.headers),
       body: parsed ?? bodyBuffer.toString("utf8")
     }, null, 2));
+    maybePruneDumpDir();
     return file;
   } catch { return null; }
 }
@@ -92,11 +125,12 @@ function createResponseDumper(req, tag = "raw") {
         // Skip empty / trivially-empty bodies
         if (EMPTY_BODY_RE.test(text)) return;
         // Strip content-encoding since body is now decoded
-        const cleanHeaders = { ...headers };
+        const cleanHeaders = redactHeaders({ ...headers });
         delete cleanHeaders["content-encoding"];
         delete cleanHeaders["Content-Encoding"];
         const out = `STATUS: ${status}\nHEADERS: ${JSON.stringify(cleanHeaders, null, 2)}\n---BODY---\n${text}`;
         fs.writeFileSync(file, out);
+        maybePruneDumpDir();
       } catch { /* ignore */ }
     },
     file
