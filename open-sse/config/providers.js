@@ -386,6 +386,11 @@ export const PROVIDERS = {
     baseUrl: "https://api.tokenrouter.com/v1/chat/completions",
     format: "openai"
   },
+  // 0.5.128 (upstream 31df0635) — Poolside Laguna: OpenAI-compatible, reasoning-capable.
+  poolside: {
+    baseUrl: "https://inference.poolside.ai/v1/chat/completions",
+    format: "openai"
+  },
   venice: {
     baseUrl: "https://api.venice.ai/api/v1/chat/completions",
     format: "openai"

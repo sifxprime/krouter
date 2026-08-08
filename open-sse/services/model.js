@@ -46,6 +46,8 @@ const ALIAS_TO_PROVIDER_ID = {
   huggingface: "huggingface",
   tr: "tokenrouter",
   tokenrouter: "tokenrouter",
+  ps: "poolside",
+  poolside: "poolside",
   ds: "deepseek",
   deepseek: "deepseek",
   cmc: "commandcode",
