@@ -13,7 +13,14 @@ const proxyClientMaxBodySize = process.env.NINEROUTER_PROXY_CLIENT_MAX_BODY_SIZE
 const nextConfig = {
   distDir: process.env.NEXT_DIST_DIR || ".next",
   output: "standalone",
-  serverExternalPackages: ["better-sqlite3", "sql.js", "node:sqlite", "bun:sqlite"],
+  // 0.5.122 (upstream c06cc084) — `open` must stay external. It derives its own
+  // directory from import.meta.url; webpack would replace that with the BUILD
+  // machine's absolute path as a string literal, so a release built on macOS ships
+  // file:///Users/.../open/index.js, which fileURLToPath rejects on Windows ("File
+  // URL path must be absolute" — no drive letter) at module scope — killing every
+  // importer, including xAI/Grok/Codex token refresh. External keeps the real
+  // import.meta.url at runtime.
+  serverExternalPackages: ["better-sqlite3", "sql.js", "node:sqlite", "bun:sqlite", "open"],
   turbopack: {
     root: tracingRoot
   },

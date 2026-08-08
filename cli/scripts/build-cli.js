@@ -213,6 +213,11 @@ function ensureModuleInBundle(pkg) {
   console.log(`✅ Bundled ${pkg}`);
 }
 ensureModuleInBundle("sql.js");
+// 0.5.122 (upstream c06cc084) — `open` is external (serverExternalPackages), so it
+// must exist in the bundle's node_modules or every importer (xAI/Grok/Codex/Gemini/
+// Antigravity/Qwen/iflow OAuth services) throws MODULE_NOT_FOUND at runtime. Output
+// tracing normally copies it; this is the same belt-and-braces guard used for sql.js.
+ensureModuleInBundle("open");
 const betterDir = path.join(cliAppDir, "node_modules", "better-sqlite3");
 if (fs.existsSync(betterDir)) {
   fs.rmSync(betterDir, { recursive: true, force: true });

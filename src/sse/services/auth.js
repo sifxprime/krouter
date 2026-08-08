@@ -13,6 +13,19 @@ import * as log from "../utils/logger.js";
 // Mutex to prevent race conditions during account selection
 let selectionMutex = Promise.resolve();
 
+// 0.5.122 (upstream 3292dfc1) — GitHub Copilot's "additional usage limit" 402 is a
+// MONTHLY premium-request cap, not a per-model rate limit. Hold the whole account
+// until 00:00 UTC on the 1st of next month instead of the 2-min model cooldown. Other
+// GitHub 402s keep the model-scoped cooldown. Additive to the 0.5.119 resetsAtMs
+// parking, which is 6h-capped and never covers a month-long hold.
+const GITHUB_MONTHLY_USAGE_LIMIT = "you've reached your additional usage limit for your plan";
+export function githubMonthlyResetMs(status, errorText, provider) {
+  if (resolveProviderId(provider) !== "github" || Number(status) !== 402) return null;
+  if (!String(errorText || "").toLowerCase().includes(GITHUB_MONTHLY_USAGE_LIMIT)) return null;
+  const now = new Date();
+  return Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1);
+}
+
 /**
  * 0.5.119 — Pure reason-derivation for the "nothing selectable" failure path.
  * Given the FULL active account list (including the locked/banned accounts the
@@ -330,7 +343,16 @@ export async function markAccountUnavailable(connectionId, status, errorText, pr
     connName = existing?.displayName || existing?.name || existing?.email || connName;
 
     let shouldFallback, cooldownMs, newBackoffLevel, accountLock, permanent;
-    if (resetsAtMs && resetsAtMs > Date.now()) {
+    // 0.5.122 — GitHub monthly premium-request exhaustion: hold the WHOLE account
+    // (modelLock___all) until next UTC month, uncapped, with NO banCount escalation
+    // (it's a quota, not abuse). Checked first so it wins over the resetsAtMs cap.
+    const githubMonthlyResetAtMs = githubMonthlyResetMs(status, errorText, provider);
+    if (githubMonthlyResetAtMs) {
+      shouldFallback = true;
+      cooldownMs = githubMonthlyResetAtMs - Date.now();
+      newBackoffLevel = 0;
+      permanent = false;
+    } else if (resetsAtMs && resetsAtMs > Date.now()) {
       shouldFallback = true;
       // 0.5.119 — Park the exhausted MODEL until its real reset (bounded 6h),
       // not the old 30-min rate-limit cap. A daily/weekly-exhausted account
@@ -421,7 +443,9 @@ export async function markAccountUnavailable(connectionId, status, errorText, pr
       cooldownMs = cooldownMs * mult;
       if (newBanCount >= 3) chronicallyBanned = true;
     }
-    const lockUpdate = accountLock
+    // Account-wide lock for a verify-ban (accountLock) OR a GitHub monthly hold —
+    // but only accountLock escalates banCount above (the monthly hold is a quota).
+    const lockUpdate = (accountLock || githubMonthlyResetAtMs)
       ? buildModelLockUpdate(null, cooldownMs)   // null → modelLock___all
       : buildModelLockUpdate(model, cooldownMs);
     lockKey = Object.keys(lockUpdate)[0];

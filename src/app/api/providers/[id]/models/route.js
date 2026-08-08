@@ -203,9 +203,13 @@ const PROVIDER_MODELS_CONFIG = {
     parseResponse: (data) => data.data || []
   },
   codex: {
-    url: "https://chatgpt.com/backend-api/codex/models?client_version=1.0.0",
+    // 0.5.122 (upstream d587b2a4) — the /codex/models endpoint gates each entry by
+    // minimal_client_version; a stale client_version (was 1.0.0) silently filters out
+    // the newest models. codex CLI's own manifest already requires 0.144.x, so use a
+    // current value and send the codex_cli_rs originator like the real client.
+    url: "https://chatgpt.com/backend-api/codex/models?client_version=0.144.6",
     method: "GET",
-    headers: { "Content-Type": "application/json", "Accept": "application/json" },
+    headers: { "Content-Type": "application/json", "Accept": "application/json", "originator": "codex_cli_rs" },
     authHeader: "Authorization",
     authPrefix: "Bearer ",
     parseResponse: parseCodexModels
