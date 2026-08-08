@@ -380,6 +380,12 @@ export const PROVIDERS = {
     baseUrl: "https://api.featherless.ai/v1/chat/completions",
     format: "openai"
   },
+  // 0.5.127 (upstream b4808929) — TokenRouter: OpenAI-compatible gateway to 300+
+  // models. API-key auth, models fetched live (no static catalog / passthrough).
+  tokenrouter: {
+    baseUrl: "https://api.tokenrouter.com/v1/chat/completions",
+    format: "openai"
+  },
   venice: {
     baseUrl: "https://api.venice.ai/api/v1/chat/completions",
     format: "openai"

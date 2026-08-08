@@ -44,6 +44,8 @@ const ALIAS_TO_PROVIDER_ID = {
   "minimax-cn": "minimax-cn",
   hf: "huggingface",
   huggingface: "huggingface",
+  tr: "tokenrouter",
+  tokenrouter: "tokenrouter",
   ds: "deepseek",
   deepseek: "deepseek",
   cmc: "commandcode",
