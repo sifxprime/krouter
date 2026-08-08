@@ -13,7 +13,8 @@ import { handleChatCore } from "open-sse/handlers/chatCore.js";
 import { errorResponse, unavailableResponse } from "open-sse/utils/error.js";
 import { getRetiredModelError } from "open-sse/config/retiredModels.js";
 import { getEffectiveFallbackStrategy } from "open-sse/config/providerStrategy.js";
-import { handleComboChat, handleFusionChat } from "open-sse/services/combo.js";
+import { handleComboChat, handleFusionChat, detectRequiredCapabilities } from "open-sse/services/combo.js";
+import { augmentModelsWithCapacityAdapter, withCapacityAdapterStripping, getActiveAdapterStrategy } from "open-sse/services/capacityAdapter.js";
 import { handleBypassRequest } from "open-sse/utils/bypassHandler.js";
 import { getTransform as getPxpipeTransform, configureModelBases as configurePxpipeModels } from "@/lib/pxpipe/loader.js";
 import { appendPxpipeEvent } from "@/lib/pxpipe/events.js";
@@ -156,6 +157,10 @@ export async function handleChat(request, clientRawRequest = null) {
     }
   }
 
+  // 0.5.125 (upstream 6498b312) — modalities the request actually carries, so the
+  // capacity adapter can float in a capable fallback model when the target can't.
+  const requiredCapabilities = detectRequiredCapabilities(body);
+
   // Check if model is a combo (has multiple models with fallback)
   const comboModels = await getComboModels(modelStr);
   if (comboModels) {
@@ -163,6 +168,9 @@ export async function handleChat(request, clientRawRequest = null) {
     const comboStrategies = settings.comboStrategies || {};
     const comboSpecificStrategy = comboStrategies[modelStr]?.fallbackStrategy;
     const comboStrategy = comboSpecificStrategy || settings.comboStrategy || "fallback";
+    // Append capacity-adapter models only when NO combo member can satisfy the request.
+    const augmentedModels = augmentModelsWithCapacityAdapter(comboModels, requiredCapabilities, settings);
+    const adapterAdded = augmentedModels.filter((m) => !comboModels.includes(m));
 
     if (comboStrategy === "fusion") {
       log.info("CHAT", `Combo "${modelStr}" with ${comboModels.length} models (strategy: fusion)`);
@@ -178,11 +186,14 @@ export async function handleChat(request, clientRawRequest = null) {
     }
 
     const comboStickyLimit = settings.comboStickyRoundRobinLimit;
-    log.info("CHAT", `Combo "${modelStr}" with ${comboModels.length} models (strategy: ${comboStrategy}, sticky: ${comboStickyLimit})`);
+    log.info("CHAT", `Combo "${modelStr}" with ${augmentedModels.length} models (strategy: ${comboStrategy}, sticky: ${comboStickyLimit})`);
     return handleComboChat({
       body,
-      models: comboModels,
-      handleSingleModel: (b, m) => handleSingleModelChat(b, m, clientRawRequest, request, apiKey, settings, 1),
+      models: augmentedModels,
+      handleSingleModel: withCapacityAdapterStripping(
+        (b, m) => handleSingleModelChat(b, m, clientRawRequest, request, apiKey, settings, 1),
+        adapterAdded
+      ),
       log,
       comboName: modelStr,
       comboStrategy,
@@ -190,7 +201,25 @@ export async function handleChat(request, clientRawRequest = null) {
     });
   }
 
-  // Single model request
+  // Single model request — may still switch to a capacity-adapter model if the
+  // target lacks a capability the request needs (e.g. no vision, request has an image).
+  const soloAugmented = augmentModelsWithCapacityAdapter([modelStr], requiredCapabilities, settings);
+  if (soloAugmented.length > 1) {
+    const adapterAdded = soloAugmented.filter((m) => m !== modelStr);
+    log.info("CHAT", `Capacity adapter for [${[...requiredCapabilities].join(",")}] on "${modelStr}" → trying ${soloAugmented.join(", ")}`);
+    return handleComboChat({
+      body,
+      models: soloAugmented,
+      handleSingleModel: withCapacityAdapterStripping(
+        (b, m) => handleSingleModelChat(b, m, clientRawRequest, request, apiKey, settings, 1),
+        adapterAdded
+      ),
+      log,
+      comboName: modelStr,
+      comboStrategy: getActiveAdapterStrategy(requiredCapabilities, settings)
+    });
+  }
+
   return handleSingleModelChat(body, modelStr, clientRawRequest, request, apiKey, settings, 0);
 }
 

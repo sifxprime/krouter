@@ -16,6 +16,16 @@ const DEFAULT_SETTINGS = {
   comboStrategy: "fallback",
   comboStickyRoundRobinLimit: 1,
   comboStrategies: {},
+  // 0.5.125 (upstream 8e59093d, adapted) — capacity-adapter fallback pools per
+  // input modality. Only `vision` is enabled by default because our free default
+  // fallback (mmf/mimo-auto) is vision-capable; audio/pdf/video pools are opt-in so
+  // an enabled pool always has a model that can actually satisfy it.
+  capacityAdapter: {
+    vision: { enabled: true, roundRobin: false, models: [] },
+    pdf: { enabled: false, roundRobin: false, models: [] },
+    audioInput: { enabled: false, roundRobin: false, models: [] },
+    videoInput: { enabled: false, roundRobin: false, models: [] },
+  },
   requireLogin: true,
   tunnelDashboardAccess: true,
   authMode: "password",
