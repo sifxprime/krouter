@@ -1,8 +1,7 @@
 import { BaseExecutor } from "./base.js";
-import { PROVIDERS } from "../config/providers.js";
+import { PROVIDERS, selectAnthropicBeta } from "../config/providers.js";
 import { OAUTH_ENDPOINTS, buildKimiHeaders } from "../config/appConstants.js";
 import { buildClineHeaders } from "../../src/shared/utils/clineAuth.js";
-import { getCachedClaudeHeaders } from "../utils/claudeHeaderCache.js";
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
 import { injectReasoningContent } from "../utils/reasoningContentInjector.js";
 import { stripUnsupportedParams } from "../translator/helpers/paramSupport.js";
@@ -83,7 +82,7 @@ export class DefaultExecutor extends BaseExecutor {
     }
   }
 
-  buildHeaders(credentials, stream = true) {
+  buildHeaders(credentials, stream = true, url = null, model = null) {
     const headers = { "Content-Type": "application/json", ...this.config.headers };
 
     switch (this.provider) {
@@ -91,35 +90,15 @@ export class DefaultExecutor extends BaseExecutor {
         credentials.apiKey ? headers["x-goog-api-key"] = credentials.apiKey : headers["Authorization"] = `Bearer ${credentials.accessToken}`;
         break;
       case "claude": {
-        // Overlay live cached headers from real Claude Code client over static defaults.
-        // Static headers (Title-Case) remain as cold-start fallback.
-        const cached = getCachedClaudeHeaders();
-        if (cached) {
-          // Remove Title-Case static keys that conflict with incoming lowercase cached keys
-          for (const lcKey of Object.keys(cached)) {
-            // Build the Title-Case equivalent: "anthropic-version" → "Anthropic-Version"
-            const titleKey = lcKey.replace(/(^|-)([a-z])/g, (_, sep, c) => sep + c.toUpperCase());
-
-            // Special handling for Anthropic-Beta to preserve required flags like OAuth
-            if (lcKey === "anthropic-beta") {
-              const staticBetaStr = headers[titleKey] || headers[lcKey] || "";
-              const staticFlags = new Set(staticBetaStr.split(",").map(f => f.trim()).filter(Boolean));
-              const cachedFlags = new Set(cached[lcKey].split(",").map(f => f.trim()).filter(Boolean));
-
-              // Merge all static flags (which contain oauth, thinking, etc) into the cached ones
-              for (const flag of staticFlags) {
-                cachedFlags.add(flag);
-              }
-
-              cached[lcKey] = Array.from(cachedFlags).join(",");
-            }
-
-            if (titleKey !== lcKey && headers[titleKey] !== undefined) {
-              delete headers[titleKey];
-            }
-          }
-          Object.assign(headers, cached);
-        }
+        // 0.5.123 (upstream 13ed1456) — REMOVED the global claudeHeaderCache overlay.
+        // It stored the last-seen Claude Code client's identity headers (user-agent,
+        // x-stainless-*, x-claude-code-session-id) in a module singleton and overlaid
+        // them onto EVERY later request, leaking one account/client's identity onto
+        // another sharing the server. We fall back to the static per-provider Claude
+        // CLI fingerprint (config.headers = CLAUDE_CLI_SPOOF_HEADERS) and compute
+        // anthropic-beta per-request from the model so heavy-agent flags only ship
+        // for opus/sonnet.
+        if (model) headers["Anthropic-Beta"] = selectAnthropicBeta(model);
         credentials.apiKey
           ? (headers["x-api-key"] = credentials.apiKey)
           : (headers["Authorization"] = `Bearer ${credentials.accessToken}`);

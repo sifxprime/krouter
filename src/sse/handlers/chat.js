@@ -7,7 +7,6 @@ import {
   extractApiKey,
   isValidApiKey,
 } from "../services/auth.js";
-import { cacheClaudeHeaders } from "open-sse/utils/claudeHeaderCache.js";
 import { getSettings } from "@/lib/localDb";
 import { getModelInfo, getComboModels } from "../services/model.js";
 import { handleChatCore } from "open-sse/handlers/chatCore.js";
@@ -69,7 +68,9 @@ export async function handleChat(request, clientRawRequest = null) {
       headers: Object.fromEntries(request.headers.entries())
     };
   }
-  cacheClaudeHeaders(clientRawRequest.headers);
+  // 0.5.123 (upstream 13ed1456) — removed cacheClaudeHeaders(): the global cache it
+  // fed leaked one client's identity headers onto every later request. The claude
+  // executor now uses the static per-provider fingerprint + per-model anthropic-beta.
 
   // Log request endpoint and model
   const url = new URL(request.url);

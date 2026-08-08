@@ -21,16 +21,36 @@ function mapStainlessArch() {
   }
 }
 
+// 0.5.123 (upstream 13ed1456) — anthropic-beta is now computed PER-REQUEST from the
+// requested model instead of a static string, so heavy-agent flags only ship for the
+// models that use them. Base flags every Claude model wants; heavy-agent flags gated
+// to opus/sonnet (haiku/fable don't need advanced-tool-use/effort).
+const ANTHROPIC_BETA_BASE = [
+  "claude-code-20250219", "oauth-2025-04-20", "interleaved-thinking-2025-05-14",
+  "context-management-2025-06-27", "prompt-caching-scope-2026-01-05",
+  "structured-outputs-2025-12-15", "fast-mode-2026-02-01", "redact-thinking-2026-02-12",
+  "token-efficient-tools-2026-03-28",
+];
+const ANTHROPIC_BETA_HEAVY_AGENT = ["advanced-tool-use-2025-11-20", "effort-2025-11-24"];
+
+export function selectAnthropicBeta(model = "") {
+  const flags = [...ANTHROPIC_BETA_BASE];
+  if (/claude-(opus|sonnet)/i.test(model)) flags.push(...ANTHROPIC_BETA_HEAVY_AGENT);
+  return flags.join(",");
+}
+
 // Shared Claude-compatible API headers (reused across claude-format providers)
+// 6acc3bb9 — lowercase `anthropic-version` so a client-forwarded lowercase copy on
+// /v1/messages doesn't duplicate against a Title-Case key.
 const CLAUDE_API_HEADERS = {
-  "Anthropic-Version": "2023-06-01",
+  "anthropic-version": "2023-06-01",
   "Anthropic-Beta": "claude-code-20250219,interleaved-thinking-2025-05-14"
 };
 
 // Full Claude CLI fingerprint — required by providers that gate on client identity (e.g. agentrouter)
 export const CLAUDE_CLI_SPOOF_HEADERS = {
-  "Anthropic-Version": "2023-06-01",
-  "Anthropic-Beta": "claude-code-20250219,oauth-2025-04-20,interleaved-thinking-2025-05-14,context-management-2025-06-27,prompt-caching-scope-2026-01-05,advanced-tool-use-2025-11-20,effort-2025-11-24,structured-outputs-2025-12-15,fast-mode-2026-02-01,redact-thinking-2026-02-12,token-efficient-tools-2026-03-28",
+  "anthropic-version": "2023-06-01",
+  "Anthropic-Beta": selectAnthropicBeta("claude-opus"),
   "Anthropic-Dangerous-Direct-Browser-Access": "true",
   "User-Agent": "claude-cli/2.1.92 (external, sdk-cli)",
   "X-App": "cli",

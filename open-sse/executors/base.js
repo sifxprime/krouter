@@ -218,7 +218,10 @@ export class BaseExecutor {
       const cachedNoImages = hasNoImageSupport(this.provider, model);
       const sourceBody = cachedNoImages ? stripImagesFromBody(body) : body;
       let transformedBody = this.transformRequest(model, sourceBody, stream, effectiveCredentials);
-      const headers = this.buildHeaders(effectiveCredentials, stream);
+      // 0.5.123 (upstream 13ed1456) — thread model so the claude executor can pick
+      // anthropic-beta per model. Only DefaultExecutor reads the extra args; executors
+      // with their own execute() (antigravity) or explicit super calls are unaffected.
+      const headers = this.buildHeaders(effectiveCredentials, stream, url, model);
 
       // 0.5.74 — Force MITM anti-loop header on ALL outbound requests,
       // regardless of whether child executors override buildHeaders() and
