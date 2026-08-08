@@ -30,6 +30,7 @@ export default function ModelSelectModal({
   title = "Select Model",
   modelAliases = {},
   kindFilter = null,
+  capFilter = null,
   addedModelValues = [],
   closeOnSelect = true,
 }) {
@@ -207,9 +208,21 @@ export default function ModelSelectModal({
       // No kindFilter → LLM context. Keep custom models visible because
       // user-added models may have typed capabilities (e.g. imageToText) while
       // still being valid chat/combo targets — ported from upstream 5e5e78d.
-      if (!kindFilter) return models.filter((m) => m.isPlaceholder || m.isCustom || !m.type || m.type === "llm");
-      if (!TYPED_KINDS.has(kindFilter)) return models;
-      return models.filter((m) => m.isPlaceholder || m.type === kindFilter);
+      let out;
+      if (!kindFilter) out = models.filter((m) => m.isPlaceholder || m.isCustom || !m.type || m.type === "llm");
+      else if (!TYPED_KINDS.has(kindFilter)) out = models;
+      else out = models.filter((m) => m.isPlaceholder || m.type === kindFilter);
+      // 0.5.126 (upstream 8e59093d) — capacity-adapter picker: keep only models that
+      // actually declare the requested input-modality capability.
+      if (capFilter) {
+        out = out.filter((m) => {
+          const v = m.value || "";
+          const slash = v.indexOf("/");
+          if (slash <= 0) return false;
+          return getCapabilitiesForModel(v.slice(0, slash), v.slice(slash + 1))?.[capFilter] === true;
+        });
+      }
+      return out;
     };
 
     // Get all active provider IDs from connections (filtered by kindFilter if set)
@@ -432,13 +445,14 @@ export default function ModelSelectModal({
     return groups;
   }, [filteredActiveProviders, modelAliases, allProviders, providerNodes, customModels, disabledModels, kindFilter, activeProviders, liveModels]);
 
-  // Filter combos by search query (and hide combos when kindFilter is set — combos are LLM-only by design)
+  // Filter combos by search query (and hide combos when kindFilter/capFilter is set —
+  // combos are LLM-only by design, and a capacity-adapter pool needs a concrete model).
   const filteredCombos = useMemo(() => {
-    if (kindFilter) return [];
+    if (kindFilter || capFilter) return [];
     if (!searchQuery.trim()) return combos;
     const query = searchQuery.toLowerCase();
     return combos.filter(c => c.name.toLowerCase().includes(query));
-  }, [combos, searchQuery, kindFilter]);
+  }, [combos, searchQuery, kindFilter, capFilter]);
 
   // Sort models alphabetically, with added models floated to top
   const sortModels = (models) => {
@@ -701,6 +715,7 @@ ModelSelectModal.propTypes = {
   title: PropTypes.string,
   modelAliases: PropTypes.object,
   kindFilter: PropTypes.string,
+  capFilter: PropTypes.string,
   addedModelValues: PropTypes.arrayOf(PropTypes.string),
   closeOnSelect: PropTypes.bool,
 };
