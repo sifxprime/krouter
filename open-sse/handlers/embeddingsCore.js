@@ -1,5 +1,5 @@
 import { createErrorResult, parseUpstreamError, formatProviderError } from "../utils/error.js";
-import { HTTP_STATUS } from "../config/runtimeConfig.js";
+import { HTTP_STATUS, FETCH_CONNECT_TIMEOUT_MS } from "../config/runtimeConfig.js";
 import { getExecutor } from "../executors/index.js";
 import { refreshWithRetry } from "../services/tokenRefresh.js";
 import { getEmbeddingAdapter } from "./embeddingProviders/index.js";
@@ -38,13 +38,23 @@ export async function handleEmbeddingsCore({
   }
 
   const ctx = { input };
-  const url = adapter.buildUrl(model, credentials, ctx);
-  const headers = adapter.buildHeaders(credentials, ctx);
-  const requestBody = adapter.buildBody(model, {
-    input,
-    encoding_format: body.encoding_format || "float",
-    dimensions: body.dimensions,
-  });
+  // 0.5.129 (upstream fe547f4d) — an adapter that rejects a misconfigured connection
+  // (e.g. a self-hosted embedding endpoint with no baseUrl) throws here rather than
+  // silently falling back to api.openai.com; that would otherwise escape uncaught as
+  // a 500 or a request that never settles. A config mistake is a 400 with the reason.
+  let url, headers, requestBody;
+  try {
+    url = adapter.buildUrl(model, credentials, ctx);
+    headers = adapter.buildHeaders(credentials, ctx);
+    requestBody = adapter.buildBody(model, {
+      input,
+      encoding_format: body.encoding_format || "float",
+      dimensions: body.dimensions,
+    });
+  } catch (error) {
+    log?.debug?.("EMBEDDINGS", `Request build failed: ${error.message}`);
+    return createErrorResult(HTTP_STATUS.BAD_REQUEST, `[${provider}/${model}] ${error.message}`);
+  }
 
   log?.debug?.("EMBEDDINGS", `${provider.toUpperCase()} | ${model} | input_type=${Array.isArray(input) ? `array[${input.length}]` : "string"}`);
 
@@ -54,6 +64,11 @@ export async function handleEmbeddingsCore({
       method: "POST",
       headers,
       body: JSON.stringify(requestBody),
+      // 0.5.129 (upstream fe547f4d) — bound the connect time so a dead self-hosted
+      // endpoint fails fast instead of hanging the request.
+      ...(typeof AbortSignal?.timeout === "function"
+        ? { signal: AbortSignal.timeout(FETCH_CONNECT_TIMEOUT_MS) }
+        : {}),
     });
   } catch (error) {
     const errMsg = formatProviderError(error, provider, model, HTTP_STATUS.BAD_GATEWAY);
