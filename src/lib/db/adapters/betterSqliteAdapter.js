@@ -40,9 +40,11 @@ export function createBetterSqliteAdapter(filePath) {
 
   return {
     driver: "better-sqlite3",
-    run(sql, params = []) { return prepare(sql).run(params); },
-    get(sql, params = []) { return prepare(sql).get(params); },
-    all(sql, params = []) { return prepare(sql).all(params); },
+    // 0.5.121 (upstream 4f48ab8c) — spread bind params to match the node/bun
+    // adapters and guard against better-sqlite3 array-binding drift under ^12.6.2.
+    run(sql, params = []) { return prepare(sql).run(...params); },
+    get(sql, params = []) { return prepare(sql).get(...params); },
+    all(sql, params = []) { return prepare(sql).all(...params); },
     exec(sql) { return db.exec(sql); },
     transaction(fn) { return db.transaction(fn)(); },
     checkpoint() { try { db.pragma("wal_checkpoint(TRUNCATE)"); } catch {} },

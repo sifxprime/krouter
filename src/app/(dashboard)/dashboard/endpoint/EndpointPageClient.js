@@ -439,11 +439,25 @@ export default function APIPageClient({ machineId }) {
 
   const fetchData = async () => {
     try {
-      const keysRes = await fetch("/api/keys");
-      const keysData = await keysRes.json();
-      if (keysRes.ok) {
-        setKeys(keysData.keys || []);
+      const loadKeys = async () => {
+        const res = await fetch("/api/keys");
+        const data = await res.json();
+        return res.ok ? (data.keys || []) : [];
+      };
+      let existing = await loadKeys();
+      // 0.5.121 (upstream 02c66fe2) — auto-provision a "Default Key" for first-time
+      // users so /v1 works out of the box without a manual dashboard step.
+      if (existing.length === 0) {
+        try {
+          const createRes = await fetch("/api/keys", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ name: "Default Key" }),
+          });
+          if (createRes.ok) existing = await loadKeys();
+        } catch { /* leave empty; user can add one manually */ }
       }
+      setKeys(existing);
     } catch (error) {
       console.log("Error fetching data:", error);
     } finally {

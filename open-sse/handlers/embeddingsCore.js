@@ -116,6 +116,9 @@ export async function handleEmbeddingsCore({
 
   return {
     success: true,
+    // 0.5.121 (upstream c85a5c57) — surface usage so the caller can persist
+    // exact embedding tokens (we previously recorded none for /v1/embeddings).
+    usage: normalized.usage || null,
     response: new Response(JSON.stringify(normalized), {
       headers: {
         "Content-Type": "application/json",

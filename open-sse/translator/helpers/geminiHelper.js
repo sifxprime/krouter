@@ -15,6 +15,9 @@ export const UNSUPPORTED_SCHEMA_CONSTRAINTS = [
   "anyOf", "oneOf", "allOf", "not",
   // Dependency keywords (not supported)
   "dependencies", "dependentSchemas", "dependentRequired",
+  // 0.5.121 (upstream 2abe8b85) — Gemini's proto schema has no field for these;
+  // a single occurrence 400s the whole request ("Unknown name … Cannot find field").
+  "multipleOf", "uniqueItems", "contains", "unevaluatedProperties", "unevaluatedItems", "contentSchema",
   // Other unsupported keywords
   "title", "optional", "if", "then", "else", "contentMediaType", "contentEncoding",
   // UI/Styling properties (from Cursor tools - NOT JSON Schema standard)
@@ -344,6 +347,21 @@ export function cleanJSONSchemaForAntigravity(schema) {
   // Phase 5: Add placeholder for empty object schemas (Antigravity requirement)
   function addPlaceholders(obj) {
     if (!obj || typeof obj !== "object") return;
+
+    // 0.5.121 (upstream e3e3e235) — an empty schema {} (no type, no properties)
+    // is what's left after $ref/$defs are stripped from a function declaration;
+    // Vertex/Antigravity reject the orphan node. Promote it to object+placeholder.
+    if (Object.keys(obj).length === 0) {
+      obj.type = "object";
+      obj.properties = {
+        reason: {
+          type: "string",
+          description: "Brief explanation of why you are calling this tool"
+        }
+      };
+      obj.required = ["reason"];
+      return;
+    }
 
     if (obj.type === "object") {
       if (!obj.properties || Object.keys(obj.properties).length === 0) {

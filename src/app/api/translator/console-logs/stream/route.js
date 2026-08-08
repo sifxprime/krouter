@@ -72,8 +72,11 @@ export async function GET(request) {
   return new Response(stream, {
     headers: {
       "Content-Type": "text/event-stream",
-      "Cache-Control": "no-cache",
+      // 0.5.121 (upstream 57b3b2c1) — no-transform + X-Accel-Buffering:no stop
+      // nginx/Cloudflare from buffering the SSE stream (logs stalled behind a proxy).
+      "Cache-Control": "no-cache, no-transform",
       "Connection": "keep-alive",
+      "X-Accel-Buffering": "no",
     },
   });
 }

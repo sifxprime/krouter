@@ -32,9 +32,12 @@ const MAX_ANTIGRAVITY_OUTPUT_TOKENS = 16384;
 // Fields Google generateContent rejects (e.g. Claude adaptive output_config) — stripped from antigravity request envelope.
 // Includes Claude/OpenAI-native thinking fields that sit at top-level body when thinkingUnified.js sets them.
 // Also strips `stream` (Google encodes streaming in the URL path streamGenerateContent?alt=sse,
-// not a body field — our 0.5.16 chatCore stream-injection leaked it here).
+// not a body field — our 0.5.16 chatCore stream-injection leaked it here) and its companion
+// `stream_options` (0.5.121 / upstream 0afe9493 — Google generateContent rejects it; Google
+// never wants it regardless of stream mode, so blacklisting it outright is cleaner than upstream's
+// stream!==true guard).
 // Ports upstream PRs #1947 (output_config strip) + #1949 (thinking field expansion).
-const ANTIGRAVITY_REQUEST_BLACKLIST = ["output_config", "thinking", "reasoning_effort", "reasoning", "enable_thinking", "thinking_budget", "thinkingConfig", "stream"];
+const ANTIGRAVITY_REQUEST_BLACKLIST = ["output_config", "thinking", "reasoning_effort", "reasoning", "enable_thinking", "thinking_budget", "thinkingConfig", "stream", "stream_options"];
 
 // 0.5.107 (upstream 5306bd90) — Antigravity native image generation.
 // Image models take a completely different request envelope (requestType

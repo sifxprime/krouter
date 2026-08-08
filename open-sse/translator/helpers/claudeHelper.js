@@ -11,7 +11,12 @@ export function hasValidContent(msg) {
     return msg.content.some(block =>
       (block.type === "text" && block.text?.trim()) ||
       block.type === "tool_use" ||
-      block.type === "tool_result"
+      block.type === "tool_result" ||
+      // 0.5.121 (upstream a7941dda) — a vision turn whose only block is an image
+      // (or document) is valid content; dropping it left messages[] empty and
+      // Anthropic 400'd with "at least one message is required".
+      block.type === "image" ||
+      block.type === "document"
     );
   }
   return false;

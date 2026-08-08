@@ -13,11 +13,13 @@
 //   match      RegExp | (model) => boolean  — predicate on the model id
 //   drop       string[]  — request-body keys to remove when both checks pass
 const STRIP_RULES = [
-  // Anthropic claude-opus-4 series: `temperature` is rejected by the upstream
-  // API (400 "deprecated for this model"). Hits any path that routes to a
-  // claude-opus-4 model regardless of provider (direct Anthropic, Copilot, Kiro
-  // pass-through, etc.). Ref: upstream #1748.
-  { match: /claude-opus-4/i, drop: ["temperature"] },
+  // All Claude models: `temperature` is rejected by the upstream Anthropic API
+  // on OpenAI-compatible routes (400 "deprecated for this model") — not just the
+  // opus-4 series. Hits any path routing to a claude model regardless of provider
+  // (direct Anthropic, Copilot, Kiro pass-through, etc.). Broadened from
+  // /claude-opus-4/i per upstream 9173c29b (#1748); trades fine temperature
+  // control for not hard-400ing the request.
+  { match: /claude/i, drop: ["temperature"] },
 
   // GitHub Copilot's gpt-5.4 family rejects `temperature`.
   { provider: "github", match: /gpt-5\.4/i, drop: ["temperature"] },

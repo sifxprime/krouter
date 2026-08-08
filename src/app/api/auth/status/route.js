@@ -18,6 +18,9 @@ export async function GET() {
 
     return NextResponse.json({
       requireLogin,
+      // 0.5.121 (upstream ae4f76c4) — expose auth state so /login can bounce an
+      // already-logged-in user to the dashboard.
+      authenticated: !!session,
       authMode,
       oidcConfigured: isOidcConfigured(settings),
       oidcLoginLabel: (settings.oidcLoginLabel || "Sign in with OIDC").trim() || "Sign in with OIDC",
@@ -31,6 +34,7 @@ export async function GET() {
   } catch {
     return NextResponse.json({
       requireLogin: true,
+      authenticated: false,
       authMode: "password",
       oidcConfigured: false,
       oidcLoginLabel: "Sign in with OIDC",

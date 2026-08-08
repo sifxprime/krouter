@@ -322,6 +322,9 @@ export function openaiToOpenAIResponsesRequest(model, body, stream, credentials)
   if (body.temperature !== undefined) result.temperature = body.temperature;
   if (body.max_tokens !== undefined) result.max_tokens = body.max_tokens;
   if (body.top_p !== undefined) result.top_p = body.top_p;
+  // 0.5.121 (upstream c97963c4) — forward service_tier (priority/default/flex)
+  // instead of silently dropping it on the OpenAI→Responses conversion.
+  if (body.service_tier !== undefined) result.service_tier = body.service_tier;
 
   return result;
 }

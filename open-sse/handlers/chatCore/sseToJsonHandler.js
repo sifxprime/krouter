@@ -137,10 +137,17 @@ export async function handleForcedSSEToJson({ providerResponse, sourceFormat, pr
       const { msgItem, textContent } = pickAssistantMessageForChatCompletion(jsonResponse.output);
       const totalLatency = Date.now() - requestStartTime;
 
+      // 0.5.121 (upstream 41606a37) — cache-inclusive prompt total so the DB row
+      // and the client-facing usage can't disagree; input_tokens alone excludes
+      // cache_read/cache_creation on cache-capable upstreams.
+      const inTokensForLog = (usage.input_tokens || 0)
+        + (usage.cache_read_input_tokens || usage.cached_tokens || 0)
+        + (usage.cache_creation_input_tokens || 0);
+
       saveRequestDetail(buildRequestDetail({
         ...ctx,
         latency: { ttft: totalLatency, total: totalLatency },
-        tokens: { prompt_tokens: usage.input_tokens || 0, completion_tokens: usage.output_tokens || 0 },
+        tokens: { prompt_tokens: inTokensForLog, completion_tokens: usage.output_tokens || 0 },
         response: { content: textContent, thinking: null, finish_reason: jsonResponse.status || "unknown" },
         status: "success"
       }, { endpoint: clientRawRequest?.endpoint || null })).catch(() => {});
@@ -150,9 +157,19 @@ export async function handleForcedSSEToJson({ providerResponse, sourceFormat, pr
         return { success: true, response: new Response(JSON.stringify(jsonResponse), { headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" } }) };
       }
 
-      // Build client-format response
-      const inTokens = usage.input_tokens || 0;
+      // Build client-format response.
+      // input_tokens EXCLUDES cached tokens on cache-capable upstreams, so summing
+      // only input+output under-reports prompt_tokens. Fold cache counters in and
+      // keep them visible in prompt_tokens_details (0.5.121 / upstream 41606a37).
+      const cacheRead = usage.cache_read_input_tokens || usage.cached_tokens || 0;
+      const cacheCreate = usage.cache_creation_input_tokens || 0;
+      const inTokens = (usage.input_tokens || 0) + cacheRead + cacheCreate;
       const outTokens = usage.output_tokens || 0;
+      const cacheDetails = (cacheRead > 0 || cacheCreate > 0)
+        ? { prompt_tokens_details: {
+              ...(cacheRead > 0 ? { cached_tokens: cacheRead } : {}),
+              ...(cacheCreate > 0 ? { cache_creation_tokens: cacheCreate } : {}) } }
+        : {};
       let finalResp;
 
       // Extract tool calls from Responses API output (function_call items)
@@ -187,7 +204,7 @@ export async function handleForcedSSEToJson({ providerResponse, sourceFormat, pr
           created: jsonResponse.created_at || Math.floor(Date.now() / 1000),
           model: jsonResponse.model || model,
           choices: [{ index: 0, message, finish_reason: finishReason }],
-          usage: { prompt_tokens: inTokens, completion_tokens: outTokens, total_tokens: inTokens + outTokens }
+          usage: { prompt_tokens: inTokens, completion_tokens: outTokens, total_tokens: inTokens + outTokens, ...cacheDetails }
         };
       }
 
@@ -222,6 +239,12 @@ export async function handleForcedSSEToJson({ providerResponse, sourceFormat, pr
       },
       status: "success"
     }, { endpoint: clientRawRequest?.endpoint || null })).catch(() => {});
+
+    // 0.5.121 (upstream 41606a37) — re-attach usage explicitly. This handler HAS the
+    // correct usage (same object written to the usage DB), but a cached Claude
+    // response was observed reaching the client with no usage field at all. A caller
+    // must be able to account for its own spend (tell a 90%-cached request from a cheap one).
+    if (usage && Object.keys(usage).length > 0) parsed.usage = usage;
 
     // Strip reasoning_content only when content is non-empty.
     // When content is empty (e.g. thinking models that used all tokens for reasoning),
