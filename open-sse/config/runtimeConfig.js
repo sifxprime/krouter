@@ -34,6 +34,16 @@ export const MEMORY_CONFIG = {
 // Stream stall timeout: abort if no chunk received within this duration
 export const STREAM_STALL_TIMEOUT_MS = 60 * 1000;
 
+// Time-to-first-token timeout (prompt prefill). Used by the Kiro integrity
+// gate (upstream 7c7fae39) as the default TTFT/stall bound before its own
+// KIRO_TOOL_CALL_REPAIR_* overrides. Env: STREAM_FIRST_CHUNK_TIMEOUT_MS.
+export const STREAM_FIRST_CHUNK_TIMEOUT_MS = (() => {
+  const raw = process.env.STREAM_FIRST_CHUNK_TIMEOUT_MS;
+  if (raw == null || raw === "") return 200 * 1000;
+  const parsed = parseInt(raw, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 200 * 1000;
+})();
+
 // 0.5.113 (upstream e79f9edd) — endpoint for the built-in unauthenticated
 // SearXNG web-search provider. Self-hosters run SearXNG on their own host/port
 // (or a Docker service like http://searxng:8080/search); without this override
