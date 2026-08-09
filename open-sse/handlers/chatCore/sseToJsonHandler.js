@@ -37,15 +37,25 @@ function pickAssistantMessageForChatCompletion(output) {
  */
 export function parseSSEToOpenAIResponse(rawSSE, fallbackModel) {
   const chunks = [];
+  let streamError = null;
 
   for (const line of String(rawSSE || "").split("\n")) {
     const trimmed = line.trim();
     if (!trimmed.startsWith("data:")) continue;
     const payload = trimmed.slice(5).trim();
     if (!payload || payload === "[DONE]") continue;
-    try { chunks.push(JSON.parse(payload)); } catch { /* ignore malformed lines */ }
+    try {
+      const chunk = JSON.parse(payload);
+      // 0.5.130 (upstream 7c7fae39, non-stream half) — fail closed: an explicit
+      // error chunk in the stream (e.g. Kiro propagating a mid-stream failure)
+      // must surface as an error, not get silently dropped so the partial content
+      // collapses into a "successful" response.
+      if (chunk?.error) streamError = chunk.error;
+      else chunks.push(chunk);
+    } catch { /* ignore malformed lines */ }
   }
 
+  if (streamError) return { error: streamError };
   if (chunks.length === 0) return null;
 
   const first = chunks[0];
@@ -220,6 +230,11 @@ export async function handleForcedSSEToJson({ providerResponse, sourceFormat, pr
     const sseText = await providerResponse.text();
     const parsed = parseSSEToOpenAIResponse(sseText, model);
     if (!parsed) return createErrorResult(HTTP_STATUS.BAD_GATEWAY, "Invalid SSE response for non-streaming request");
+    // 0.5.130 (upstream 7c7fae39) — propagate a stream error as a 502 instead of
+    // collapsing an incomplete/errored stream into a successful JSON response.
+    if (parsed.error) {
+      return createErrorResult(HTTP_STATUS.BAD_GATEWAY, parsed.error.message || "Upstream SSE stream failed");
+    }
 
     if (onRequestSuccess) await onRequestSuccess();
 
