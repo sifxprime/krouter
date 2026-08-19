@@ -198,6 +198,17 @@ async function hasValidToken(request) {
   return await verifyDashboardAuthToken(token);
 }
 
+/**
+ * 0.5.136 — A REAL dashboard session (a verified JWT), deliberately ignoring the
+ * `requireLogin: false` escape hatch that `isAuthenticated()` honours. Routes that
+ * return sensitive payloads (e.g. stored conversation bodies) need to distinguish
+ * "the owner is logged in" from "this instance has auth switched off", because the
+ * latter makes every caller look authenticated.
+ */
+export async function hasRealDashboardSession(request) {
+  return await hasValidToken(request);
+}
+
 // Read settings directly from DB to avoid self-fetch deadlock in proxy
 async function loadSettings() {
   try {

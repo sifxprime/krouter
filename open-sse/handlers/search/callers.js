@@ -1,3 +1,4 @@
+import { assertPublicUrl } from "@/shared/utils/ssrfGuard.js";
 /**
  * Search Provider Request Builders
  *
@@ -74,7 +75,25 @@ export function getProviderSetting(params, key) {
  */
 export function resolveBaseUrl(config, params) {
   const override = getProviderSetting(params, "baseUrl");
-  return (override || config.baseUrl).replace(/\/+$/, "");
+  if (!override) return config.baseUrl.replace(/\/+$/, "");
+
+  // 0.5.136 (upstream 8a527fec) — SSRF guard. `baseUrl` is a CLIENT-supplied
+  // providerOptions override that feeds every outbound search request builder
+  // below, so without validation a caller could point /v1/search at
+  // 169.254.169.254 (cloud metadata), a loopback admin port, or anything on the
+  // host's private network and read the response back through us. Reuse the same
+  // allowlist the fetch tool already enforces.
+  let parsed;
+  try {
+    parsed = new URL(override);
+  } catch {
+    throw new Error("Invalid search baseUrl override");
+  }
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+    throw new Error("Search baseUrl must use http or https");
+  }
+  assertPublicUrl(override);
+  return override.replace(/\/+$/, "");
 }
 
 /**

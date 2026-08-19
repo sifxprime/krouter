@@ -52,16 +52,29 @@ export async function POST(request) {
     }
 
     if (isValid) {
+      // 0.5.136 (upstream 8a527fec) — decide BEFORE issuing the session.
+      // Previously the cookie was set first and `mustChangePassword` returned as
+      // an advisory flag, so a remote caller who guessed the PUBLIC default
+      // password ("123456") walked away with a valid dashboard JWT and could
+      // simply ignore the flag — then PATCH /api/settings to disable auth
+      // entirely. A remote login on the default password is refused outright.
+      const usingDefaultPassword = !storedHash && !process.env.INITIAL_PASSWORD;
+      if (usingDefaultPassword && !isLocalRequest(request)) {
+        return NextResponse.json(
+          {
+            error:
+              "This instance still uses the default password. For safety it can only be changed from the machine running kRouter — open the dashboard locally and set a password first.",
+            mustChangePassword: true,
+          },
+          { status: 403 }
+        );
+      }
+
       recordSuccess(ip);
       const cookieStore = await cookies();
       await setDashboardAuthCookie(cookieStore, request);
 
-      // Default password still in use on a remote client → force a password
-      // change before the dashboard is exposed remotely (keeps local UX intact).
-      const mustChangePassword =
-        !storedHash && !process.env.INITIAL_PASSWORD && !isLocalRequest(request);
-
-      return NextResponse.json({ success: true, mustChangePassword });
+      return NextResponse.json({ success: true, mustChangePassword: false });
     }
 
     const { remainingBeforeLock } = recordFail(ip);

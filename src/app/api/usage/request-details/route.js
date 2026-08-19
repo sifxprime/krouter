@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getRequestDetails } from "@/lib/usageDb";
+import { isLocalRequest, hasRealDashboardSession } from "@/dashboardGuard";
 
 /**
  * GET /api/usage/request-details
@@ -45,8 +46,32 @@ export async function GET(request) {
     if (endDate) filter.endDate = endDate;
     
     const result = await getRequestDetails(filter);
-    
-    return NextResponse.json(result);
+
+    // 0.5.136 (upstream 8a527fec, adapted) — stored details include full request
+    // bodies (prompts, tool calls) and provider responses. `/api/usage` is in the
+    // "allow through when requireLogin is disabled" group, so with auth switched
+    // off ANY caller that can reach the port could read every conversation.
+    //
+    // Upstream redacts unconditionally, which would also blind the dashboard's
+    // own request inspector (RequestDetailsTab renders these bodies) — that
+    // inspector is the point of the feature on a self-hosted router. So redact
+    // only when the caller isn't provably the owner: a real dashboard session
+    // (a verified JWT, not merely requireLogin=false) or a genuinely local
+    // request. Metadata (model, tokens, latency, status) is never redacted.
+    const trusted =
+      isLocalRequest(request) || (await hasRealDashboardSession(request));
+
+    if (trusted) return NextResponse.json(result);
+
+    const redactedDetails = (result.details || []).map((d) => {
+      const redacted = { ...d };
+      for (const key of ["request", "providerRequest", "providerResponse", "response"]) {
+        if (redacted[key] !== undefined) redacted[key] = { redacted: true };
+      }
+      return redacted;
+    });
+
+    return NextResponse.json({ ...result, details: redactedDetails });
   } catch (error) {
     console.error("[API] Failed to get request details:", error);
     return NextResponse.json(
