@@ -1,3 +1,4 @@
+import { getTrustedPeerIp } from "@/lib/auth/trustedPeer";
 // In-memory progressive lockout for dashboard login. Resets on process restart.
 
 const MAX_FAILS_BEFORE_LOCK = 5;
@@ -46,8 +47,11 @@ export function recordSuccess(ip) {
 }
 
 export function getClientIp(request) {
-  // Trusted: set from TCP socket by custom-server.js (client cannot spoof).
-  const realIp = request.headers.get("x-9r-real-ip");
+  // Set from the TCP socket by our server wrapper — but ONLY trust it when it
+  // carries the wrapper's per-process proof token. Without that check a client
+  // could send x-9r-real-ip itself and rotate it per request, giving every
+  // attempt a fresh bucket and defeating the lockout entirely (0.5.135).
+  const realIp = getTrustedPeerIp(request);
   if (realIp) return realIp;
   // Behind a trusted reverse proxy that overwrites XFF with the real client IP.
   if (process.env.TRUST_PROXY === "true") {

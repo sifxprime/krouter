@@ -1,17 +1,17 @@
 {
   "name": "krouter-app",
-  "version": "0.5.134",
-  "description": "kRouter (Kodelyth Router) web dashboard — Kodelyth AI Infrastructure",
+  "version": "0.5.135",
+  "description": "kRouter (Kodelyth Router) web dashboard \u2014 Kodelyth AI Infrastructure",
   "private": true,
   "scripts": {
-    "dev": "next dev --webpack --port 20128",
+    "dev": "NODE_OPTIONS='--require ./server-peer-patch.js' next dev --webpack --port 20128",
     "build": "next build --webpack",
-    "build:deploy": "next build --webpack && cp -r .next/static .next/standalone/.next/static && cp -r public .next/standalone/public",
-    "start": "PORT=20128 node .next/standalone/server.js",
+    "build:deploy": "next build --webpack && cp -r .next/static .next/standalone/.next/static && cp -r public .next/standalone/public && cp custom-server.js server-peer-patch.js .next/standalone/",
+    "start": "PORT=20128 node custom-server.js",
     "start:next": "next start",
     "dev:bun": "bun --bun next dev --webpack --port 20128",
     "build:bun": "bun --bun next build --webpack",
-    "start:bun": "bun ./.next/standalone/server.js",
+    "start:bun": "bun ./custom-server.js",
     "cli:pack": "npm --prefix cli run pack:cli",
     "cli:publish": "npm --prefix cli run publish:cli"
   },
@@ -50,7 +50,7 @@
   "optionalDependencies": {
     "better-sqlite3": "^12.6.2"
   },
-  "comment_better_sqlite3": "kept in optionalDependencies so npm install doesn't fail on systems without build tools — sql.js is used as fallback at runtime",
+  "comment_better_sqlite3": "kept in optionalDependencies so npm install doesn't fail on systems without build tools \u2014 sql.js is used as fallback at runtime",
   "devDependencies": {
     "@tailwindcss/postcss": "^4.1.18",
     "eslint": "^9",

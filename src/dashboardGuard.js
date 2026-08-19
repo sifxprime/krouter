@@ -6,6 +6,8 @@ import { verifyDashboardAuthToken } from "@/lib/auth/dashboardSession";
 import { checkApiAuthLock, recordApiAuthFail, recordApiAuthSuccess } from "@/lib/auth/apiAuthLimiter";
 import { getClientIp } from "@/lib/auth/loginLimiter";
 
+import { getTrustedPeerIp, isLoopbackIp } from "@/lib/auth/trustedPeer";
+
 const CLI_TOKEN_HEADER = "x-9r-cli-token";
 const CLI_TOKEN_SALT = "9r-cli-auth";
 
@@ -113,7 +115,28 @@ export function isLocalRequest(request) {
   // /v1 API-key check.
   if (request.headers.get("x-9r-via-proxy")) return false;
 
-  if (!isLoopbackHostname(request.headers.get("host"))) return false;
+  // 0.5.135 (GHSA-pjm4-8fpg-f9p6 class) — the Host header is chosen by the CALLER.
+  // Deciding "this peer is on loopback" from it meant a remote request carrying
+  // `Host: localhost` was treated as local, which grants API-key-less /v1 access
+  // and disables the auth rate limiter. Verified by PoC: a LAN request with a
+  // spoofed Host returned a real completion with no credentials.
+  //
+  // Prefer the socket-derived peer IP, which is only trusted when it carries proof
+  // it was stamped by our own server wrapper (a per-process secret the client can
+  // neither know nor replay — the wrapper deletes any client copy first).
+  const trustedIp = getTrustedPeerIp(request);
+  if (trustedIp !== null) {
+    if (!isLoopbackIp(trustedIp)) return false;
+  } else if (process.env.NODE_ENV === "production") {
+    // Production without the wrapper = we cannot prove the peer. Fail CLOSED
+    // rather than fall back to the spoofable Host header.
+    return false;
+  } else if (!isLoopbackHostname(request.headers.get("host"))) {
+    // Dev only (`next dev` has no wrapper): keep the Host heuristic so local
+    // development keeps working.
+    return false;
+  }
+
   const origin = request.headers.get("origin");
   if (origin) {
     try {
