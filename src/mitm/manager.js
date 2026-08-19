@@ -399,7 +399,16 @@ async function getMitmStatus() {
   const { checkCertInstalled } = require("./cert/install");
   const certTrusted = certExists ? await checkCertInstalled(rootCACertPath) : false;
 
-  return { running, pid, certExists, certTrusted, dnsStatus };
+  // 0.5.134 — Detect the SILENT BLACKHOLE state: DNS redirects still point the
+  // intercepted provider hosts at 127.0.0.1 while the MITM server is DOWN, so
+  // every request to those providers gets connection-refused ("fetch failed")
+  // with no obvious cause. This happens because /etc/hosts cleanup on exit needs
+  // sudo (best-effort, silently fails without a cached password) and auto-start
+  // then bails for the same reason — leaving the redirects orphaned.
+  const staleDnsTools = running ? [] : Object.keys(dnsStatus || {}).filter((t) => dnsStatus[t]);
+  const staleDns = staleDnsTools.length > 0;
+
+  return { running, pid, certExists, certTrusted, dnsStatus, staleDns, staleDnsTools };
 }
 
 async function scheduleMitmRestart(apiKey) {
@@ -918,5 +927,6 @@ module.exports = {
   initDbHooks,
   restoreToolDNS,
   hasDnsPrivilege,
+  removeAllDNSEntries,
   removeAllDNSEntriesSync,
 };

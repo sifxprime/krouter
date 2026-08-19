@@ -76,6 +76,12 @@ export async function GET() {
       certExists: status.certExists || false,
       certTrusted: status.certTrusted || false,
       dnsStatus: status.dnsStatus || {},
+      // 0.5.134 — true when DNS redirects are still active but the MITM server is
+      // down: those providers are being blackholed to 127.0.0.1 and every request
+      // fails with a bare "fetch failed". The dashboard surfaces this as a fixable
+      // warning instead of letting the user hunt a phantom network error.
+      staleDns: status.staleDns || false,
+      staleDnsTools: status.staleDnsTools || [],
       hasCachedPassword,
       isWin,
       needsSudoPassword: !isWin && !hasCachedPassword && isSudoPasswordRequired(),

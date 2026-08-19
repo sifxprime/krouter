@@ -13,7 +13,7 @@ import {
   RESTART_COOLDOWN_MS, NETWORK_SETTLE_MS,
   WATCHDOG_INTERVAL_MS, NETWORK_CHECK_INTERVAL_MS, VIRTUAL_IFACE_REGEX,
 } from "@/lib/tunnel";
-import { getMitmStatus, startMitm, loadEncryptedPassword, initDbHooks, restoreToolDNS, removeAllDNSEntriesSync } from "@/mitm/manager";
+import { getMitmStatus, startMitm, loadEncryptedPassword, initDbHooks, restoreToolDNS, removeAllDNSEntriesSync, removeAllDNSEntries } from "@/mitm/manager";
 import { startQuotaAutoPing } from "@/shared/services/quotaAutoPing";
 import { startTokenWarmer } from "@/shared/services/tokenWarmer";
 import { syncToJson as syncMitmAliasCache } from "@/lib/mitmAliasCache";
@@ -169,12 +169,48 @@ async function autoStartMitm() {
   g.mitmStartInProgress = true;
   try {
     const settings = await getSettings();
-    if (!settings.mitmEnabled) return;
     const mitmStatus = await getMitmStatus();
+
+    // 0.5.134 — Check for the orphaned-DNS blackhole BEFORE the enabled/running
+    // early-returns. Turning MITM off also fails to clean /etc/hosts when sudo is
+    // password-gated (the cleanup is best-effort), so the redirects outlive the
+    // setting: mitmEnabled=false, server down, yet the provider hosts still resolve
+    // to 127.0.0.1 and every request to them dies as a bare "fetch failed".
+    if (!mitmStatus.running && mitmStatus.staleDns) {
+      console.warn(
+        `[InitApp] ⚠️  MITM is DOWN but DNS redirects are still active for: ${mitmStatus.staleDnsTools.join(", ")}. ` +
+        "Those providers resolve to 127.0.0.1 with nothing listening — ALL their requests will fail. Attempting cleanup..."
+      );
+      // removeAllDNSEntries swallows per-tool failures (it only logs them), so a
+      // successful return proves NOTHING — /etc/hosts edits need root and quietly
+      // no-op when sudo is password-gated. VERIFY by re-reading the DNS state and
+      // only claim success when the redirects are actually gone.
+      try { await removeAllDNSEntries(); } catch { /* verified below */ }
+      const after = await getMitmStatus();
+      if (!after.staleDns) {
+        console.warn("[InitApp] ✓ Stale MITM DNS entries removed — provider traffic restored.");
+      } else {
+        console.warn(
+          `[InitApp] ✗ Could NOT remove the stale DNS entries automatically (needs root; still active for: ${after.staleDnsTools.join(", ")}). ` +
+          "Requests to those providers WILL keep failing until this is fixed. " +
+          "FIX: toggle MITM on in the dashboard (it will prompt for your sudo password), or run:\n" +
+          "  sudo sed -i '' -E '/(cloudcode-pa|kiro\\.dev|codewhisperer|githubcopilot|cursor\\.sh)/d' /etc/hosts && sudo dscacheutil -flushcache"
+        );
+      }
+    }
+
+    if (!settings.mitmEnabled) return;
     if (mitmStatus.running) return;
 
     const password = await loadEncryptedPassword();
     if (!password && process.platform !== "win32") {
+      // 0.5.134 — Do NOT return silently. If DNS redirects are still active from a
+      // previous session, the intercepted provider hosts resolve to 127.0.0.1 with
+      // nothing listening on :443 — every Antigravity/Kiro request then dies as a
+      // bare "fetch failed" that looks like a network fault. /etc/hosts cleanup on
+      // exit is best-effort and fails without sudo, which is exactly how we get here.
+      // Try to self-heal (works when sudo is passwordless); otherwise warn LOUDLY
+      // with the exact fix instead of leaving a silent blackhole.
       console.log("[InitApp] MITM was enabled but no saved password found, skipping auto-start");
       return;
     }
