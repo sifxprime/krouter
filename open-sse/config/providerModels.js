@@ -462,6 +462,14 @@ export const PROVIDER_MODELS = {
     { id: "qwen3-coder-plus", name: "Qwen3 Coder Plus" },
     { id: "glm-4.7", name: "GLM 4.7" },
   ],
+  "alitp-intl": [  // Alibaba Token Plan (upstream b04c03c6)
+    { id: "qwen3.8-max-preview", name: "Qwen3.8 Max Preview" },
+    { id: "qwen3.7-max", name: "Qwen3.7 Max" },
+    { id: "qwen3.7-plus", name: "Qwen3.7 Plus" },
+    { id: "qwen3.6-flash", name: "Qwen3.6 Flash" },
+    { id: "glm-5.2", name: "GLM 5.2" },
+    { id: "deepseek-v4-pro", name: "DeepSeek V4 Pro" },
+  ],
   "alicode-intl": [
     { id: "qwen3.5-plus", name: "Qwen3.5 Plus" },
     { id: "kimi-k2.5", name: "Kimi K2.5" },

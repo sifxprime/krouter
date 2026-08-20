@@ -192,6 +192,13 @@ export const PROVIDERS = {
     format: "openai",
     headers: {}
   },
+  // upstream b04c03c6 — Alibaba Token Plan (Singapore region). Separate product
+  // from alicode-intl above: prepaid token plan, its own host + catalog.
+  "alitp-intl": {
+    baseUrl: "https://token-plan.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1/chat/completions",
+    format: "openai",
+    headers: {}
+  },
   "volcengine-ark": {
     baseUrl: "https://ark.cn-beijing.volces.com/api/coding/v3/chat/completions",
     format: "openai",

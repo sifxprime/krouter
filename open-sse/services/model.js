@@ -44,6 +44,8 @@ const ALIAS_TO_PROVIDER_ID = {
   "minimax-cn": "minimax-cn",
   hf: "huggingface",
   huggingface: "huggingface",
+  "alitp-intl": "alitp-intl",
+  "fish-audio": "fish-audio",
   tr: "tokenrouter",
   tokenrouter: "tokenrouter",
   ps: "poolside",
