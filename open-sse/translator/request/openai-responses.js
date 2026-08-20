@@ -325,6 +325,9 @@ export function openaiToOpenAIResponsesRequest(model, body, stream, credentials)
   // 0.5.121 (upstream c97963c4) — forward service_tier (priority/default/flex)
   // instead of silently dropping it on the OpenAI→Responses conversion.
   if (body.service_tier !== undefined) result.service_tier = body.service_tier;
+  // upstream 70ba0024 — keep the caller's cache key so upstream prompt caching
+  // actually keys on the same value across turns.
+  if (body.prompt_cache_key !== undefined) result.prompt_cache_key = body.prompt_cache_key;
 
   return result;
 }

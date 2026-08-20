@@ -93,8 +93,9 @@ export function openaiToOpenAIResponsesResponse(chunk, state) {
     }
   }
 
-  // Handle tool_calls
-  if (delta.tool_calls) {
+  // Handle tool_calls (an empty array is truthy — require a real call, otherwise
+  // we closed the message early and truncated the assistant text). upstream 10a923da
+  if (delta.tool_calls && delta.tool_calls.length) {
     closeMessage(state, emit, idx);
     for (const tc of delta.tool_calls) {
       emitToolCall(state, emit, tc);

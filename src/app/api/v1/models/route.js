@@ -13,6 +13,7 @@ import { resolveClinepassModels } from "open-sse/services/clinepassModels.js";
 import { resolveKimchiModels } from "open-sse/services/kimchiModels.js";
 import { capabilitiesFromServiceKind } from "open-sse/providers/capabilities.js";
 import crypto from "node:crypto";
+import { getCapabilitiesForModel } from "open-sse/providers/capabilities.js";
 
 // 0.5.84 — In-memory cache for /v1/models responses. TTL 30s. Keyed by the
 // requested kind filter + output format. Cheap ETag off the JSON hash so
@@ -412,6 +413,19 @@ export async function buildModelsList(kindFilter) {
         };
         const caps = capabilitiesFromServiceKind(customKind);
         if (caps) model.capabilities = caps;
+
+        // upstream 30fec431 — publish token limits under the snake_case names the
+        // OpenAI/OpenRouter convention uses. `capabilities.contextWindow` is
+        // camelCase and nested, so clients matching `context_length` find nothing,
+        // fall back to guessing the window from the model name, and guess HIGH — a
+        // 372k model read as 1.05M never hits its compaction threshold and then
+        // hard-fails upstream. Emitted at top level because not every client
+        // recurses into nested objects; `capabilities` stays for compatibility.
+        if (kind === LLM_KIND || allowAsLlm) {
+          const limits = getCapabilitiesForModel(providerId, modelId);
+          if (Number.isFinite(limits?.contextWindow)) model.context_length = limits.contextWindow;
+          if (Number.isFinite(limits?.maxOutput)) model.max_completion_tokens = limits.maxOutput;
+        }
         models.push(model);
       }
 
