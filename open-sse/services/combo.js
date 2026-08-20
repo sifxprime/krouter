@@ -223,7 +223,33 @@ export function detectRequiredCapabilities(body) {
     if (Array.isArray(content)) for (const b of content) scanBlock(b);
   };
 
-  for (const m of trailingUserItems(body.messages)) scanContent(m.content);   // openai / claude
+  // upstream 345cdcf6 — beyond OpenAI/Claude content blocks, detect images from
+  // Ollama/Hermes `images[]`, Vercel-AI-SDK attachments, message-level
+  // image_url/audio_url, and data: URIs embedded in plain string content. Without
+  // this a vision request from those clients looked text-only, so the capacity
+  // adapter never swapped in a vision-capable model.
+  const scanMessage = (m) => {
+    if (!m || typeof m !== "object") return;
+    if (Array.isArray(m.images) && m.images.length > 0) required.add("vision");
+    const attachments = m.experimental_attachments || m.attachments;
+    if (Array.isArray(attachments)) {
+      for (const att of attachments) {
+        if (!att) continue;
+        const mime = att.contentType || att.mediaType
+          || (typeof att.url === "string" ? att.url.match(/^data:([^;,]+)/)?.[1] : null);
+        if (mime) addByMime(mime);
+        else if (att.url || att.data) required.add("vision");
+      }
+    }
+    if (m.image_url || m.image) required.add("vision");
+    if (m.audio_url || m.audio) required.add("audioInput");
+    scanContent(m.content);
+    if (typeof m.content === "string") {
+      if (m.content.includes("data:image/")) required.add("vision");
+      else if (m.content.includes("data:audio/")) required.add("audioInput");
+    }
+  };
+  for (const m of trailingUserItems(body.messages)) scanMessage(m);   // openai / claude
   for (const it of trailingUserItems(body.input)) scanContent(it.content);    // openai responses
   const contents = body.contents || body.request?.contents;                   // gemini / antigravity
   for (const c of trailingUserItems(contents)) scanContent(c.parts);

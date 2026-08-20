@@ -75,6 +75,16 @@ export function kiroToClaudeResponse(chunk, state) {
         ? data.usage.completion_tokens
         : 0;
     state.usage = { input_tokens: promptTokens, output_tokens: outputTokens };
+    // upstream b44bb09f — Claude clients read cache_read/cache_creation to price a
+    // turn and size their prompt cache. The Kiro executor computes these, but this
+    // translator dropped them for every Claude-format client. Both spellings are
+    // accepted: the executor emits the Chat shape, passthrough uses the nested one.
+    const cacheRead = data.usage.cache_read_input_tokens
+      ?? data.usage.prompt_tokens_details?.cached_tokens;
+    const cacheCreation = data.usage.cache_creation_input_tokens
+      ?? data.usage.prompt_tokens_details?.cache_creation_tokens;
+    if (typeof cacheRead === "number") state.usage.cache_read_input_tokens = cacheRead;
+    if (typeof cacheCreation === "number") state.usage.cache_creation_input_tokens = cacheCreation;
   }
 
   // First chunk → emit message_start.
