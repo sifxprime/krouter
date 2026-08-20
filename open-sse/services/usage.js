@@ -531,7 +531,28 @@ const claudeUsageLastGood = new Map();
 /**
  * Claude Usage - Primary: OAuth endpoint, Fallback: legacy settings/org endpoint
  */
-export async function getClaudeUsage(accessToken, proxyOptions = null) {
+// upstream cd4003bc — in-flight dedup. The dashboard renders several widgets that
+// each ask for Claude quota, so N concurrent calls fired N real requests to
+// Anthropic and tripped the very 429 the cooldown below exists to recover from.
+// Callers arriving while a fetch is in flight now share its promise. (Our own
+// 429 cooldown + last-good cache are kept — upstream has no equivalent.)
+const claudeUsageInFlight = new Map();
+
+// NOT async on purpose: an async function wraps its return value in a fresh
+// promise, so callers would each get a distinct wrapper and the sharing would be
+// invisible (and `finally` bookkeeping would still work, masking the bug).
+// Returning the shared promise directly is what actually dedups.
+export function getClaudeUsage(accessToken, proxyOptions = null) {
+  const existing = claudeUsageInFlight.get(accessToken);
+  if (existing) return existing;
+  const p = _getClaudeUsage(accessToken, proxyOptions).finally(() => {
+    claudeUsageInFlight.delete(accessToken);
+  });
+  claudeUsageInFlight.set(accessToken, p);
+  return p;
+}
+
+async function _getClaudeUsage(accessToken, proxyOptions = null) {
   try {
     // Cooldown path: don't even ping Anthropic if we recently got a 429 on
     // ANY token. Prefer cached-good for THIS token, else the cooldown message.
