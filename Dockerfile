@@ -37,6 +37,10 @@ COPY --from=builder /app/src/mitm ./src/mitm
 COPY --from=builder /app/node_modules/node-forge ./node_modules/node-forge
 # Ensure `next` is available at runtime in case tracing did not include it.
 COPY --from=builder /app/node_modules/next ./node_modules/next
+# sql.js loads dist/sql-wasm.wasm by path at runtime; module tracing only follows JS
+# imports, so the last-resort pure-JS DB driver aborted with ENOENT on the missing
+# binary — the container then had no working database at all. upstream 27f3710c
+COPY --from=builder /app/node_modules/sql.js ./node_modules/sql.js
 
 RUN mkdir -p /app/data && chown -R node:node /app && \
   mkdir -p /app/data-home && chown node:node /app/data-home && \

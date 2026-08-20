@@ -578,7 +578,10 @@ export async function handleFusionChat({ body, models, handleSingleModel, log, c
   log.info("FUSION", `Combo "${comboName}" | panel=${panel.length} [${panel.join(", ")}] | judge=${judge} | quorum=${minPanel}`);
 
   // 1. Fan out to the panel in parallel: non-streaming, tools stripped.
-  const { tools, tool_choice, ...rest } = body;
+  // upstream 6d30ce6d — the panel runs non-streaming, so stream_options must go too
+  // or providers like DeepSeek reject it ("stream_options should be set along with
+  // stream = true").
+  const { tools, tool_choice, stream_options, ...rest } = body;
   const panelBody = { ...rest, stream: false };
   const t0 = Date.now();
   const calls = panel.map((m) => withTimeout(handleSingleModel(panelBody, m), cfg.panelHardTimeoutMs));

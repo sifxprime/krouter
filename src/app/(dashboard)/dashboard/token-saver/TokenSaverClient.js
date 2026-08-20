@@ -251,9 +251,13 @@ export default function TokenSaverClient() {
               Compress prompts via /v1/compress before routing to the model
             </p>
           </div>
+          {/* upstream 71dcdc10 — the toggle reflects the persisted setting, not
+              whether the sidecar happens to be up. Gating on liveness made it look
+              OFF (and unclickable) whenever the proxy was down, so users could not
+              re-enable it. Not-running is still shown by the status label and the
+              Setup button beside it. */}
           <Toggle
-            checked={headroomEnabled && headroomRunning}
-            disabled={!headroomRunning}
+            checked={headroomEnabled}
             onChange={() => handleHeadroomEnabled(!headroomEnabled)}
           />
         </div>

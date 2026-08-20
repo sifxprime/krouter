@@ -219,6 +219,20 @@ export class AntigravityExecutor extends BaseExecutor {
     // Strip tools/toolConfig (handled separately) and blacklisted fields that Google rejects
     const { tools: _originalTools, toolConfig: _originalToolConfig, ...requestWithoutTools } = body.request || {};
     for (const key of ANTIGRAVITY_REQUEST_BLACKLIST) delete requestWithoutTools[key];
+
+    // upstream b566b20a — Antigravity flags requests carrying a competitor's agent
+    // marker (e.g. Zed IDE's Claude prompt) and answers 429 "Quota Exhausted"
+    // immediately, regardless of actual quota. Strip the marker from
+    // systemInstruction. Complementary to obfuscateBodyStrings below, which only
+    // rewrites `contents` and never touches systemInstruction.
+    if (requestWithoutTools.systemInstruction?.parts) {
+      const marker = "You are a Claude agent, built on Anthropic's Claude Agent SDK.";
+      for (const part of requestWithoutTools.systemInstruction.parts) {
+        if (typeof part.text === "string" && part.text.includes(marker)) {
+          part.text = part.text.split(marker).join("");
+        }
+      }
+    }
     const generationConfig = { ...(requestWithoutTools.generationConfig || {}) };
     if (generationConfig.maxOutputTokens > MAX_ANTIGRAVITY_OUTPUT_TOKENS) {
       generationConfig.maxOutputTokens = MAX_ANTIGRAVITY_OUTPUT_TOKENS;
