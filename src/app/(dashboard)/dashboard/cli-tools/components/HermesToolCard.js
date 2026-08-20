@@ -171,7 +171,9 @@ export default function HermesToolCard({
       ? selectedApiKey
       : (!cloudEnabled ? "sk_krouter" : "<API_KEY_FROM_DASHBOARD>");
 
-    const yamlContent = `model:\n  default: "${selectedModel || "provider/model-id"}"\n  provider: "custom"\n  base_url: "${getEffectiveBaseUrl()}"\n`;
+    // upstream e2a4fe04 — Hermes ignores OPENAI_API_KEY from .env unless the model
+    // block names it explicitly, so requests went out unauthenticated.
+    const yamlContent = `model:\n  default: "${selectedModel || "provider/model-id"}"\n  provider: "custom"\n  base_url: "${getEffectiveBaseUrl()}"\n  api_key: \${OPENAI_API_KEY}\n`;
     const envContent = `OPENAI_API_KEY=${keyToUse}\n`;
 
     return [

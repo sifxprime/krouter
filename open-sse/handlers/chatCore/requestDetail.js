@@ -44,23 +44,18 @@ export function extractUsageFromResponse(responseBody) {
   }
 
   // Gemini format (top-level usageMetadata)
-  if (responseBody.usageMetadata) {
+  // upstream 59d858b6 (supersedes our 0.5.51 second branch, now removed) —
+  // Antigravity / Cloud Code Assist / gemini-cli wrap the payload in
+  // { response: {...} }, so reading usageMetadata off the top level found nothing
+  // and every one of those requests logged zero tokens. cachedContentTokenCount is
+  // included so cached prompts are not billed as fresh.
+  const usageMetadata = responseBody.usageMetadata || responseBody.response?.usageMetadata;
+  if (usageMetadata) {
     return {
-      prompt_tokens: responseBody.usageMetadata.promptTokenCount || 0,
-      completion_tokens: responseBody.usageMetadata.candidatesTokenCount || 0,
-      reasoning_tokens: responseBody.usageMetadata.thoughtsTokenCount
-    };
-  }
-
-  // 0.5.51 — Antigravity / Cloud Code Assist wraps the Gemini response in
-  // {response: {...usageMetadata, ...}}. Without this branch every Antigravity
-  // request landed in the DB with tokens.prompt_tokens=0 even though Google
-  // billed real tokens — making the Usage page disagree with the Quota tracker.
-  if (responseBody.response?.usageMetadata) {
-    return {
-      prompt_tokens: responseBody.response.usageMetadata.promptTokenCount || 0,
-      completion_tokens: responseBody.response.usageMetadata.candidatesTokenCount || 0,
-      reasoning_tokens: responseBody.response.usageMetadata.thoughtsTokenCount
+      prompt_tokens: usageMetadata.promptTokenCount || 0,
+      completion_tokens: usageMetadata.candidatesTokenCount || 0,
+      cached_tokens: usageMetadata.cachedContentTokenCount || 0,
+      reasoning_tokens: usageMetadata.thoughtsTokenCount || 0
     };
   }
 
