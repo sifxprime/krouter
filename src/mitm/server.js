@@ -7,7 +7,7 @@ const dns = require("dns");
 const { promisify } = require("util");
 const { execSync } = require("child_process");
 const { log, err, dumpRequest, createResponseDumper, clearDumpDir } = require("./logger");
-const { IS_DEV, LSOF_BIN, TARGET_HOSTS, URL_PATTERNS, MODEL_SYNONYMS, MODEL_PATTERNS, MODEL_NO_MAP, getToolForHost } = require("./config");
+const { IS_DEV, LSOF_BIN, TARGET_HOSTS, URL_PATTERNS, MODEL_SYNONYMS, MODEL_PATTERNS, MODEL_NO_MAP, getToolForHost, isChatRequest } = require("./config");
 const { DATA_DIR, MITM_DIR } = require("./paths");
 const { getCertForDomain } = require("./cert/generate");
 const { getMitmAlias } = require("./dbReader");
@@ -426,9 +426,9 @@ const server = https.createServer(sslOptions, async (req, res) => {
     const tool = getToolForHost(req.headers.host);
     if (!tool) return passthrough(req, res, bodyBuffer);
 
-    const patterns = URL_PATTERNS[tool] || [];
-    const isChat = patterns.some(p => req.url.includes(p));
-    if (!isChat) return passthrough(req, res, bodyBuffer);
+    // Kiro IDE 1.0.228+ posts chat to `/` with an x-amz-target header rather than
+    // the /generateAssistantResponse path, so match on headers too (config.js).
+    if (!isChatRequest(tool, req)) return passthrough(req, res, bodyBuffer);
 
     // Cursor uses binary proto — model extraction not possible at this layer.
     // Delegate directly to handler which decodes proto internally.

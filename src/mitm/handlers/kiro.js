@@ -43,7 +43,8 @@ function initKiroState(modelId) {
     finishSent: false,             // Whether termination has been emitted
     usage: null,                   // Accumulated usage from usage-only chunks
     inThink: false,                // Whether inside a <thinking> block
-    thinkBuf: ""                   // Buffer for partial thinking content
+    thinkBuf: "",                  // Buffer for partial thinking content
+    initialSent: false,            // Whether the initial-response frame was emitted
   };
 }
 
@@ -162,7 +163,7 @@ function encodeHeader(name, value) {
  * "Truncated event message received". Failing loud lets the caller chunk the
  * payload (or surface a clear error) instead of producing an unreadable stream.
  */
-function buildEventStreamFrame(eventType, payload) {
+function buildEventStreamFrame(eventType, payload, contentType = "application/json") {
   const payloadBuf = Buffer.from(
     typeof payload === "string" ? payload : JSON.stringify(payload),
     "utf8"
@@ -172,7 +173,7 @@ function buildEventStreamFrame(eventType, payload) {
   const headersBuf = Buffer.concat([
     encodeHeader(":message-type", "event"),
     encodeHeader(":event-type", eventType),
-    encodeHeader(":content-type", "application/json"),
+    encodeHeader(":content-type", contentType),
   ]);
   const headersLen = headersBuf.length;
 
@@ -190,6 +191,34 @@ function buildEventStreamFrame(eventType, payload) {
   frame.writeUInt32BE(crc32(frame.slice(0, totalLen - 4)), totalLen - 4); // message CRC
 
   return frame;
+}
+
+/**
+ * Kiro Runtime always opens a stream with this frame (verified against a live
+ * capture of IDE 1.0.228). Without it the client's SmithyMessageDecoderStream
+ * rejects the stream before the first token is rendered.
+ */
+function buildInitialResponseFrame(conversationId = "") {
+  return buildEventStreamFrame(
+    "initial-response",
+    { conversationId: conversationId || "" },
+    "application/x-amz-json-1.0"
+  );
+}
+
+/**
+ * Prepend the mandatory initial-response frame exactly once per stream.
+ * Accepts a single frame, an array, or null, and preserves that shape so call
+ * sites can stay as they were.
+ */
+function withInitialFrame(state, frames) {
+  const list = frames == null ? [] : Array.isArray(frames) ? frames : [frames];
+  if (state.initialSent) {
+    return list.length === 0 ? null : list.length === 1 ? list[0] : list;
+  }
+  state.initialSent = true;
+  const out = [buildInitialResponseFrame(""), ...list];
+  return out.length === 1 ? out[0] : out;
 }
 
 // ─── CodeWhisperer → OpenAI conversion ───────────────────────────────────────
@@ -389,12 +418,12 @@ function convertOpenAIToKiro(chunk, state) {
       state.inThink = false;
       const thinking = state.thinkBuf;
       state.thinkBuf = "";
-      return buildEventStreamFrame("reasoningContentEvent", {
+      return withInitialFrame(state, buildEventStreamFrame("reasoningContentEvent", {
         content: thinking,
         modelId: state.modelId || "kiro-unknown"
-      });
+      }));
     }
-    return buildEventStreamFrame("messageStopEvent", {});
+    return withInitialFrame(state, buildEventStreamFrame("messageStopEvent", {}));
   }
 
   const frames = [];
@@ -476,8 +505,13 @@ function convertOpenAIToKiro(chunk, state) {
     }
   }
 
-  if (frames.length === 0) return null;
-  return frames.length === 1 ? frames[0] : frames;
+  if (frames.length === 0) {
+    // A first chunk can carry only role/empty content — still emit the initial
+    // frame there so the decoder sees it before any real event.
+    if (!state.initialSent) return withInitialFrame(state, null);
+    return null;
+  }
+  return withInitialFrame(state, frames.length === 1 ? frames[0] : frames);
 }
 
 /**
@@ -591,4 +625,9 @@ function isBinaryEventStream(buffer) {
   return totalLen > 12 && totalLen < 1000000 && headersLen < totalLen - 12;
 }
 
-module.exports = { intercept, extractThinking };
+module.exports = {
+  intercept,
+  extractThinking,
+  // Test-only surface for the EventStream framing (0.5.137).
+  __test__: { buildEventStreamFrame, buildInitialResponseFrame, withInitialFrame, initKiroState },
+};

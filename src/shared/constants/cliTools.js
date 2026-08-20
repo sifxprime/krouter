@@ -54,7 +54,8 @@ export const MITM_TOOLS = {
     color: "#FF6B00",
     description: "Kiro IDE with MITM",
     configType: "mitm",
-    mitmDomain: "q.us-east-1.amazonaws.com",
+    // Kiro IDE 1.0.228+ talks to the Kiro Runtime host, not the old Q endpoint.
+    mitmDomain: "runtime.us-east-1.kiro.dev",
     defaultModels: [
       { id: "auto", name: "Auto (Kiro agent default)", alias: "auto" },
       { id: "claude-sonnet-4.5", name: "Claude Sonnet 4.5", alias: "claude-sonnet-4.5" },

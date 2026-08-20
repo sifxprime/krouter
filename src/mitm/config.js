@@ -27,6 +27,8 @@ const TARGET_HOSTS = [
 const URL_PATTERNS = {
   antigravity: [":generateContent", ":streamGenerateContent"],
   copilot: ["/chat/completions", "/v1/messages", "/responses"],
+  // Legacy path form. Kiro IDE 1.0.228+ posts to `/` with x-amz-target instead —
+  // see isChatRequest() for the header-based match.
   kiro: ["/generateAssistantResponse"],
   cursor: ["/BidiAppend", "/RunSSE", "/RunPoll", "/Run"],
   // /v1/messages is the chat endpoint; /v1/messages/count_tokens is the
@@ -35,6 +37,25 @@ const URL_PATTERNS = {
   // to passthrough — those still need to reach real Anthropic.
   claude: ["/v1/messages"],
 };
+
+/**
+ * Whether this request is a chat turn we should intercept (vs passthrough).
+ *
+ * Kiro Runtime moved GenerateAssistantResponse from the path
+ * `/generateAssistantResponse` to `POST /` plus a
+ * `x-amz-target: KiroRuntimeService.GenerateAssistantResponse` header in IDE
+ * 1.0.228+. Matching on path alone therefore missed every chat turn and silently
+ * passed it through to AWS — MITM looked enabled but routed nothing.
+ */
+function isChatRequest(tool, req) {
+  const patterns = URL_PATTERNS[tool] || [];
+  if (patterns.some((p) => (req.url || "").includes(p))) return true;
+  if (tool === "kiro") {
+    const target = String(req.headers?.["x-amz-target"] || "");
+    return target.includes("GenerateAssistantResponse");
+  }
+  return false;
+}
 
 // Synonym map: rawModel from request → canonical alias key in mitmAlias DB
 const MODEL_SYNONYMS = {
@@ -93,4 +114,4 @@ function getToolForHost(host) {
   return null;
 }
 
-module.exports = { IS_DEV, LSOF_BIN, TARGET_HOSTS, URL_PATTERNS, MODEL_SYNONYMS, MODEL_PATTERNS, MODEL_NO_MAP, LOG_BLACKLIST_URL_PARTS, getToolForHost };
+module.exports = { IS_DEV, LSOF_BIN, TARGET_HOSTS, URL_PATTERNS, MODEL_SYNONYMS, MODEL_PATTERNS, MODEL_NO_MAP, LOG_BLACKLIST_URL_PARTS, getToolForHost, isChatRequest };
