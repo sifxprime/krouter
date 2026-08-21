@@ -9,6 +9,7 @@ import { parseSSEToOpenAIResponse } from "./sseToJsonHandler.js";
 import { buildRequestDetail, extractRequestConfig, extractUsageFromResponse, saveUsageStats } from "./requestDetail.js";
 import { appendRequestLog, saveRequestDetail } from "@/lib/usageDb.js";
 import { decloakToolNames } from "../../utils/claudeCloaking.js";
+import { detectEmptyCompletion, readCompletionShape, EMPTY_COMPLETION_STATUS } from "../../utils/emptyCompletion.js";
 
 function parseToolArguments(value) {
   if (!value) return {};
@@ -244,6 +245,18 @@ export async function handleNonStreamingResponse({ providerResponse, provider, m
   responseBody = decloakToolNames(responseBody, toolNameMap);
 
   const usage = extractUsageFromResponse(responseBody);
+
+  // A 200 with no output reads to the caller exactly like a broken provider.
+  // The common cause is a thinking model spending its whole max_tokens budget
+  // on reasoning, which is a budget problem rather than a failure — say so in
+  // the log instead of filing it as an ordinary success.
+  const emptyDiagnosis = detectEmptyCompletion({
+    ...readCompletionShape(responseBody),
+    maxTokens: finalBody?.max_tokens ?? translatedBody?.max_tokens ?? body?.max_tokens,
+  });
+  if (emptyDiagnosis) {
+    reqLogger.logConvertedResponse({ warning: emptyDiagnosis.code, detail: emptyDiagnosis.message });
+  }
   appendLog({ tokens: usage, status: "200 OK" });
   saveUsageStats({ provider, model, tokens: usage, connectionId, apiKey, endpoint: clientRawRequest?.endpoint });
 
@@ -308,7 +321,9 @@ export async function handleNonStreamingResponse({ providerResponse, provider, m
       thinking: translatedResponse?.choices?.[0]?.message?.reasoning_content || translatedResponse?.reasoning_content || null,
       finish_reason: translatedResponse?.choices?.[0]?.finish_reason || "unknown"
     },
-    status: "success"
+    status: emptyDiagnosis ? "empty" : "success",
+    warning: emptyDiagnosis?.code,
+    warningDetail: emptyDiagnosis?.message
   }, { endpoint: clientRawRequest?.endpoint || null })).catch(err => {
     console.error("[RequestDetail] Failed to save:", err.message);
   });

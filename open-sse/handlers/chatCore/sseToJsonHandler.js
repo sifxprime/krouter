@@ -1,4 +1,5 @@
 import { convertResponsesStreamToJson } from "../../transformer/streamToJsonConverter.js";
+import { detectEmptyCompletion, readCompletionShape, EMPTY_COMPLETION_STATUS } from "../../utils/emptyCompletion.js";
 import { createErrorResult } from "../../utils/error.js";
 import { HTTP_STATUS } from "../../config/runtimeConfig.js";
 import { FORMATS } from "../../translator/formats.js";
@@ -145,6 +146,17 @@ export async function handleForcedSSEToJson({ providerResponse, sourceFormat, pr
       saveUsageStats({ provider, model, tokens: usage, connectionId, apiKey, endpoint: clientRawRequest?.endpoint });
 
       const { msgItem, textContent } = pickAssistantMessageForChatCompletion(jsonResponse.output);
+
+      // The Responses stream can end with real tokens billed and no text —
+      // grok-cli did exactly that. Re-file the log entry so an empty answer is
+      // not recorded as an ordinary success.
+      const emptyDiagnosis = detectEmptyCompletion({
+        text: textContent,
+        finishReason: jsonResponse.status ?? null,
+        usage,
+        maxTokens: finalBody?.max_tokens ?? body?.max_tokens,
+      });
+
       const totalLatency = Date.now() - requestStartTime;
 
       // 0.5.121 (upstream 41606a37) — cache-inclusive prompt total so the DB row
@@ -159,7 +171,9 @@ export async function handleForcedSSEToJson({ providerResponse, sourceFormat, pr
         latency: { ttft: totalLatency, total: totalLatency },
         tokens: { prompt_tokens: inTokensForLog, completion_tokens: usage.output_tokens || 0 },
         response: { content: textContent, thinking: null, finish_reason: jsonResponse.status || "unknown" },
-        status: "success"
+        status: emptyDiagnosis ? "empty" : "success",
+        warning: emptyDiagnosis?.code,
+        warningDetail: emptyDiagnosis?.message
       }, { endpoint: clientRawRequest?.endpoint || null })).catch(() => {});
 
       // Client is Responses API → return as-is
@@ -239,6 +253,11 @@ export async function handleForcedSSEToJson({ providerResponse, sourceFormat, pr
     if (onRequestSuccess) await onRequestSuccess();
 
     const usage = parsed.usage || {};
+    const emptyDiagnosis = detectEmptyCompletion({
+      ...readCompletionShape(parsed),
+      usage,
+      maxTokens: finalBody?.max_tokens ?? body?.max_tokens,
+    });
     appendLog({ tokens: usage, status: "200 OK" });
     saveUsageStats({ provider, model, tokens: usage, connectionId, apiKey, endpoint: clientRawRequest?.endpoint });
 
@@ -252,7 +271,9 @@ export async function handleForcedSSEToJson({ providerResponse, sourceFormat, pr
         thinking: parsed.choices?.[0]?.message?.reasoning_content || null,
         finish_reason: parsed.choices?.[0]?.finish_reason || "unknown"
       },
-      status: "success"
+      status: emptyDiagnosis ? "empty" : "success",
+      warning: emptyDiagnosis?.code,
+      warningDetail: emptyDiagnosis?.message
     }, { endpoint: clientRawRequest?.endpoint || null })).catch(() => {});
 
     // 0.5.121 (upstream 41606a37) — re-attach usage explicitly. This handler HAS the

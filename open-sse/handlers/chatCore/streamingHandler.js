@@ -7,6 +7,7 @@ import { STREAM_STALL_TIMEOUT_MS } from "../../config/runtimeConfig.js";
 import { buildAbortedResponsesTerminalBytes } from "../../utils/responsesStreamHelpers.js";
 import { buildRequestDetail, extractRequestConfig, saveUsageStats } from "./requestDetail.js";
 import { saveRequestDetail } from "@/lib/usageDb.js";
+import { detectEmptyCompletion } from "../../utils/emptyCompletion.js";
 
 const SSE_HEADERS = {
   "Content-Type": "text/event-stream",
@@ -88,6 +89,18 @@ export function buildOnStreamComplete({ provider, model, connectionId, apiKey, r
     const safeContent = contentObj?.content || "[Empty streaming response]";
     const safeThinking = contentObj?.thinking || null;
 
+    // A stream can finish with tokens billed and nothing emitted — most often a
+    // thinking model that spent its whole max_tokens budget on reasoning. The
+    // placeholder above kept that readable but still filed it as an ordinary
+    // success, so the cause was invisible in the dashboard.
+    const emptyDiagnosis = detectEmptyCompletion({
+      text: contentObj?.content,
+      finishReason: contentObj?.finish_reason ?? contentObj?.finishReason ?? null,
+      toolCalls: contentObj?.tool_calls,
+      usage,
+      maxTokens: finalBody?.max_tokens ?? body?.max_tokens,
+    });
+
     saveRequestDetail(buildRequestDetail({
       provider, model, connectionId,
       latency,
@@ -97,7 +110,9 @@ export function buildOnStreamComplete({ provider, model, connectionId, apiKey, r
       providerResponse: safeContent,
       response: { content: safeContent, thinking: safeThinking, type: "streaming" },
       pxpipe,
-      status: "success"
+      status: emptyDiagnosis ? "empty" : "success",
+      warning: emptyDiagnosis?.code,
+      warningDetail: emptyDiagnosis?.message
     }, { id: streamDetailId })).catch(err => {
       console.error("[RequestDetail] Failed to update streaming content:", err.message);
     });

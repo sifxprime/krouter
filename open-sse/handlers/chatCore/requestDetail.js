@@ -76,6 +76,11 @@ export function buildRequestDetail(base, overrides = {}) {
     response: base.response || {},
     pxpipe: base.pxpipe || undefined,
     status: base.status || "success",
+    // Set when the provider returned 200 with no usable output — see
+    // utils/emptyCompletion.js. Without these the dashboard shows an ordinary
+    // success next to a blank reply and the cause is invisible.
+    warning: base.warning || undefined,
+    warningDetail: base.warningDetail || undefined,
     ...overrides
   };
 }

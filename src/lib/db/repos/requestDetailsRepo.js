@@ -98,6 +98,11 @@ async function flushToDatabase() {
             providerRequest: truncateField(item.providerRequest, config.maxJsonSize),
             providerResponse: truncateField(item.providerResponse, config.maxJsonSize),
             response: truncateField(item.response, config.maxJsonSize),
+            // Diagnosis for a 200 that carried no usable output. This record is
+            // built from an explicit field list, so anything not named here is
+            // dropped before it reaches the `data` blob.
+            warning: item.warning || null,
+            warningDetail: item.warningDetail || null,
           };
 
           db.run(
