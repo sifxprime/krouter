@@ -33,6 +33,11 @@ COPY --from=builder /app/custom-server.js ./custom-server.js
 COPY --from=builder /app/open-sse ./open-sse
 # Next file tracing can omit sibling files; MITM runs server.js as a separate process.
 COPY --from=builder /app/src/mitm ./src/mitm
+# dns/dnsConfig.js requires this from outside src/mitm. It is not reachable from
+# the Next app graph either, so nothing else pulls it into the image — without
+# this line the MITM child process dies with MODULE_NOT_FOUND on start.
+# tests/unit/docker-mitm-packaging.test.js fails if another such require appears.
+COPY --from=builder /app/src/shared/constants/mitmToolHosts.js ./src/shared/constants/mitmToolHosts.js
 # Standalone node_modules may omit deps only required by the MITM child process.
 COPY --from=builder /app/node_modules/node-forge ./node_modules/node-forge
 # Ensure `next` is available at runtime in case tracing did not include it.
