@@ -82,6 +82,12 @@ export async function GET() {
       // warning instead of letting the user hunt a phantom network error.
       staleDns: status.staleDns || false,
       staleDnsTools: status.staleDnsTools || [],
+      // Interception is host-scoped: inside a container the hosts file and :443
+      // belong to the container, while the IDEs being intercepted run on the
+      // host. The dashboard hides the controls rather than letting the server
+      // start and silently intercept nothing.
+      containerized: status.containerized || false,
+      containerKind: status.containerKind || null,
       hasCachedPassword,
       isWin,
       needsSudoPassword: !isWin && !hasCachedPassword && isSudoPasswordRequired(),

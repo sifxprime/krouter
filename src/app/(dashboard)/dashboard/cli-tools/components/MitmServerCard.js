@@ -130,6 +130,12 @@ export default function MitmServerCard({ apiKeys, cloudEnabled, onStatusChange }
   };
 
   const isRunning = status?.running;
+  // Interception rewrites the OS hosts file and terminates TLS on :443. Inside a
+  // container both are container-scoped, while the IDEs being intercepted run on
+  // the host and never read the container's /etc/hosts — so the server would
+  // start, write DNS entries, and intercept nothing. Hide the controls instead.
+  const containerized = status?.containerized === true;
+  const containerKind = status?.containerKind || "a container";
 
   return (
     <>
@@ -209,7 +215,21 @@ export default function MitmServerCard({ apiKeys, cloudEnabled, onStatusChange }
             )}
           </div>
 
-          {/* Action buttons */}
+          {/* Action buttons — unavailable in a container, see `containerized` above */}
+          {containerized ? (
+            <div className="px-3 py-2.5 rounded-lg bg-surface/50 border border-border/50 flex flex-col gap-1">
+              <p className="text-[11px] font-medium text-text-main">
+                Not available in {containerKind}
+              </p>
+              <p className="text-[11px] text-text-muted leading-relaxed">
+                Interception redirects provider hostnames in the operating system&apos;s hosts file and
+                terminates TLS on port 443. In a container both belong to the container, while
+                Antigravity, Copilot, Kiro and Cursor run on your host and never read them — the server
+                would start and intercept nothing. Run kRouter directly on the host to use MITM, or point
+                those tools at this instance&apos;s base URL instead, which needs no interception.
+              </p>
+            </div>
+          ) : (
           <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center" data-i18n-skip="true">
             {status?.certExists && !status?.certTrusted && (
               <button
@@ -245,6 +265,7 @@ export default function MitmServerCard({ apiKeys, cloudEnabled, onStatusChange }
               <p className="text-xs text-text-muted">Enable DNS per tool below to activate interception</p>
             )}
           </div>
+          )}
 
           {/* Action error */}
           {actionError && (

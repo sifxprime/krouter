@@ -179,14 +179,23 @@ if (standaloneApp !== standaloneRootToUse && fs.existsSync(standaloneNodeModules
 }
 console.log("✅ Copied standalone build\n");
 
-// Step 3a: Copy custom server (injects real socket IP, strips spoofable XFF).
-const customServerSrc = path.join(appDir, "custom-server.js");
-if (fs.existsSync(customServerSrc)) {
-  fs.copyFileSync(customServerSrc, path.join(cliAppDir, "custom-server.js"));
-  console.log("✅ Copied custom-server.js\n");
-} else {
-  console.warn("⚠️  custom-server.js not found — server will run without real-IP injection\n");
+// Step 3a: Copy custom server (injects real socket IP, strips spoofable XFF)
+// AND everything it requires. custom-server.js is the CLI's entry point, so a
+// missing sibling is not a degraded feature — the server cannot boot at all.
+// v0.5.143 shipped without server-peer-patch.js and crash-looped on every
+// start with MODULE_NOT_FOUND; the list below is asserted by
+// tests/unit/cli-package-entry.test.js so a new require cannot ship unnoticed.
+const ENTRY_FILES = ["custom-server.js", "server-peer-patch.js"];
+for (const name of ENTRY_FILES) {
+  const src = path.join(appDir, name);
+  if (!fs.existsSync(src)) {
+    console.error(`❌ ${name} not found — the packaged CLI would fail to start. Aborting.`);
+    process.exit(1);
+  }
+  fs.copyFileSync(src, path.join(cliAppDir, name));
+  console.log(`✅ Copied ${name}`);
 }
+console.log("");
 
 // Step 3b: Ensure sql.js (pure JS fallback) bundled in app/cli/app/node_modules.
 // Strip better-sqlite3 (native) — it lives in ~/.krouter/runtime to avoid

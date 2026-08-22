@@ -1,7 +1,7 @@
 {
   "name": "krouter-app",
-  "version": "0.5.143",
-  "description": "kRouter (Kodelyth Router) web dashboard \u2014 Kodelyth AI Infrastructure",
+  "version": "0.5.144",
+  "description": "kRouter (Kodelyth Router) web dashboard — Kodelyth AI Infrastructure",
   "private": true,
   "scripts": {
     "dev": "NODE_OPTIONS='--require ./server-peer-patch.js' next dev --webpack --port 20128",
@@ -50,7 +50,7 @@
   "optionalDependencies": {
     "better-sqlite3": "^12.6.2"
   },
-  "comment_better_sqlite3": "kept in optionalDependencies so npm install doesn't fail on systems without build tools \u2014 sql.js is used as fallback at runtime",
+  "comment_better_sqlite3": "kept in optionalDependencies so npm install doesn't fail on systems without build tools — sql.js is used as fallback at runtime",
   "devDependencies": {
     "@tailwindcss/postcss": "^4.1.18",
     "eslint": "^9",

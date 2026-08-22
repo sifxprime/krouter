@@ -7,6 +7,7 @@ const https = require("https");
 const crypto = require("crypto");
 const { addDNSEntry, removeDNSEntry, removeAllDNSEntries, removeAllDNSEntriesSync, checkAllDNSStatus, TOOL_HOSTS, isSudoAvailable, isSudoPasswordRequired } = require("./dns/dnsConfig");
 const { isAdmin } = require("./winElevated.js");
+const { detectContainer } = require("./isContainer.js");
 
 const IS_WIN = process.platform === "win32";
 const IS_MAC = process.platform === "darwin";
@@ -408,7 +409,12 @@ async function getMitmStatus() {
   const staleDnsTools = running ? [] : Object.keys(dnsStatus || {}).filter((t) => dnsStatus[t]);
   const staleDns = staleDnsTools.length > 0;
 
-  return { running, pid, certExists, certTrusted, dnsStatus, staleDns, staleDnsTools };
+  // Interception is host-scoped. In a container the hosts file and :443 belong
+  // to the container, while the IDEs being intercepted run on the host — so the
+  // controls are surfaced as unavailable rather than half-working.
+  const { containerized, kind: containerKind } = detectContainer();
+
+  return { running, pid, certExists, certTrusted, dnsStatus, staleDns, staleDnsTools, containerized, containerKind };
 }
 
 async function scheduleMitmRestart(apiKey) {
