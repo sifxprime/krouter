@@ -5,9 +5,11 @@ A FastAPI service that provides PII redaction using Microsoft Presidio.
 Combines ML-based detection (names, emails, locations) with custom regex patterns
 (API keys, IDs) into a single optimized pass.
 
-The service loads custom regex rules from redaction_config.yaml at startup.
+The service loads custom regex rules from redaction_config.yaml at startup
+and supports hot-reloading configuration changes without restart.
 """
 
+import os
 import yaml
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
@@ -15,15 +17,24 @@ from typing import List
 from presidio_analyzer import AnalyzerEngine, PatternRecognizer, Pattern
 from presidio_anonymizer import AnonymizerEngine
 
+# Import hot-reload functionality
+from hot_reload import get_orchestrator, get_current_analyzer
+
+# Config file path (configurable via environment variable)
+CONFIG_PATH = os.environ.get("PRESIDIO_CONFIG_PATH", "/app/config/redaction_config.yaml")
+
 app = FastAPI(
     title="Presidio Redaction Sidecar",
-    description="PII redaction service using Microsoft Presidio with custom regex patterns",
-    version="1.0.0"
+    description="PII redaction service using Microsoft Presidio with custom regex patterns and hot-reload",
+    version="1.1.0"
 )
 
 # Initialize Presidio engines (will be loaded on startup)
 analyzer = None
 anonymizer = None
+
+# Get reload orchestrator
+orchestrator = get_orchestrator()
 
 
 def load_custom_rules():
@@ -37,13 +48,14 @@ def load_custom_rules():
     global analyzer
 
     try:
-        with open("redaction_config.yaml", "r") as file:
+        with open(CONFIG_PATH, "r") as file:
             config = yaml.safe_load(file)
+        print(f"Loaded config from {CONFIG_PATH}")
     except FileNotFoundError:
-        print("Warning: redaction_config.yaml not found, using only built-in entities")
+        print(f"Warning: {CONFIG_PATH} not found, using only built-in entities")
         return []
     except yaml.YAMLError as e:
-        print(f"Error parsing redaction_config.yaml: {e}")
+        print(f"Error parsing {CONFIG_PATH}: {e}")
         return []
 
     loaded_entities = []
@@ -85,7 +97,20 @@ def startup_event():
     print("Initializing Presidio Anonymizer Engine...")
     anonymizer = AnonymizerEngine()
 
+    # Set initial analyzer in orchestrator
+    orchestrator.set_initial_analyzer(analyzer)
+
+    # Start file watcher for hot-reload
+    orchestrator.start_watching()
+
     print("Presidio sidecar startup complete")
+
+
+@app.on_event("shutdown")
+def shutdown_event():
+    """Cleanup on shutdown."""
+    orchestrator.stop_watching()
+    print("Presidio sidecar shutdown complete")
 
 
 class RedactRequest(BaseModel):
@@ -107,7 +132,28 @@ def root():
 @app.get("/health")
 def health():
     """Health check endpoint for container orchestration."""
-    return {"status": "healthy"}
+    return {
+        "status": "healthy",
+        "analyzer_loaded": analyzer is not None,
+        "config_file": os.path.exists(CONFIG_PATH)
+    }
+
+
+@app.get("/reload/status")
+def reload_status():
+    """Get current reload status and configuration info."""
+    return orchestrator.get_status()
+
+
+@app.post("/reload/trigger")
+def trigger_reload():
+    """Manually trigger a configuration reload."""
+    result = orchestrator.reload()
+    return {
+        "status": "triggered" if result["success"] else "failed",
+        "message": result.get("message", result.get("error", "Reload completed")),
+        "result": result
+    }
 
 
 @app.post("/redact", response_model=RedactResponse)
@@ -131,9 +177,14 @@ def redact(req: RedactRequest):
             results.append("")
             continue
 
+        # Get current analyzer (may be updated via hot-reload)
+        current_analyzer = get_current_analyzer()
+        if not current_analyzer:
+            raise HTTPException(status_code=503, detail="Analyzer not initialized")
+
         # Analyze runs both ML (Names, Orgs) and injected Regex (Keys, IDs)
         # entities=[] enables all built-in entities plus our custom regex rules
-        analysis_results = analyzer.analyze(text=text, entities=[], language="en")
+        analysis_results = current_analyzer.analyze(text=text, entities=[], language="en")
 
         # Anonymize the detected PII
         anonymized = anonymizer.anonymize(

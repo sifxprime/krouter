@@ -10,13 +10,15 @@ services:
     ports:
       - "5001:5001"
     volumes:
-      # Mount config file for easy customization
-      - ./presidio-sidecar/redaction_config.yaml:/app/redaction_config.yaml:ro
+      # Shared volume for config file (read-only for sidecar)
+      - presidio-config:/app/config:ro
     environment:
       # Python optimizations
       - PYTHONUNBUFFERED=1
       - PYTHONDONTWRITEBYTECODE=1
       - PYTHONPATH=/app
+      # Config file path
+      - PRESIDIO_CONFIG_PATH=/app/config/redaction_config.yaml
     networks:
       - krouter-network
     restart: unless-stopped
@@ -39,6 +41,8 @@ services:
       # Redaction middleware configuration
       - SIDECAR_URL=http://presidio-sidecar:5001/redact
       - REDACTION_ENABLED=true
+      # Presidio config file path (on shared volume)
+      - PRESIDIO_CONFIG_PATH=/app/config/redaction_config.yaml
       # kRouter configuration
       - NODE_ENV=production
       - PORT=20128
@@ -50,6 +54,8 @@ services:
       # Persist data
       - krouter-data:/app/data
       - krouter-data-home:/app/data-home
+      # Shared volume for config file (read-write for kRouter)
+      - presidio-config:/app/config
     networks:
       - krouter-network
     depends_on:
@@ -71,4 +77,6 @@ volumes:
   krouter-data:
     driver: local
   krouter-data-home:
+    driver: local
+  presidio-config:
     driver: local
