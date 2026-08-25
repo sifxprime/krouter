@@ -190,6 +190,67 @@ export function createRedactionMiddleware(options = {}) {
         }
       }
 
+      // Tool traffic. This is where file contents, command output and grep
+      // results land, so it is often the richest PII in the whole request --
+      // and it was passing through untouched.
+      if (Array.isArray(body.messages)) {
+        for (let i = 0; i < body.messages.length; i++) {
+          const msg = body.messages[i];
+
+          // OpenAI: a tool result arrives as a whole message with role "tool".
+          if (msg?.role === "tool" && typeof msg.content === "string") {
+            textsToRedact.push(msg.content);
+            textPaths.push({ type: "tool-message", index: i });
+          }
+
+          // OpenAI: assistant tool_calls carry a JSON string of arguments.
+          if (Array.isArray(msg?.tool_calls)) {
+            for (let j = 0; j < msg.tool_calls.length; j++) {
+              const args = msg.tool_calls[j]?.function?.arguments;
+              if (typeof args === "string" && args.length > 0) {
+                textsToRedact.push(args);
+                textPaths.push({ type: "tool-call-args", msgIndex: i, callIndex: j });
+              }
+            }
+          }
+
+          // Anthropic: tool_result blocks nested in message content.
+          if (Array.isArray(msg?.content)) {
+            for (let j = 0; j < msg.content.length; j++) {
+              const block = msg.content[j];
+              if (block?.type !== "tool_result") continue;
+              if (typeof block.content === "string") {
+                textsToRedact.push(block.content);
+                textPaths.push({ type: "tool-result-string", msgIndex: i, blockIndex: j });
+              } else if (Array.isArray(block.content)) {
+                for (let k = 0; k < block.content.length; k++) {
+                  const inner = block.content[k];
+                  if (inner?.type === "text" && typeof inner.text === "string") {
+                    textsToRedact.push(inner.text);
+                    textPaths.push({ type: "tool-result-block", msgIndex: i, blockIndex: j, innerIndex: k });
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+
+      // Tool descriptions are author-supplied and can name real systems, hosts
+      // or people.
+      if (Array.isArray(body.tools)) {
+        for (let i = 0; i < body.tools.length; i++) {
+          const t = body.tools[i];
+          if (typeof t?.description === "string" && t.description.length > 0) {
+            textsToRedact.push(t.description);
+            textPaths.push({ type: "tool-desc", index: i });
+          } else if (typeof t?.function?.description === "string" && t.function.description.length > 0) {
+            textsToRedact.push(t.function.description);
+            textPaths.push({ type: "tool-fn-desc", index: i });
+          }
+        }
+      }
+
       // Skip if no text to redact
       if (textsToRedact.length === 0) {
         return handler(request);
@@ -217,6 +278,34 @@ export function createRedactionMiddleware(options = {}) {
           body.input[path.index].content = redactedTexts[textIndex];
         } else if (path.type === "input-item-block") {
           body.input[path.itemIndex].content[path.blockIndex].text = redactedTexts[textIndex];
+        } else if (path.type === "tool-message") {
+          body.messages[path.index].content = redactedTexts[textIndex];
+        } else if (path.type === "tool-call-args") {
+          // Arguments are a JSON string the provider will parse. Redaction can
+          // in principle disturb that, so only accept the redacted form if it
+          // still parses -- a leaked value is bad, a broken tool call is worse
+          // and would fail loudly for every user.
+          const candidate = redactedTexts[textIndex];
+          let safe = false;
+          try {
+            JSON.parse(candidate);
+            safe = true;
+          } catch {
+            safe = false;
+          }
+          if (safe) {
+            body.messages[path.msgIndex].tool_calls[path.callIndex].function.arguments = candidate;
+          } else {
+            console.warn("[Redaction Middleware] Skipped tool_call arguments: redaction produced invalid JSON");
+          }
+        } else if (path.type === "tool-result-string") {
+          body.messages[path.msgIndex].content[path.blockIndex].content = redactedTexts[textIndex];
+        } else if (path.type === "tool-result-block") {
+          body.messages[path.msgIndex].content[path.blockIndex].content[path.innerIndex].text = redactedTexts[textIndex];
+        } else if (path.type === "tool-desc") {
+          body.tools[path.index].description = redactedTexts[textIndex];
+        } else if (path.type === "tool-fn-desc") {
+          body.tools[path.index].function.description = redactedTexts[textIndex];
         }
         textIndex++;
       }

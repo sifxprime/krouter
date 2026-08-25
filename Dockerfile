@@ -57,7 +57,7 @@ RUN mkdir -p /app/data && chown -R node:node /app && \
 
 # Fix permissions at runtime (handles mounted volumes)
 RUN apk --no-cache upgrade && apk --no-cache add su-exec && \
-  printf '#!/bin/sh\n# Initialize Presidio config on shared volume\nif [ -f /app/scripts/init-presidio-config.sh ]; then\n  /app/scripts/init-presidio-config.sh\nfi\n# Fix data directory and config permissions\nchown -R node:node /app/data /app/data-home /app/config 2>/dev/null\nexec su-exec node "$@"\n' > /entrypoint.sh && \
+  printf '#!/bin/sh\n# Presidio config init runs ONLY when the sidecar deployment is in use.\n# docker-compose sets PRESIDIO_CONFIG_PATH for that setup; without it this\n# image behaves exactly as it did before the feature was added, instead of\n# running an extra root-owned script on every start for every user.\nif [ -n "$PRESIDIO_CONFIG_PATH" ] && [ -f /app/scripts/init-presidio-config.sh ]; then\n  /app/scripts/init-presidio-config.sh || echo "[entrypoint] presidio config init failed, continuing"\n  chown -R node:node /app/config 2>/dev/null\nfi\nchown -R node:node /app/data /app/data-home 2>/dev/null\nexec su-exec node "$@"\n' > /entrypoint.sh && \
   chmod +x /entrypoint.sh
 
 EXPOSE 20128

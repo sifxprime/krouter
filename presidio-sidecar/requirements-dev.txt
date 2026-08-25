@@ -1,0 +1,9 @@
+# Test-only dependencies. Deliberately NOT in requirements.txt: the sidecar
+# Dockerfile copies /usr/local out of the builder stage, so anything installed
+# there ships in the production image. pytest and httpx have no business in a
+# service that sees prompt text.
+-r requirements.txt
+
+pytest==9.1.1
+pytest-asyncio==1.4.0
+httpx==0.28.1

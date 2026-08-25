@@ -1,7 +1,7 @@
 # Multi-stage build for Presidio Redaction Sidecar
 # Optimized for small image size and fast startup
 
-FROM python:3.11-slim as builder
+FROM python:3.11.16-slim AS builder
 
 # Set working directory
 WORKDIR /app
@@ -23,7 +23,7 @@ RUN python -m spacy download en_core_web_lg
 
 
 # Final stage
-FROM python:3.11-slim
+FROM python:3.11.16-slim
 
 # Set working directory
 WORKDIR /app
