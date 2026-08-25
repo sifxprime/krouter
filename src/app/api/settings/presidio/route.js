@@ -2,8 +2,9 @@ import { NextResponse } from "next/server";
 import { getSettings, updateSettings } from "@/lib/localDb";
 import { readFile, access } from "node:fs/promises";
 import { validateYamlSyntax } from "@/lib/presidio/validateYaml";
-import { writeFile } from "node:fs/promises";
+import { writeFile, rename, mkdir } from "node:fs/promises";
 import path from "node:path";
+import { DATA_DIR } from "@/lib/dataDir";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -14,7 +15,14 @@ const SETTINGS_RESPONSE_HEADERS = {
 
 // Path to the Presidio configuration file
 // This will be on a shared volume between kRouter and Presidio sidecar
-const PRESIDIO_CONFIG_PATH = process.env.PRESIDIO_CONFIG_PATH || "/app/redaction_config.yaml";
+// Docker sets PRESIDIO_CONFIG_PATH explicitly (docker-compose.yml maps it to the
+// shared presidio-config volume). The fallback matters everywhere else: the old
+// default was the container path "/app/redaction_config.yaml", which does not
+// exist on an npm install, so saving custom patterns from the dashboard always
+// failed with ENOENT. DATA_DIR is the app's own resolver and falls back to
+// ~/.krouter, matching how MITM certs and the database are located.
+const PRESIDIO_CONFIG_PATH =
+  process.env.PRESIDIO_CONFIG_PATH || path.join(DATA_DIR, "presidio", "redaction_config.yaml");
 
 /**
  * GET /api/settings/presidio
@@ -94,7 +102,24 @@ export async function GET() {
  */
 export async function PUT(request) {
   try {
-    const body = await request.json();
+    // A malformed body is a client error, not a server fault, so it gets a 400
+    // rather than falling through to the generic 500 handler below.
+    let body;
+    try {
+      body = await request.json();
+    } catch (error) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: {
+            code: "VALIDATION_ERROR",
+            message: "Invalid JSON in request body",
+            details: error.message,
+          },
+        },
+        { status: 400, headers: SETTINGS_RESPONSE_HEADERS }
+      );
+    }
 
     // Validate required fields
     const requiredFields = ["enabled", "piiRedaction", "customRegex"];
@@ -161,28 +186,21 @@ export async function PUT(request) {
         );
       }
 
-      // Write YAML content atomically
+      // Write the YAML content. Stage it to a sibling temp file first so a
+      // failure part-way through a write never leaves the live config
+      // truncated, then publish it to the real path.
+      // Write atomically: stage to a sibling temp file, then rename over the live
+      // path. rename(2) is atomic within a filesystem, so the sidecar's
+      // hot-reload watcher never observes a partially written file.
+      //
+      // The original wrote the temp file, read it back, then wrote the real path
+      // in BOTH branches of an if/else, so the check had no effect and nothing
+      // was ever renamed despite the comment claiming otherwise.
       try {
+        await mkdir(path.dirname(PRESIDIO_CONFIG_PATH), { recursive: true });
         const tempPath = `${PRESIDIO_CONFIG_PATH}.tmp`;
         await writeFile(tempPath, body.yamlContent, "utf-8");
-
-        // Validate the temp file can be read
-        const testRead = await readFile(tempPath, "utf-8");
-        if (testRead !== body.yamlContent) {
-          await writeFile(PRESIDIO_CONFIG_PATH, body.yamlContent, "utf-8");
-        } else {
-          // Atomic rename (works on same filesystem)
-          await writeFile(PRESIDIO_CONFIG_PATH, body.yamlContent, "utf-8");
-        }
-
-        // Clean up temp file if it exists
-        try {
-          await readFile(tempPath);
-          // If we got here, rename didn't work, delete temp file
-          await writeFile(tempPath, "", "utf-8");
-        } catch (e) {
-          // Temp file already handled
-        }
+        await rename(tempPath, PRESIDIO_CONFIG_PATH);
       } catch (error) {
         return NextResponse.json(
           {

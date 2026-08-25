@@ -96,10 +96,23 @@ export async function POST(request, { params }) {
       body: JSON.stringify(convertedBody),
     });
 
-    // Apply redaction middleware to the converted request
-    const redactedRequest = await redactionMiddleware(newRequest, (req) => req);
+    // Apply redaction middleware to the converted request.
+    //
+    // This route cannot use withRedaction() like the other five, because the
+    // Gemini -> OpenAI conversion has to happen first and redaction applies to
+    // the CONVERTED body. So the middleware is called imperatively with an
+    // identity handler, which returns the redacted Request on success.
+    //
+    // On every fail-closed path it returns a Response instead. Passing that to
+    // handleChat() -- which expects a Request -- silently defeated the
+    // fail-closed guarantee on this endpoint: the rejection never reached the
+    // client. Forward it directly.
+    const redacted = await redactionMiddleware(newRequest, (req) => req);
+    if (redacted instanceof Response) {
+      return redacted;
+    }
 
-    const response = await handleChat(redactedRequest);
+    const response = await handleChat(redacted);
 
     if (stream) {
       // Transform OpenAI SSE => Gemini SSE on the fly.

@@ -12,6 +12,15 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
+// The route resolves its config path from PRESIDIO_CONFIG_PATH, falling back to
+// the app's DATA_DIR (~/.krouter) rather than the container path it used to
+// hardcode -- "/app/..." does not exist on an npm install, so saving custom
+// patterns always failed there with ENOENT. This must be set before the route
+// module is evaluated, since it reads the variable once at module scope.
+vi.hoisted(() => {
+  process.env.PRESIDIO_CONFIG_PATH = "/tmp/krouter-test-presidio/redaction_config.yaml";
+});
+
 const mocks = vi.hoisted(() => ({
   nextResponse: {
     json: vi.fn((body, init) => ({
@@ -59,7 +68,7 @@ rules:
     description: "Detects US phone number formats"
 `;
 
-const defaultConfigPath = "/app/redaction_config.yaml";
+const defaultConfigPath = "/tmp/krouter-test-presidio/redaction_config.yaml";
 
 describe("GET /api/settings/presidio", () => {
   beforeEach(() => {

@@ -12,6 +12,27 @@
  */
 
 /**
+ * Cached enablement decision.
+ *
+ * getSettings() is an uncached SQLite read and this middleware sits in front of
+ * every LLM route, so calling it per request puts the database back on the hot
+ * path that the in-memory HealthCache exists to keep it off. Caching only the
+ * boolean decision here leaves the other ~48 getSettings() call sites untouched,
+ * so a toggle anywhere else in the dashboard still applies immediately.
+ *
+ * TTL matches src/shared/services/healthCache.js.
+ */
+const SETTINGS_CACHE_TTL_MS = 10 * 1000;
+let _redactionOn = null;      // null = never successfully read
+let _redactionOnAt = 0;
+
+/** Exposed for tests, and lets a settings write invalidate immediately. */
+export function invalidateRedactionSettingsCache() {
+  _redactionOn = null;
+  _redactionOnAt = 0;
+}
+
+/**
  * Create a redaction middleware that calls the Presidio sidecar
  *
  * @param {Object} options - Middleware options
@@ -35,34 +56,40 @@ export function createRedactionMiddleware(options = {}) {
       return handler(request);
     }
 
-    // Check dynamic settings - only redact if both toggles are enabled
-    try {
-      const { getSettings } = await import("@/lib/db/repos/settingsRepo.js");
-      const settings = await getSettings();
+    // Check dynamic settings - only redact if both toggles are enabled.
+    if (Date.now() - _redactionOnAt > SETTINGS_CACHE_TTL_MS) {
+      try {
+        const { getSettings } = await import("@/lib/db/repos/settingsRepo.js");
+        const settings = await getSettings();
+        _redactionOn = !!(settings.presidioEnabled && settings.presidioPiiRedaction);
+        _redactionOnAt = Date.now();
+      } catch (error) {
+        console.error("[Redaction Middleware] Failed to read settings:", error);
 
-      // Skip redaction if Presidio is disabled or PII redaction is disabled
-      if (!settings.presidioEnabled || !settings.presidioPiiRedaction) {
+        // Fail closed only for users who actually turned redaction ON. If it was
+        // never enabled (_redactionOn === null) or was last seen off, a
+        // settings-read failure must not 500 their requests -- that would break
+        // traffic to protect data they never asked us to protect.
+        if (_redactionOn === true && !failOpen) {
+          return new Response(
+            JSON.stringify({
+              error: {
+                message: "Unable to verify redaction settings",
+                code: "SETTINGS_ERROR",
+                type: "settings_error"
+              }
+            }),
+            {
+              status: 500,
+              headers: { "Content-Type": "application/json" }
+            }
+          );
+        }
         return handler(request);
       }
-    } catch (error) {
-      // If we can't read settings, fail-closed for security
-      console.error("[Redaction Middleware] Failed to read settings:", error);
-      if (!failOpen) {
-        return new Response(
-          JSON.stringify({
-            error: {
-              message: "Unable to verify redaction settings",
-              code: "SETTINGS_ERROR",
-              type: "settings_error"
-            }
-          }),
-          {
-            status: 500,
-            headers: { "Content-Type": "application/json" }
-          }
-        );
-      }
-      // If failOpen is enabled, proceed with original request
+    }
+
+    if (!_redactionOn) {
       return handler(request);
     }
 
@@ -75,33 +102,85 @@ export function createRedactionMiddleware(options = {}) {
       // Clone the request to read the body
       const body = await request.clone().json();
 
-      // Skip if no messages array
-      if (!body.messages || !Array.isArray(body.messages)) {
-        return handler(request);
-      }
-
-      // Extract text from all messages
+      // Extract text from every field that can carry user content.
+      //
+      // This used to return early unless body.messages existed, which made
+      // redaction a silent no-op on /v1/responses and /v1/responses/compact --
+      // the Responses API carries content in `input`/`instructions`, not
+      // `messages` -- while the dashboard still reported redaction as on. The
+      // Anthropic top-level `system` prompt was missed for the same reason.
       const textsToRedact = [];
       const textPaths = []; // Track where each text came from
 
-      for (let i = 0; i < body.messages.length; i++) {
-        const msg = body.messages[i];
-        const content = msg?.content;
+      // Chat Completions / Anthropic Messages: body.messages[]
+      if (Array.isArray(body.messages)) {
+        for (let i = 0; i < body.messages.length; i++) {
+          const msg = body.messages[i];
+          const content = msg?.content;
 
-        if (!content) continue;
+          if (!content) continue;
 
-        // Handle string content
-        if (typeof content === "string") {
-          textsToRedact.push(content);
-          textPaths.push({ type: "string", index: i });
+          // Handle string content
+          if (typeof content === "string") {
+            textsToRedact.push(content);
+            textPaths.push({ type: "string", index: i });
+          }
+          // Handle array content (e.g., multimodal messages with text blocks)
+          else if (Array.isArray(content)) {
+            for (let j = 0; j < content.length; j++) {
+              const block = content[j];
+              if (block?.type === "text" && typeof block?.text === "string") {
+                textsToRedact.push(block.text);
+                textPaths.push({ type: "array", msgIndex: i, blockIndex: j });
+              }
+            }
+          }
         }
-        // Handle array content (e.g., multimodal messages with text blocks)
-        else if (Array.isArray(content)) {
-          for (let j = 0; j < content.length; j++) {
-            const block = content[j];
-            if (block?.type === "text" && typeof block?.text === "string") {
-              textsToRedact.push(block.text);
-              textPaths.push({ type: "array", msgIndex: i, blockIndex: j });
+      }
+
+      // Anthropic Messages: top-level `system` (string or block array).
+      if (typeof body.system === "string") {
+        textsToRedact.push(body.system);
+        textPaths.push({ type: "system-string" });
+      } else if (Array.isArray(body.system)) {
+        for (let j = 0; j < body.system.length; j++) {
+          const block = body.system[j];
+          if (block?.type === "text" && typeof block?.text === "string") {
+            textsToRedact.push(block.text);
+            textPaths.push({ type: "system-block", blockIndex: j });
+          }
+        }
+      }
+
+      // Responses API: `instructions` is the system-prompt equivalent.
+      if (typeof body.instructions === "string") {
+        textsToRedact.push(body.instructions);
+        textPaths.push({ type: "instructions" });
+      }
+
+      // Responses API: `input` is either a bare string or an array of items
+      // whose content blocks are input_text / output_text (not `text`).
+      if (typeof body.input === "string") {
+        textsToRedact.push(body.input);
+        textPaths.push({ type: "input-string" });
+      } else if (Array.isArray(body.input)) {
+        for (let i = 0; i < body.input.length; i++) {
+          const item = body.input[i];
+          const content = item?.content;
+          if (typeof content === "string") {
+            textsToRedact.push(content);
+            textPaths.push({ type: "input-item-string", index: i });
+          } else if (Array.isArray(content)) {
+            for (let j = 0; j < content.length; j++) {
+              const block = content[j];
+              const isText =
+                block?.type === "input_text" ||
+                block?.type === "output_text" ||
+                block?.type === "text";
+              if (isText && typeof block?.text === "string") {
+                textsToRedact.push(block.text);
+                textPaths.push({ type: "input-item-block", itemIndex: i, blockIndex: j });
+              }
             }
           }
         }
@@ -122,6 +201,18 @@ export function createRedactionMiddleware(options = {}) {
           body.messages[path.index].content = redactedTexts[textIndex];
         } else if (path.type === "array") {
           body.messages[path.msgIndex].content[path.blockIndex].text = redactedTexts[textIndex];
+        } else if (path.type === "system-string") {
+          body.system = redactedTexts[textIndex];
+        } else if (path.type === "system-block") {
+          body.system[path.blockIndex].text = redactedTexts[textIndex];
+        } else if (path.type === "instructions") {
+          body.instructions = redactedTexts[textIndex];
+        } else if (path.type === "input-string") {
+          body.input = redactedTexts[textIndex];
+        } else if (path.type === "input-item-string") {
+          body.input[path.index].content = redactedTexts[textIndex];
+        } else if (path.type === "input-item-block") {
+          body.input[path.itemIndex].content[path.blockIndex].text = redactedTexts[textIndex];
         }
         textIndex++;
       }

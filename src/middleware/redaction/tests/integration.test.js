@@ -14,6 +14,18 @@ import { createRedactionMiddleware } from "../middleware.js";
 // Mock fetch globally
 global.fetch = vi.fn();
 
+// Mock settings repository — the middleware gates redaction on the dynamic
+// presidio toggles before it ever reaches the sidecar. Without this stub the
+// gate reads the real SQLite settings (both toggles off) and short-circuits,
+// so no redaction ever happens.
+vi.mock("@/lib/db/repos/settingsRepo.js", () => ({
+  getSettings: vi.fn().mockResolvedValue({
+    presidioEnabled: true,
+    presidioPiiRedaction: true,
+    presidioCustomRegex: false,
+  }),
+}));
+
 describe("Redaction Middleware Integration Tests", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -273,6 +285,7 @@ describe("Redaction Middleware Integration Tests", () => {
 
       const middleware = createRedactionMiddleware({
         sidecarUrl: "http://presidio-sidecar:5001/redact",
+        failOpen: true, // Fail-open is opt-in; the default is fail-closed for security
       });
 
       global.fetch.mockRejectedValueOnce(new Error("ECONNREFUSED"));
@@ -306,6 +319,7 @@ describe("Redaction Middleware Integration Tests", () => {
       const middleware = createRedactionMiddleware({
         sidecarUrl: "http://presidio-sidecar:5001/redact",
         timeout: 50,
+        failOpen: true, // Fail-open is opt-in; the default is fail-closed for security
       });
 
       // Mock a slow response that resolves after timeout
@@ -341,6 +355,7 @@ describe("Redaction Middleware Integration Tests", () => {
 
       const middleware = createRedactionMiddleware({
         sidecarUrl: "http://presidio-sidecar:5001/redact",
+        failOpen: true, // Fail-open is opt-in; the default is fail-closed for security
       });
 
       global.fetch.mockResolvedValueOnce({

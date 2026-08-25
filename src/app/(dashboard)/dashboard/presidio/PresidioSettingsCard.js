@@ -169,6 +169,7 @@ export default function PresidioSettingsCard() {
               </p>
             </div>
             <ToggleSwitch
+              label="Presidio Sidecar"
               checked={settings.enabled}
               onChange={() => handleToggleChange('enabled')}
               disabled={isSaving}
@@ -187,6 +188,7 @@ export default function PresidioSettingsCard() {
                   </p>
                 </div>
                 <ToggleSwitch
+                  label="PII Redaction"
                   checked={settings.piiRedaction}
                   onChange={() => handleToggleChange('piiRedaction')}
                   disabled={isSaving}
@@ -202,6 +204,7 @@ export default function PresidioSettingsCard() {
                   </p>
                 </div>
                 <ToggleSwitch
+                  label="Custom Regex Patterns"
                   checked={settings.customRegex}
                   onChange={() => handleToggleChange('customRegex')}
                   disabled={isSaving}
@@ -300,12 +303,16 @@ export default function PresidioSettingsCard() {
  *
  * A simple accessible toggle switch component
  */
-function ToggleSwitch({ checked, onChange, disabled }) {
+function ToggleSwitch({ checked, onChange, disabled, label }) {
   return (
     <button
       type="button"
       role="switch"
       aria-checked={checked}
+      // The only child is a decorative span, so without this the control has no
+      // accessible name -- a screen reader announces "switch, checked" with no
+      // indication of what it toggles (WCAG 4.1.2). Every call site passes one.
+      aria-label={label}
       onClick={() => !disabled && onChange(!checked)}
       disabled={disabled}
       className={`

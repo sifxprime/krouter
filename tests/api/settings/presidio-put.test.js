@@ -26,6 +26,8 @@ const mocks = vi.hoisted(() => ({
   },
   readFile: vi.fn(),
   writeFile: vi.fn(),
+  rename: vi.fn(),
+  mkdir: vi.fn(),
   getSettings: vi.fn(),
   updateSettings: vi.fn(),
 }));
@@ -37,6 +39,8 @@ vi.mock("next/server", () => ({
 vi.mock("node:fs/promises", () => ({
   readFile: mocks.readFile,
   writeFile: mocks.writeFile,
+  rename: mocks.rename,
+  mkdir: mocks.mkdir,
 }));
 
 vi.mock("@/lib/localDb", () => ({
@@ -53,32 +57,61 @@ try {
   // Route not implemented yet
 }
 
+// NOTE ON ESCAPING: these fixtures pass through two escaping layers. The JS
+// template literal collapses `\\\\` to `\\`, and a double-quoted YAML scalar
+// then collapses `\\` to a single `\`. So a regex `\b` needs four backslashes
+// here. Using only two yields YAML `\b`/`\.`, and `\.` is not a valid YAML
+// escape sequence, which makes the whole document fail to parse.
 const mockYamlContent = `rules:
   - entity: "EMAIL_REGEX"
-    pattern: "\\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Z|a-z]{2,}\\b"
+    pattern: "\\\\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\\\.[A-Z|a-z]{2,}\\\\b"
     description: "Email pattern"
   - entity: "PHONE_US"
-    pattern: "\\(?(\\d{3})\\)?[\\s-]?\\d{3}[\\s-]?\\d{4}"
+    pattern: "\\\\(?(\\\\d{3})\\\\)?[\\\\s-]?\\\\d{3}[\\\\s-]?\\\\d{4}"
     description: "Phone pattern"
 `;
 
 const updatedYamlContent = `rules:
   - entity: "EMAIL_REGEX"
-    pattern: "\\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Z|a-z]{2,}\\b"
+    pattern: "\\\\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\\\.[A-Z|a-z]{2,}\\\\b"
     description: "Updated email pattern"
   - entity: "PHONE_US"
-    pattern: "\\(?(\\d{3})\\)?[\\s-]?\\d{3}[\\s-]?\\d{4}"
+    pattern: "\\\\(?(\\\\d{3})\\\\)?[\\\\s-]?\\\\d{3}[\\\\s-]?\\\\d{4}"
     description: "Phone pattern"
   - entity: "CREDIT_CARD"
-    pattern: "\\b(?:\\d[ -]*?){13,16}\\b"
+    pattern: "\\\\b(?:\\\\d[ -]*?){13,16}\\\\b"
     description: "Credit card pattern"
 `;
 
 describe("PUT /api/settings/presidio", () => {
+  // Stateful stand-in for the config file. The route writes the new YAML and
+  // then reads the path back to build its response, so a fixed readFile value
+  // would hand back stale content that no real filesystem would return. Paths
+  // that were never written fall back to the seeded on-disk config.
+  let writtenFiles;
+
   beforeEach(() => {
     vi.clearAllMocks();
-    mocks.readFile.mockResolvedValue(mockYamlContent);
-    mocks.writeFile.mockResolvedValue(undefined);
+    writtenFiles = new Map();
+    mocks.readFile.mockImplementation(async (filePath) =>
+      writtenFiles.has(filePath) ? writtenFiles.get(filePath) : mockYamlContent
+    );
+    mocks.writeFile.mockImplementation(async (filePath, content) => {
+      writtenFiles.set(filePath, content);
+    });
+    // The route stages to `<path>.tmp` then rename()s it over the live path, so
+    // the fake filesystem has to move the entry -- otherwise the read-back that
+    // builds the response finds nothing at the real path.
+    mocks.rename.mockImplementation(async (from, to) => {
+      if (!writtenFiles.has(from)) {
+        const err = new Error(`ENOENT: no such file or directory, rename '${from}'`);
+        err.code = "ENOENT";
+        throw err;
+      }
+      writtenFiles.set(to, writtenFiles.get(from));
+      writtenFiles.delete(from);
+    });
+    mocks.mkdir.mockResolvedValue(undefined);
     mocks.updateSettings.mockResolvedValue(undefined);
   });
 
@@ -315,7 +348,7 @@ describe("PUT /api/settings/presidio", () => {
 
       const invalidYaml = `rules:
   - entity: "EMAIL_REGEX"
-    pattern: "\\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Z|a-z]{2,}\\b"
+    pattern: "\\\\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\\\.[A-Z|a-z]{2,}\\\\b"
     description: "Email pattern"
     invalid_syntax: [unclosed array
 `;
@@ -385,7 +418,7 @@ describe("PUT /api/settings/presidio", () => {
 
       const invalidYaml = `rules:
   - entity: "EMAIL_REGEX"
-    pattern: "\\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Z|a-z]{2,}\\b"
+    pattern: "\\\\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\\\.[A-Z|a-z]{2,}\\\\b"
     # Missing description field
 `;
 
@@ -451,10 +484,10 @@ describe("PUT /api/settings/presidio", () => {
 
       const invalidYaml = `rules:
   - entity: "EMAIL_REGEX"
-    pattern: "\\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Z|a-z]{2,}\\b"
+    pattern: "\\\\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\\\.[A-Z|a-z]{2,}\\\\b"
     description: "First email pattern"
   - entity: "EMAIL_REGEX"
-    pattern: "\\S+@\\S+"
+    pattern: "\\\\S+@\\\\S+"
     description: "Second email pattern"
 `;
 
@@ -664,7 +697,16 @@ describe("PUT /api/settings/presidio", () => {
         body: "invalid json{{{",
       });
 
-      await expect(routeHandler(request)).rejects.toThrow();
+      const response = await routeHandler(request);
+      const body = await response.json();
+
+      // A malformed body is the client's fault, so the handler reports it as a
+      // structured 400 rather than throwing and letting the framework emit an
+      // opaque 500.
+      expect(response.status).toBe(400);
+      expect(body.success).toBe(false);
+      expect(body.error.code).toBe("VALIDATION_ERROR");
+      expect(body.error.message).toContain("Invalid JSON");
     });
   });
 

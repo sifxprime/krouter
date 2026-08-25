@@ -282,13 +282,57 @@ describe('debounce', () => {
 describe('usePresidioSettings hook', () => {
   let React;
 
+  /**
+   * Minimal hook harness.
+   *
+   * The real React runtime needs a renderer with a DOM, which this suite does not
+   * have (the vitest environment is "node"). These stubs keep hook state in slots
+   * so setters actually propagate between renders, and defer effects to a commit
+   * pass after the render returns — the two behaviours these tests depend on.
+   */
+  function renderHook(callback) {
+    const slots = [];
+    let cursor = 0;
+    let effects = [];
+
+    React.useState.mockImplementation((initial) => {
+      const slot = cursor++;
+      if (!(slot in slots)) {
+        slots[slot] = initial;
+      }
+      return [
+        slots[slot],
+        (value) => {
+          slots[slot] = typeof value === 'function' ? value(slots[slot]) : value;
+        },
+      ];
+    });
+    React.useCallback.mockImplementation((fn) => fn);
+    React.useEffect.mockImplementation((fn) => {
+      effects.push(fn);
+    });
+
+    const render = () => {
+      cursor = 0;
+      return callback();
+    };
+
+    const result = render();
+
+    // Commit phase: effects run after the render returns, as React does.
+    const queued = effects;
+    effects = [];
+    queued.forEach((fn) => fn());
+
+    return { result, rerender: render };
+  }
+
   beforeEach(() => {
     vi.clearAllMocks();
-    // Mock React
     React = require('react');
-    vi.spyOn(React, 'useState').mockImplementation((initial) => [initial, vi.fn()]);
-    vi.spyOn(React, 'useCallback').mockImplementation((fn) => fn);
-    vi.spyOn(React, 'useEffect').mockImplementation((fn) => fn());
+    vi.spyOn(React, 'useState');
+    vi.spyOn(React, 'useCallback');
+    vi.spyOn(React, 'useEffect');
   });
 
   afterEach(() => {
@@ -312,14 +356,22 @@ describe('usePresidioSettings hook', () => {
       json: async () => mockResponse,
     });
 
-    const { settings, isLoading } = usePresidioSettings({ autoFetch: true });
+    const { rerender } = renderHook(() => usePresidioSettings({ autoFetch: true }));
 
     expect(global.fetch).toHaveBeenCalled();
+
+    // Settings arrive once the fetch settles; re-render to read the committed state.
+    await vi.waitFor(() => expect(rerender().settings).not.toBeNull());
+
+    const { settings, isLoading } = rerender();
+
     expect(settings).toBeDefined();
+    expect(settings.enabled).toBe(true);
+    expect(isLoading).toBe(false);
   });
 
   it('should not auto-fetch when disabled', () => {
-    const { settings } = usePresidioSettings({ autoFetch: false });
+    const { result: { settings } } = renderHook(() => usePresidioSettings({ autoFetch: false }));
 
     expect(global.fetch).not.toHaveBeenCalled();
     expect(settings).toBeDefined();
@@ -328,7 +380,12 @@ describe('usePresidioSettings hook', () => {
   it('should handle fetch errors', async () => {
     global.fetch.mockRejectedValueOnce(new Error('Fetch failed'));
 
-    const { error } = usePresidioSettings({ autoFetch: true });
+    const { rerender } = renderHook(() => usePresidioSettings({ autoFetch: true }));
+
+    // The rejection is caught on a later microtask; re-render to read committed state.
+    await vi.waitFor(() => expect(rerender().error).not.toBeNull());
+
+    const { error } = rerender();
 
     expect(error).toBeDefined();
     expect(error.message).toBe('Fetch failed');

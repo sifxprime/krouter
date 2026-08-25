@@ -4,6 +4,8 @@
  * Provides typed functions to fetch and update Presidio configuration
  */
 
+import React from 'react';
+
 /**
  * Presidio settings data structure
  * @typedef {Object} PresidioSettings
@@ -22,6 +24,23 @@
  * @property {Object} data - Response data
  * @property {Object} [error] - Error object if request failed
  */
+
+/**
+ * Builds a human-readable message from an API error envelope.
+ *
+ * The settings API returns `{ code, message, details }`, where `message` is a
+ * generic category ("YAML structure validation failed") and `details` carries the
+ * actionable specifics ("Missing rules array"). Both are surfaced so the caller
+ * never loses the part that tells the user what to actually fix.
+ *
+ * @param {Object} [error] - Error envelope from the API
+ * @param {string} fallback - Message to use when the envelope carries nothing
+ * @returns {string} Combined error message
+ */
+function formatApiError(error, fallback) {
+  const parts = [error?.message, error?.details].filter(Boolean);
+  return parts.length > 0 ? parts.join(': ') : fallback;
+}
 
 /**
  * Fetches current Presidio settings from the API
@@ -44,13 +63,13 @@ export async function getPresidioSettings() {
 
   if (!response.ok) {
     const error = await response.json();
-    throw new Error(error.error?.message || `HTTP ${response.status}: ${response.statusText}`);
+    throw new Error(formatApiError(error?.error, `HTTP ${response.status}: ${response.statusText}`));
   }
 
   const result = await response.json();
   
   if (!result.success) {
-    throw new Error(result.error?.message || 'Failed to fetch Presidio settings');
+    throw new Error(formatApiError(result.error, 'Failed to fetch Presidio settings'));
   }
 
   return {
@@ -103,13 +122,13 @@ export async function updatePresidioSettings(config) {
 
   if (!response.ok) {
     const error = await response.json();
-    throw new Error(error.error?.message || `HTTP ${response.status}: ${response.statusText}`);
+    throw new Error(formatApiError(error?.error, `HTTP ${response.status}: ${response.statusText}`));
   }
 
   const result = await response.json();
   
   if (!result.success) {
-    throw new Error(result.error?.message || result.error?.details || 'Failed to update Presidio settings');
+    throw new Error(formatApiError(result.error, 'Failed to update Presidio settings'));
   }
 
   return {

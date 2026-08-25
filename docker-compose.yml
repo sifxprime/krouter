@@ -48,8 +48,18 @@ services:
       - PORT=20128
       - HOSTNAME=0.0.0.0
       - NEXT_TELEMETRY_DISABLED=1
-      # Security: Set initial password to avoid default password restriction
-      - INITIAL_PASSWORD=123456
+      # INITIAL_PASSWORD must be supplied by the operator; compose fails to start
+      # if it is unset. Do NOT hardcode a value here.
+      #
+      # v0.5.136 fixed a remote auth bypass: a caller who tried the public
+      # default "123456" received a valid dashboard JWT. That guard keys on
+      # `!storedHash && !process.env.INITIAL_PASSWORD`, so pinning
+      # INITIAL_PASSWORD=123456 satisfies the guard while keeping the password
+      # everyone already knows -- which re-opens the exact hole it closed.
+      #
+      # Set it in a .env beside this file, or export it before `docker compose up`:
+      #   KROUTER_INITIAL_PASSWORD=$(openssl rand -base64 24)
+      - INITIAL_PASSWORD=${KROUTER_INITIAL_PASSWORD:?set KROUTER_INITIAL_PASSWORD to a strong value}
     volumes:
       # Persist data
       - krouter-data:/app/data
