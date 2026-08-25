@@ -57,7 +57,7 @@ RUN mkdir -p /app/data && chown -R node:node /app && \
 
 # Fix permissions at runtime (handles mounted volumes)
 RUN apk --no-cache upgrade && apk --no-cache add su-exec && \
-  printf '#!/bin/sh\n# Initialize Presidio config on shared volume\nif [ -f /app/scripts/init-presidio-config.sh ]; then\n  /app/scripts/init-presidio-config.sh\nfi\n# Fix data directory permissions\nchown -R node:node /app/data /app/data-home 2>/dev/null\nexec su-exec node "$@"\n' > /entrypoint.sh && \
+  printf '#!/bin/sh\n# Initialize Presidio config on shared volume\nif [ -f /app/scripts/init-presidio-config.sh ]; then\n  /app/scripts/init-presidio-config.sh\nfi\n# Fix data directory and config permissions\nchown -R node:node /app/data /app/data-home /app/config 2>/dev/null\nexec su-exec node "$@"\n' > /entrypoint.sh && \
   chmod +x /entrypoint.sh
 
 EXPOSE 20128

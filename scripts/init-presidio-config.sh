@@ -1,10 +1,10 @@
-#!/bin/bash
+#!/bin/sh
 # Initialize Presidio configuration on shared volume
 # This script copies the default config to the shared volume on first startup
 
-set -euo pipefail
+set -eu
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 
 CONFIG_DIR="/app/config"

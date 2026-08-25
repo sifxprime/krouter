@@ -44,6 +44,7 @@ ENV PATH=/usr/local/bin:$PATH
 
 # Copy application files
 COPY sidecar.py .
+COPY hot_reload.py .
 COPY redaction_config.yaml .
 
 # Create directory for potential caching

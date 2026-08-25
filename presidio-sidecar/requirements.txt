@@ -21,5 +21,4 @@ pytest>=7.4.0
 pytest-asyncio>=0.21.0
 httpx>=0.25.0
 
-# Threading utilities for atomic operations
-threading
+# Threading utilities (built-in Python module, no package needed)

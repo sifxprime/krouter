@@ -5,6 +5,10 @@
  * extracts text from messages, sends them to the Presidio sidecar
  * for PII redaction, and modifies the request body before passing
  * it to the main handler.
+ *
+ * Redaction is only performed when BOTH of these are true:
+ * 1. The REDACTION_ENABLED environment variable is set (static config)
+ * 2. The presidioEnabled and presidioPiiRedaction toggles are true (dynamic settings)
  */
 
 /**
@@ -26,8 +30,39 @@ export function createRedactionMiddleware(options = {}) {
   } = options;
 
   return async function redactionMiddleware(request, handler) {
-    // Skip redaction if disabled
+    // Skip redaction if disabled via environment variable
     if (!enabled) {
+      return handler(request);
+    }
+
+    // Check dynamic settings - only redact if both toggles are enabled
+    try {
+      const { getSettings } = await import("@/lib/db/repos/settingsRepo.js");
+      const settings = await getSettings();
+
+      // Skip redaction if Presidio is disabled or PII redaction is disabled
+      if (!settings.presidioEnabled || !settings.presidioPiiRedaction) {
+        return handler(request);
+      }
+    } catch (error) {
+      // If we can't read settings, fail-closed for security
+      console.error("[Redaction Middleware] Failed to read settings:", error);
+      if (!failOpen) {
+        return new Response(
+          JSON.stringify({
+            error: {
+              message: "Unable to verify redaction settings",
+              code: "SETTINGS_ERROR",
+              type: "settings_error"
+            }
+          }),
+          {
+            status: 500,
+            headers: { "Content-Type": "application/json" }
+          }
+        );
+      }
+      // If failOpen is enabled, proceed with original request
       return handler(request);
     }
 
