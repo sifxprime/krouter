@@ -1,0 +1,74 @@
+version: '3.8'
+
+services:
+  # Presidio Redaction Sidecar
+  presidio-sidecar:
+    build:
+      context: ./presidio-sidecar
+      dockerfile: Dockerfile
+    container_name: krouter-presidio-sidecar
+    ports:
+      - "5001:5001"
+    volumes:
+      # Mount config file for easy customization
+      - ./presidio-sidecar/redaction_config.yaml:/app/redaction_config.yaml:ro
+    environment:
+      # Python optimizations
+      - PYTHONUNBUFFERED=1
+      - PYTHONDONTWRITEBYTECODE=1
+      - PYTHONPATH=/app
+    networks:
+      - krouter-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5001/health').read()"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  # kRouter with redaction middleware
+  krouter:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: krouter
+    ports:
+      - "20128:20128"
+    environment:
+      # Redaction middleware configuration
+      - SIDECAR_URL=http://presidio-sidecar:5001/redact
+      - REDACTION_ENABLED=true
+      # kRouter configuration
+      - NODE_ENV=production
+      - PORT=20128
+      - HOSTNAME=0.0.0.0
+      - NEXT_TELEMETRY_DISABLED=1
+      # Security: Set initial password to avoid default password restriction
+      - INITIAL_PASSWORD=123456
+    volumes:
+      # Persist data
+      - krouter-data:/app/data
+      - krouter-data-home:/app/data-home
+    networks:
+      - krouter-network
+    depends_on:
+      presidio-sidecar:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:20128/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+networks:
+  krouter-network:
+    driver: bridge
+
+volumes:
+  krouter-data:
+    driver: local
+  krouter-data-home:
+    driver: local
