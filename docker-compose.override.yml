@@ -1,0 +1,29 @@
+# Development override for docker-compose
+# Use this for local development with hot reloading and debug settings
+
+version: '3.8'
+
+services:
+  presidio-sidecar:
+    build:
+      context: ./presidio-sidecar
+      dockerfile: Dockerfile
+    environment:
+      # Enable debug logging
+      - PYTHONUNBUFFERED=1
+      - LOG_LEVEL=debug
+    # Mount source for development (optional, for Python development)
+    # volumes:
+    #   - ./presidio-sidecar/sidecar.py:/app/sidecar.py
+    command: python -m uvicorn sidecar:app --host 0.0.0.0 --port 5001 --reload
+
+  krouter:
+    environment:
+      # Development settings
+      - NODE_ENV=development
+      - REDACTION_ENABLED=true  # Can set to false to bypass redaction during dev
+    # Uncomment to enable Next.js dev mode with hot reload
+    # command: npm run dev
+    # volumes:
+    #   - ./src:/app/src
+    #   - ./public:/app/public

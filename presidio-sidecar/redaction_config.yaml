@@ -1,0 +1,54 @@
+# Redaction Configuration for Presidio Sidecar
+# Defines custom regex patterns for structured PII detection
+# These patterns are loaded into Presidio and run alongside ML models
+
+rules:
+  # OpenAI API Keys - format: sk-{32+ alphanumeric chars}
+  - entity: "OPENAI_KEY"
+    pattern: "(?i)sk-[a-zA-Z0-9]{32,}"
+    description: "Detects OpenAI API key format"
+
+  # Credit Card Numbers - 13-16 digits, with optional spaces/hyphens
+  - entity: "CREDIT_CARD"
+    pattern: "\\b(?:\\d[ -]*?){13,16}\\b"
+    description: "Detects credit card number patterns"
+
+  # Internal User IDs - format: USR-12345
+  - entity: "INTERNAL_ID"
+    pattern: "USR-[0-9]{5}"
+    description: "Detects internal system user IDs"
+
+  # API Tokens - generic format
+  - entity: "API_TOKEN"
+    pattern: "(?i)Bearer\\s+[a-zA-Z0-9_\\-\\.]{20,}"
+    description: "Detects Bearer token format"
+
+  # Email addresses (fallback regex, Presidio ML handles most)
+  - entity: "EMAIL_REGEX"
+    pattern: "\\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Z|a-z]{2,}\\b"
+    description: "Regex fallback for email addresses"
+
+  # Phone numbers - US format with various separators
+  - entity: "PHONE_US"
+    pattern: "\\(?(\\d{3})\\)?[\\s-]?\\d{3}[\\s-]?\\d{4}"
+    description: "Detects US phone number formats"
+
+  # AWS Access Key ID
+  - entity: "AWS_ACCESS_KEY"
+    pattern: "(?i)AKIA[0-9A-Z]{16}"
+    description: "Detects AWS access key ID format"
+
+  # GitHub Personal Access Token
+  - entity: "GITHUB_TOKEN"
+    pattern: "(?i)ghp_[a-zA-Z0-9]{36}"
+    description: "Detects GitHub personal access tokens"
+
+  # Slack Webhook URL
+  - entity: "SLACK_WEBHOOK"
+    pattern: "(?i)https://hooks\\.slack\\.com/services/[A-Z0-9]{9}/[A-Z0-9]{9}/[A-Za-z0-9]{24}"
+    description: "Detects Slack webhook URLs"
+
+  # IP Address (IPv4)
+  - entity: "IP_ADDRESS"
+    pattern: "\\b(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\\b"
+    description: "Detects IPv4 addresses"

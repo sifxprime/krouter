@@ -30,7 +30,11 @@ COPY --from=builder /app/public ./public
 COPY --from=builder /app/.next/static ./.next/static
 COPY --from=builder /app/.next/standalone ./
 COPY --from=builder /app/custom-server.js ./custom-server.js
+COPY --from=builder /app/server-peer-patch.js ./server-peer-patch.js
 COPY --from=builder /app/open-sse ./open-sse
+# Copy Presidio config and init script
+COPY --from=builder /app/presidio-sidecar/redaction_config.yaml ./presidio-sidecar/redaction_config.yaml
+COPY --from=builder /app/scripts/init-presidio-config.sh ./scripts/init-presidio-config.sh
 # Next file tracing can omit sibling files; MITM runs server.js as a separate process.
 COPY --from=builder /app/src/mitm ./src/mitm
 # dns/dnsConfig.js requires this from outside src/mitm. It is not reachable from
@@ -53,7 +57,7 @@ RUN mkdir -p /app/data && chown -R node:node /app && \
 
 # Fix permissions at runtime (handles mounted volumes)
 RUN apk --no-cache upgrade && apk --no-cache add su-exec && \
-  printf '#!/bin/sh\nchown -R node:node /app/data /app/data-home 2>/dev/null\nexec su-exec node "$@"\n' > /entrypoint.sh && \
+  printf '#!/bin/sh\n# Presidio config init runs ONLY when the sidecar deployment is in use.\n# docker-compose sets PRESIDIO_CONFIG_PATH for that setup; without it this\n# image behaves exactly as it did before the feature was added, instead of\n# running an extra root-owned script on every start for every user.\nif [ -n "$PRESIDIO_CONFIG_PATH" ] && [ -f /app/scripts/init-presidio-config.sh ]; then\n  /app/scripts/init-presidio-config.sh || echo "[entrypoint] presidio config init failed, continuing"\n  chown -R node:node /app/config 2>/dev/null\nfi\nchown -R node:node /app/data /app/data-home 2>/dev/null\nexec su-exec node "$@"\n' > /entrypoint.sh && \
   chmod +x /entrypoint.sh
 
 EXPOSE 20128

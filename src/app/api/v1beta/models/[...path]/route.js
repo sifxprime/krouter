@@ -1,7 +1,9 @@
 import { handleChat } from "@/sse/handlers/chat.js";
 import { initTranslators } from "open-sse/translator/index.js";
+import { createRedactionMiddleware } from "@/middleware/redaction/middleware.js";
 
 let initialized = false;
+let redactionMiddleware = null;
 
 /**
  * Initialize translators once
@@ -9,6 +11,11 @@ let initialized = false;
 async function ensureInitialized() {
   if (!initialized) {
     await initTranslators();
+    // Initialize redaction middleware for internal use
+    redactionMiddleware = createRedactionMiddleware({
+      sidecarUrl: process.env.SIDECAR_URL || "http://presidio-sidecar:5001/redact",
+      enabled: process.env.REDACTION_ENABLED !== "false",
+    });
     initialized = true;
   }
 }
@@ -37,6 +44,8 @@ export async function OPTIONS() {
  * The @google/genai SDK always uses :streamGenerateContent?alt=sse for chat.
  * The upstream handleChat returns OpenAI SSE format; we transform it to
  * Gemini SSE format on the fly via transformOpenAISSEToGeminiSSE().
+ *
+ * Note: PII redaction is applied internally after format conversion.
  */
 export async function POST(request, { params }) {
   await ensureInitialized();
@@ -87,7 +96,23 @@ export async function POST(request, { params }) {
       body: JSON.stringify(convertedBody),
     });
 
-    const response = await handleChat(newRequest);
+    // Apply redaction middleware to the converted request.
+    //
+    // This route cannot use withRedaction() like the other five, because the
+    // Gemini -> OpenAI conversion has to happen first and redaction applies to
+    // the CONVERTED body. So the middleware is called imperatively with an
+    // identity handler, which returns the redacted Request on success.
+    //
+    // On every fail-closed path it returns a Response instead. Passing that to
+    // handleChat() -- which expects a Request -- silently defeated the
+    // fail-closed guarantee on this endpoint: the rejection never reached the
+    // client. Forward it directly.
+    const redacted = await redactionMiddleware(newRequest, (req) => req);
+    if (redacted instanceof Response) {
+      return redacted;
+    }
+
+    const response = await handleChat(redacted);
 
     if (stream) {
       // Transform OpenAI SSE => Gemini SSE on the fly.

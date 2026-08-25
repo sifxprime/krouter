@@ -1,0 +1,92 @@
+version: '3.8'
+
+services:
+  # Presidio Redaction Sidecar
+  presidio-sidecar:
+    build:
+      context: ./presidio-sidecar
+      dockerfile: Dockerfile
+    container_name: krouter-presidio-sidecar
+    ports:
+      - "5001:5001"
+    volumes:
+      # Shared volume for config file (read-only for sidecar)
+      - presidio-config:/app/config:ro
+    environment:
+      # Python optimizations
+      - PYTHONUNBUFFERED=1
+      - PYTHONDONTWRITEBYTECODE=1
+      - PYTHONPATH=/app
+      # Config file path
+      - PRESIDIO_CONFIG_PATH=/app/config/redaction_config.yaml
+    networks:
+      - krouter-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5001/health').read()"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  # kRouter with redaction middleware
+  krouter:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: krouter
+    ports:
+      - "20128:20128"
+    environment:
+      # Redaction middleware configuration
+      - SIDECAR_URL=http://presidio-sidecar:5001/redact
+      - REDACTION_ENABLED=true
+      # Presidio config file path (on shared volume)
+      - PRESIDIO_CONFIG_PATH=/app/config/redaction_config.yaml
+      # kRouter configuration
+      - NODE_ENV=production
+      - PORT=20128
+      - HOSTNAME=0.0.0.0
+      - NEXT_TELEMETRY_DISABLED=1
+      # INITIAL_PASSWORD must be supplied by the operator; compose fails to start
+      # if it is unset. Do NOT hardcode a value here.
+      #
+      # v0.5.136 fixed a remote auth bypass: a caller who tried the public
+      # default "123456" received a valid dashboard JWT. That guard keys on
+      # `!storedHash && !process.env.INITIAL_PASSWORD`, so pinning
+      # INITIAL_PASSWORD=123456 satisfies the guard while keeping the password
+      # everyone already knows -- which re-opens the exact hole it closed.
+      #
+      # Set it in a .env beside this file, or export it before `docker compose up`:
+      #   KROUTER_INITIAL_PASSWORD=$(openssl rand -base64 24)
+      - INITIAL_PASSWORD=${KROUTER_INITIAL_PASSWORD:?set KROUTER_INITIAL_PASSWORD to a strong value}
+    volumes:
+      # Persist data
+      - krouter-data:/app/data
+      - krouter-data-home:/app/data-home
+      # Shared volume for config file (read-write for kRouter)
+      - presidio-config:/app/config
+    networks:
+      - krouter-network
+    depends_on:
+      presidio-sidecar:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://127.0.0.1:20128/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+networks:
+  krouter-network:
+    driver: bridge
+
+volumes:
+  krouter-data:
+    driver: local
+  krouter-data-home:
+    driver: local
+  presidio-config:
+    driver: local
