@@ -66,6 +66,16 @@ docker run -d \
   sifxprime/krouter:latest
 ```
 
+#### With PII Redaction (Presidio)
+
+To enable automatic PII redaction before sending requests to AI providers:
+
+```bash
+docker-compose up -d
+```
+
+See [docs/REDACTION_SETUP.md](docs/REDACTION_SETUP.md) for full configuration and customization options.
+
 Then open **[http://localhost:20128/dashboard](http://localhost:20128/dashboard)**.
 
 ---
@@ -120,6 +130,206 @@ If one provider fails, kRouter instantly falls back through your entire pre-rank
 
 ---
 
+## 🔒 PII Redaction with Presidio
+
+kRouter includes optional PII (Personally Identifiable Information) redaction using Microsoft Presidio, protecting your sensitive data before it reaches AI providers.
+
+### What Gets Redacted
+
+**Built-in ML Detection:**
+- Names (PERSON)
+- Email addresses (EMAIL_ADDRESS)
+- Phone numbers (PHONE_NUMBER)
+- Locations and addresses (LOCATION, GPE)
+- Organizations (ORG)
+- Credit card numbers (CREDIT_CARD)
+- IP addresses (IP_ADDRESS)
+- URLs (URL)
+- Social Security Numbers
+- Dates and more...
+
+**Custom Regex Patterns:**
+- OpenAI API keys (`sk-proj-*`)
+- GitHub personal access tokens
+- AWS access keys
+- Slack webhook URLs
+- Internal IDs and custom patterns
+
+### How It Works
+
+```
+┌─────────────┐
+│  Your CLI   │  Input: "My name is John Doe, email: john@company.com"
+│   Tool      │
+└──────┬──────┘
+       │
+       ↓
+┌─────────────────────────────────────────────┐
+│         kRouter Redaction Middleware       │
+│  1. Extract text from messages             │
+│  2. Send to Presidio sidecar               │
+│  3. Receive redacted text                  │
+│  4. Replace in request body                │
+└──────┬──────────────────────────────────────┘
+       │
+       ↓
+  Output: "My name is <PERSON>, email: <EMAIL>"
+       │
+       ↓
+┌─────────────────────────────────────────────┐
+│           AI Provider                       │
+│  (Never sees actual PII)                   │
+└─────────────────────────────────────────────┘
+```
+
+### Security: Fail-Closed by Default
+
+**When redaction fails, requests are REJECTED** — not sent unredacted:
+
+| Scenario | Behavior | Status Code |
+|----------|----------|-------------|
+| Sidecar timeout | Request rejected | 503 Service Unavailable |
+| Sidecar down | Request rejected | 503 Service Unavailable |
+| Sidecar error | Request rejected | 502 Bad Gateway |
+| Invalid response | Request rejected | 502 Bad Gateway |
+
+This ensures PII is never accidentally sent to AI providers when the redaction service is unavailable.
+
+> ⚠️ **Important:** For production use, monitor redaction failures and set up alerts. See [Troubleshooting](#troubleshooting-presidio).
+
+### Quick Start (Docker)
+
+```bash
+# Start kRouter with Presidio sidecar
+docker-compose up -d
+
+# Open dashboard
+open http://localhost:20128/dashboard
+```
+
+The Presidio sidecar runs in a separate container and communicates with kRouter over the Docker network.
+
+### Configuration
+
+Enable and configure PII redaction in the dashboard:
+
+1. Go to **Dashboard → Settings → Presidio**
+2. Toggle **Presidio Sidecar** to enable
+3. Toggle **PII Redaction** to activate
+4. (Optional) Toggle **Custom Regex Patterns** and edit YAML
+
+#### Example Custom Regex YAML
+
+```yaml
+rules:
+  - entity: "INTERNAL_ID"
+    pattern: "USER-[0-9]{6}"
+    description: "Internal user ID format"
+
+  - entity: "PROJECT_KEY"
+    pattern: "PROJ_[A-Z]{3}-[0-9]{4}"
+    description: "Project identifier"
+
+  - entity: "DEPLOY_TOKEN"
+    pattern: "glpat-[a-zA-Z0-9_-]{20}"
+    description: "GitLab deployment token"
+```
+
+### Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `REDACTION_ENABLED` | `true` | Enable/disable redaction middleware |
+| `REDACTION_FAIL_OPEN` | `false` | **⚠️ SECURITY:** If true, allow requests on redaction failure (not recommended) |
+| `SIDECAR_URL` | `http://presidio-sidecar:5001/redact` | Presidio sidecar endpoint |
+| `PRESIDIO_CONFIG_PATH` | `/app/redaction_config.yaml` | Path to custom regex YAML config |
+
+> 🔒 **Security Note:** Never set `REDACTION_FAIL_OPEN=true` in production unless you have a specific reason and understand the security implications.
+
+### Testing Redaction
+
+```bash
+# Test the sidecar directly
+curl -X POST http://localhost:5001/redact \
+  -H "Content-Type: application/json" \
+  -d '{
+    "texts": [
+      "Contact John Doe at john.doe@example.com or 555-123-4567",
+      "OpenAI key: sk-proj-abc123def456ghi789jkl"
+    ]
+  }'
+
+# Response:
+# {
+#   "redacted_texts": [
+#     "Contact <PERSON> at <EMAIL_ADDRESS> or <PHONE_NUMBER>",
+#     "OpenAI key: <OPENAI_KEY>"
+#   ]
+# }
+```
+
+### Performance
+
+- **Latency:** < 2ms per request (within Docker network)
+- **Overhead:** Minimal, typically < 10ms end-to-end
+- **Scalability:** Concurrent processing with Uvicorn workers
+
+### Troubleshooting Presidio
+
+**Redaction failures appear as 503 errors:**
+
+```bash
+# Check sidecar status
+docker-compose ps presidio-sidecar
+
+# Check sidecar logs
+docker-compose logs presidio-sidecar
+
+# Check kRouter redaction logs
+docker-compose logs krouter | grep redaction
+```
+
+**Sidecar won't start:**
+
+```bash
+# Check if port 5001 is in use
+lsof -i :5001
+
+# Rebuild the sidecar container
+docker-compose build presidio-sidecar
+docker-compose up -d presidio-sidecar
+```
+
+**Redaction not working:**
+
+1. Verify Presidio toggles are enabled in Dashboard → Settings → Presidio
+2. Check that `REDACTION_ENABLED=true` in docker-compose.yml
+3. Ensure sidecar is healthy: `curl http://localhost:5001/health`
+4. Check kRouter logs for errors
+
+**High false positive rate:**
+
+- Add custom patterns to YAML config in Dashboard → Settings → Presidio
+- Review and refine regex patterns
+- Test patterns using the sidecar API directly
+
+### Security Best Practices
+
+1. **Never disable fail-closed in production** — Keep `REDACTION_FAIL_OPEN=false`
+2. **Monitor redaction failures** — Set up alerts on 503/502 errors
+3. **Review custom regex patterns** — Ensure they're specific and don't match valid content
+4. **Keep sidecar updated** — Pull latest image for security patches
+5. **Use dedicated network** — Isolate redaction traffic when possible
+
+### Customization
+
+For advanced customization, see:
+- **Full configuration guide:** [docs/REDACTION_SETUP.md](docs/REDACTION_SETUP.md)
+- **Pattern examples:** [presidio-sidecar/README.md](presidio-sidecar/README.md)
+- **Security considerations:** [docs/REDACTION_FAIL_CLOSED.md](docs/REDACTION_FAIL_CLOSED.md)
+
+---
+
 ## 💡 Features
 
 | Feature | What It Does | Why It Matters |
@@ -134,6 +344,7 @@ If one provider fails, kRouter instantly falls back through your entire pre-rank
 | 🎨 **Custom Combos** | Unlimited model combinations with per-combo strategies | Tailor fallback to your workflow |
 | 🖥️ **System Tray** | Runs quietly in background with tray icon | Set-and-forget deployment |
 | 🐳 **Deploy Anywhere** | Localhost · VPS · Docker · Cloudflare Workers | Wherever you need it |
+| 🔒 **PII Redaction** | Auto-redact sensitive data (emails, phones, API keys) using Microsoft Presidio | Protect privacy before sending to AI providers |
 
 📖 **Full feature guide with screenshots → [krouter.kodelyht.com](https://krouter.kodelyht.com)**
 

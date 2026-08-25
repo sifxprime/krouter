@@ -6,8 +6,10 @@
 - Sidecar call with proper request format
 - Redacted text injection back into request
 - Empty/invalid input handling
-- Error handling and fail-open behavior
+- Error handling and fail-CLOSED behavior (default for security)
+- Error handling and fail-OPEN behavior (for compatibility/testing)
 - Environment variable configuration
+- Structured error responses
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
@@ -15,6 +17,15 @@ import { createRedactionMiddleware, withRedaction } from "../middleware.js";
 
 // Mock fetch globally
 global.fetch = vi.fn();
+
+// Mock settings repository
+vi.mock("@/lib/db/repos/settingsRepo.js", () => ({
+  getSettings: vi.fn().mockResolvedValue({
+    presidioEnabled: true,
+    presidioPiiRedaction: true,
+    presidioCustomRegex: false,
+  }),
+}));
 
 describe("createRedactionMiddleware", () => {
   beforeEach(() => {
@@ -295,11 +306,12 @@ describe("createRedactionMiddleware", () => {
     });
   });
 
-  describe("error handling", () => {
-    it("should fail open when sidecar returns error", async () => {
-      const mockHandler = vi.fn().mockResolvedValue(new Response("OK"));
+  describe("error handling - fail-closed (default)", () => {
+    it("should fail closed when sidecar returns error", async () => {
+      const mockHandler = vi.fn();
       const middleware = createRedactionMiddleware({
         sidecarUrl: "http://test:5001/redact",
+        failOpen: false, // Default, explicit for clarity
       });
 
       global.fetch.mockResolvedValueOnce({
@@ -319,17 +331,23 @@ describe("createRedactionMiddleware", () => {
 
       const result = await middleware(request, mockHandler);
 
-      expect(mockHandler).toHaveBeenCalled();
+      // Should NOT call handler (fail-closed)
+      expect(mockHandler).not.toHaveBeenCalled();
       expect(result).toBeInstanceOf(Response);
+      expect(result.status).toBe(502); // Bad Gateway - service error
     });
 
-    it("should fail open when sidecar is unreachable", async () => {
-      const mockHandler = vi.fn().mockResolvedValue(new Response("OK"));
+    it("should fail closed when sidecar is unreachable", async () => {
+      const mockHandler = vi.fn();
       const middleware = createRedactionMiddleware({
         sidecarUrl: "http://test:5001/redact",
+        failOpen: false,
       });
 
-      global.fetch.mockRejectedValueOnce(new Error("Network error"));
+      // Simulate ECONNREFUSED error
+      const error = new Error("fetch failed");
+      error.name = "TypeError";
+      global.fetch.mockRejectedValueOnce(error);
 
       const body = {
         messages: [{ role: "user", content: "My email is john@example.com" }],
@@ -343,24 +361,23 @@ describe("createRedactionMiddleware", () => {
 
       const result = await middleware(request, mockHandler);
 
-      expect(mockHandler).toHaveBeenCalled();
+      expect(mockHandler).not.toHaveBeenCalled();
       expect(result).toBeInstanceOf(Response);
+      expect(result.status).toBe(503); // Service Unavailable
     });
 
-    it("should fail open when sidecar times out", async () => {
-      const mockHandler = vi.fn().mockResolvedValue(new Response("OK"));
+    it("should fail closed when sidecar times out", async () => {
+      const mockHandler = vi.fn();
       const middleware = createRedactionMiddleware({
         sidecarUrl: "http://test:5001/redact",
         timeout: 100,
+        failOpen: false,
       });
 
-      // Simulate timeout by never resolving
-      global.fetch.mockImplementationOnce(
-        () =>
-          new Promise((resolve) => {
-            setTimeout(() => resolve({ ok: true, json: async () => ({ redacted_texts: ["test"] }) }), 500);
-          })
-      );
+      // Simulate timeout - fetch throws AbortError when aborted
+      const abortError = new Error("The operation was aborted");
+      abortError.name = "AbortError";
+      global.fetch.mockRejectedValueOnce(abortError);
 
       const body = {
         messages: [{ role: "user", content: "My email is john@example.com" }],
@@ -374,14 +391,16 @@ describe("createRedactionMiddleware", () => {
 
       const result = await middleware(request, mockHandler);
 
-      expect(mockHandler).toHaveBeenCalled();
+      expect(mockHandler).not.toHaveBeenCalled();
       expect(result).toBeInstanceOf(Response);
+      expect(result.status).toBe(503); // Service Unavailable - timeout
     });
 
-    it("should fail open when response has invalid format", async () => {
-      const mockHandler = vi.fn().mockResolvedValue(new Response("OK"));
+    it("should fail closed when response has invalid format", async () => {
+      const mockHandler = vi.fn();
       const middleware = createRedactionMiddleware({
         sidecarUrl: "http://test:5001/redact",
+        failOpen: false,
       });
 
       global.fetch.mockResolvedValueOnce({
@@ -401,14 +420,16 @@ describe("createRedactionMiddleware", () => {
 
       const result = await middleware(request, mockHandler);
 
-      expect(mockHandler).toHaveBeenCalled();
+      expect(mockHandler).not.toHaveBeenCalled();
       expect(result).toBeInstanceOf(Response);
+      expect(result.status).toBe(502); // Bad Gateway - invalid response
     });
 
-    it("should fail open when sidecar returns wrong number of texts", async () => {
-      const mockHandler = vi.fn().mockResolvedValue(new Response("OK"));
+    it("should fail closed when sidecar returns wrong number of texts", async () => {
+      const mockHandler = vi.fn();
       const middleware = createRedactionMiddleware({
         sidecarUrl: "http://test:5001/redact",
+        failOpen: false,
       });
 
       // Return 2 texts when we sent 1
@@ -429,6 +450,63 @@ describe("createRedactionMiddleware", () => {
 
       const result = await middleware(request, mockHandler);
 
+      expect(mockHandler).not.toHaveBeenCalled();
+      expect(result).toBeInstanceOf(Response);
+      expect(result.status).toBe(502); // Bad Gateway - invalid response
+    });
+
+    it("should return structured error response", async () => {
+      const mockHandler = vi.fn();
+      const middleware = createRedactionMiddleware({
+        sidecarUrl: "http://test:5001/redact",
+        failOpen: false,
+      });
+
+      global.fetch.mockRejectedValueOnce(new Error("Network error"));
+
+      const body = {
+        messages: [{ role: "user", content: "My email is john@example.com" }],
+      };
+
+      const request = new Request("http://test", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+
+      const result = await middleware(request, mockHandler);
+      const responseData = await result.json();
+
+      expect(responseData).toHaveProperty("error");
+      expect(responseData.error).toHaveProperty("message");
+      expect(responseData.error).toHaveProperty("code");
+      expect(responseData.error).toHaveProperty("type");
+    });
+  });
+
+  describe("error handling - fail-open (for compatibility)", () => {
+    it("should fail open when configured", async () => {
+      const mockHandler = vi.fn().mockResolvedValue(new Response("OK"));
+      const middleware = createRedactionMiddleware({
+        sidecarUrl: "http://test:5001/redact",
+        failOpen: true, // Explicitly enable fail-open
+      });
+
+      global.fetch.mockRejectedValueOnce(new Error("Network error"));
+
+      const body = {
+        messages: [{ role: "user", content: "My email is john@example.com" }],
+      };
+
+      const request = new Request("http://test", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+
+      const result = await middleware(request, mockHandler);
+
+      // Should call handler (fail-open)
       expect(mockHandler).toHaveBeenCalled();
       expect(result).toBeInstanceOf(Response);
     });

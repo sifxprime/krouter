@@ -156,11 +156,21 @@ export function createRedactionMiddleware(options = {}) {
         statusCode = 503;
         errorType = "redaction_timeout";
         userMessage = "PII redaction service unavailable. Please try again later.";
-      } else if (error.message.includes('fetch') || error.message.includes('ECONNREFUSED') || error.message.includes('ENOTFOUND')) {
+      } else if (
+        error.message.includes('fetch') ||
+        error.message.includes('ECONNREFUSED') ||
+        error.message.includes('ENOTFOUND') ||
+        error.message.includes('ECONNRESET') ||
+        error.name === 'TypeError' && error.message.includes('fetch')
+      ) {
         statusCode = 503;
         errorType = "redaction_service_unavailable";
         userMessage = "PII redaction service unavailable. Please try again later.";
-      } else if (error.message.includes('redact') || error.message.includes('sidecar')) {
+      } else if (
+        error.message.includes('redact') ||
+        error.message.includes('sidecar') ||
+        error.message.includes('HTTP 5')
+      ) {
         statusCode = 502;
         errorType = "redaction_service_error";
         userMessage = "PII redaction service error. Please try again later.";
@@ -225,17 +235,17 @@ async function callSidecar(url, texts, { timeout = 2000 } = {}) {
     });
 
     if (!response.ok) {
-      throw new Error(`Sidecar returned ${response.status}`);
+      throw new Error(`Sidecar redaction service error: HTTP ${response.status}`);
     }
 
     const data = await response.json();
 
     if (!data.redacted_texts || !Array.isArray(data.redacted_texts)) {
-      throw new Error("Invalid response from sidecar");
+      throw new Error("Sidecar redaction service returned invalid response");
     }
 
     if (data.redacted_texts.length !== texts.length) {
-      throw new Error("Sidecar returned wrong number of redacted texts");
+      throw new Error("Sidecar redaction service returned wrong number of redacted texts");
     }
 
     return data.redacted_texts;
