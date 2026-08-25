@@ -364,7 +364,13 @@ class ReloadOrchestrator:
             last_reload_str = datetime.datetime.fromtimestamp(self.last_reload_time).isoformat()
         
         return {
-            "status": "reloading" if not self._reload_lock.acquire(blocking=False) else "idle",
+            # locked() inspects without taking the lock. The original used
+            # acquire(blocking=False), which returns True when the lock is FREE
+            # -- and having acquired it, never released it. One status call
+            # therefore held _reload_lock forever and every subsequent reload
+            # bailed at the acquire() in reload_config(), silently killing
+            # hot-reload for the life of the process.
+            "status": "reloading" if self._reload_lock.locked() else "idle",
             "last_reload_at": last_reload_str,
             "last_reload_success": self.last_reload_success,
             "last_reload_error": self.last_reload_error,

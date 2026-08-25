@@ -45,7 +45,11 @@ export function invalidateRedactionSettingsCache() {
 export function createRedactionMiddleware(options = {}) {
   const {
     sidecarUrl = process.env.SIDECAR_URL || "http://presidio-sidecar:5001/redact",
-    timeout = 2000,
+    // Presidio analyses each text in a serial spaCy loop, so the time scales
+    // with total conversation size, not request count. A fixed 2s ceiling meant
+    // enabling redaction 503'd any large-context client. Overridable, and the
+    // default is generous enough to survive a long thread.
+    timeout = Number(process.env.REDACTION_TIMEOUT_MS) || 15000,
     enabled = process.env.REDACTION_ENABLED !== "false",
     failOpen = process.env.REDACTION_FAIL_OPEN === "true", // Default to fail-closed for security
   } = options;
