@@ -278,58 +278,92 @@ function killAllAppProcesses(appPort) {
       if (platform === "win32") {
         // Windows: use WMI to get full CommandLine (tasklist /V doesn't include it)
         try {
-          const psCmd = `powershell -NonInteractive -WindowStyle Hidden -Command "Get-WmiObject Win32_Process -Filter 'Name=\\"node.exe\\"' | Select-Object ProcessId,CommandLine | ConvertTo-Csv -NoTypeInformation"`;
+          // Same ancestry rule as the POSIX branch below: a bare "next-server" match
+          // would take down every Next server on the machine, our own being
+          // indistinguishable from anyone else's by command line.
+          const psCmd = `powershell -NonInteractive -WindowStyle Hidden -Command "Get-WmiObject Win32_Process -Filter 'Name=\\"node.exe\\"' | Select-Object ProcessId,ParentProcessId,CommandLine | ConvertTo-Csv -NoTypeInformation"`;
           const output = execSync(psCmd, {
             encoding: "utf8",
             windowsHide: true,
             timeout: 5000
           });
-          const lines = output.split("\n").slice(1).filter(l => l.trim());
-          lines.forEach(line => {
-            // Whitelist: real node process running krouter cli.js, or next-server.
-            // Avoids killing editors/grep/strace/cursor that just incidentally match the name.
-            const cmd = line.toLowerCase();
-            const hasAppName = cmd.includes("krouter");
-            const hasAppPath = cmd.includes("cli.js") || cmd.includes("\\krouter") || cmd.includes("/krouter");
-            const isAppProcess =
-              (cmd.includes("node") && hasAppName && hasAppPath)
-              || cmd.includes("next-server");
-            if (isAppProcess) {
-              const match = line.match(/^"(\d+)"/);
-              if (match && match[1] && match[1] !== process.pid.toString()) {
-                pids.push(match[1]);
-              }
+          const rows = output.split("\n").slice(1).filter(l => l.trim()).map(line => {
+            const m = line.match(/^"(\d+)","(\d+)",(.*)$/);
+            return m ? { pid: m[1], ppid: m[2], cmd: (m[3] || "").toLowerCase() } : null;
+          }).filter(Boolean);
+
+          // Same rule as the POSIX branch: the invoked script, not any mention of it.
+          const isCliInvocation = (cmd) =>
+            /(^|[\s"'])[^\s"']*[\/\\]krouter[\/\\]cli\.js(\s|$|["'])/i.test(cmd) ||
+            /(^|[\s"'])[^\s"']*[\/\\]\.bin[\/\\]krouter(\s|$|["'])/i.test(cmd);
+          const roots = new Set(rows.filter(r => isCliInvocation(r.cmd)).map(r => r.pid));
+          const byParent = new Map();
+          for (const r of rows) {
+            if (!byParent.has(r.ppid)) byParent.set(r.ppid, []);
+            byParent.get(r.ppid).push(r.pid);
+          }
+          const doomed = new Set(roots);
+          const queue = [...roots];
+          while (queue.length) {
+            for (const child of byParent.get(queue.shift()) || []) {
+              if (!doomed.has(child)) { doomed.add(child); queue.push(child); }
             }
-          });
+          }
+          for (const pid of doomed) {
+            if (pid !== process.pid.toString()) pids.push(pid);
+          }
         } catch (e) {
           // No processes found or error - continue
         }
       } else {
-        // macOS/Linux: use ps to find all matching processes
+        // macOS/Linux. Identify our own processes by ancestry, never by name.
+        //
+        // Next renames its server process to a bare "next-server (v16.3.1)" -- no path,
+        // no project, nothing tying it to an app. Matching that string killed every
+        // Next server on the machine, so starting kRouter SIGKILLed a developer's
+        // unrelated dev server. The whitelist above it could not help: our own server
+        // matches by that string and nothing else, so the two are indistinguishable
+        // from the command line alone. Ancestry is the only thing that separates them.
         try {
-          const output = execSync('ps aux 2>/dev/null', {
+          const output = execSync('ps -Ao pid,ppid,command 2>/dev/null', {
             encoding: 'utf8',
             timeout: 5000
           });
-          const lines = output.split('\n');
+          const rows = output.split('\n').slice(1)
+            .map(l => l.trim().match(/^(\d+)\s+(\d+)\s+(.*)$/))
+            .filter(Boolean)
+            .map(m => ({ pid: m[1], ppid: m[2], cmd: m[3].toLowerCase() }));
 
-          lines.forEach(line => {
-            // Whitelist: real node process running krouter cli.js, or next-server.
-            // Avoids killing grep/strace/editors/cursor that incidentally match the name.
-            const cmd = line.toLowerCase();
-            const hasAppName = cmd.includes("krouter");
-            const hasAppPath = cmd.includes("cli.js") || cmd.includes("/krouter");
-            const isAppProcess =
-              (cmd.includes("node") && hasAppName && hasAppPath)
-              || cmd.includes("next-server");
-            if (isAppProcess) {
-              const parts = line.trim().split(/\s+/);
-              const pid = parts[1];
-              if (pid && !isNaN(pid) && pid !== process.pid.toString()) {
-                pids.push(pid);
-              }
+          // Roots: node processes whose *invoked script* is this CLI. Testing for
+          // "krouter" anywhere in the command line would promote any process that
+          // merely mentions the app -- a grep, an editor, a script taking the path as
+          // an argument -- into a root, and every descendant of a root is killed.
+          // Match the argv[1] path instead.
+          const isCliInvocation = (cmd) =>
+            /(^|[\s"'])[^\s"']*[\/\\]krouter[\/\\]cli\.js(\s|$|["'])/i.test(cmd) ||
+            /(^|[\s"'])[^\s"']*[\/\\]\.bin[\/\\]krouter(\s|$|["'])/i.test(cmd);
+          const roots = new Set(
+            rows.filter(r => r.cmd.includes("node") && isCliInvocation(r.cmd)).map(r => r.pid)
+          );
+
+          // Everything descended from a root, however deep. Next spawns its server as
+          // a child, so this reaches it without ever matching on "next-server".
+          const byParent = new Map();
+          for (const r of rows) {
+            if (!byParent.has(r.ppid)) byParent.set(r.ppid, []);
+            byParent.get(r.ppid).push(r.pid);
+          }
+          const doomed = new Set(roots);
+          const queue = [...roots];
+          while (queue.length) {
+            for (const child of byParent.get(queue.shift()) || []) {
+              if (!doomed.has(child)) { doomed.add(child); queue.push(child); }
             }
-          });
+          }
+
+          for (const pid of doomed) {
+            if (pid !== process.pid.toString()) pids.push(pid);
+          }
         } catch (e) {
           // No processes found or error - continue
         }
