@@ -24,7 +24,50 @@ const EXCLUDE_PATTERNS = [
   "*.log",          // Log files
   "tmp",            // Temp files
   ".DS_Store",      // macOS files
+  // The Next build runs with HOME pointed at cli/.build-home so it cannot touch the
+  // real ~/.krouter. Because that directory sits inside the workspace, standalone
+  // tracing copied it into the bundle, and the package shipped a generated jwt-secret,
+  // a machine-id and five SQLite databases -- the jwt-secret identical for everyone
+  // who installed it. Never copy it.
+  ".build-home",
+  "*.nft.json",     // Next trace manifests: build metadata, ~2.7 MB, unused at runtime
 ];
+
+// Anything here in the built app means the package is about to ship build-machine
+// state or a secret. Shipping is worse than failing, so the build stops.
+const MUST_NOT_SHIP = [
+  { name: "jwt-secret", why: "a signing secret identical for every installer" },
+  { name: "machine-id", why: "build-machine identity" },
+  { name: ".build-home", why: "the build's isolated HOME directory" },
+];
+const MUST_NOT_SHIP_EXT = [
+  { ext: ".sqlite", why: "a database from the build machine" },
+  { ext: ".sqlite-wal", why: "a database from the build machine" },
+  { ext: ".sqlite-shm", why: "a database from the build machine" },
+];
+
+function assertNothingSensitiveShipped(root) {
+  const hits = [];
+  const walk = (dir) => {
+    let entries;
+    try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { return; }
+    for (const e of entries) {
+      const full = path.join(dir, e.name);
+      const named = MUST_NOT_SHIP.find((m) => m.name === e.name);
+      if (named) { hits.push(`${path.relative(root, full)} — ${named.why}`); continue; }
+      const byExt = MUST_NOT_SHIP_EXT.find((m) => e.name.endsWith(m.ext));
+      if (byExt) hits.push(`${path.relative(root, full)} — ${byExt.why}`);
+      if (e.isDirectory()) walk(full);
+    }
+  };
+  walk(root);
+  if (hits.length) {
+    console.error("\n❌ Refusing to ship: build-machine state found in the package");
+    for (const h of hits) console.error(`   ${h}`);
+    console.error("\nAdd it to EXCLUDE_PATTERNS in cli/scripts/build-cli.js.");
+    process.exit(1);
+  }
+}
 
 function shouldExclude(name) {
   return EXCLUDE_PATTERNS.some(pattern => {
@@ -300,6 +343,10 @@ try {
   console.error("❌ MITM build failed");
   process.exit(1);
 }
+
+// Last gate before the package is publishable. v0.5.143 shipped broken because the
+// tarball was checked by reading it rather than by failing the build on what was wrong.
+assertNothingSensitiveShipped(cliAppDir);
 
 console.log("✨ CLI package build completed!");
 console.log(`📁 Output: ${cliAppDir}`);

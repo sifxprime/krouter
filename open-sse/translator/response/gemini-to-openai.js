@@ -1,4 +1,5 @@
 import { register } from "../index.js";
+import { geminiFinishReasonToOpenAI } from "../../utils/geminiFinishReason.js";
 import { FORMATS } from "../formats.js";
 
 // Convert Gemini response chunk to OpenAI format
@@ -213,7 +214,7 @@ export function geminiToOpenAIResponse(chunk, state) {
 
   // Finish reason - include usage in final chunk
   if (candidate.finishReason) {
-    let finishReason = candidate.finishReason.toLowerCase();
+    let finishReason = geminiFinishReasonToOpenAI(candidate.finishReason);
     if (finishReason === "stop" && state.toolCalls.size > 0) {
       finishReason = "tool_calls";
     }

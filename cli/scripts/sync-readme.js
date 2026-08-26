@@ -30,6 +30,22 @@ md = md.replace(/!\[([^\]]*)\]\(\.\/([^)]+\.(?:png|svg|jpg|jpeg|gif|webp))\)/g, 
 md = md.replace(/href="\.\/([^"]+)"/g, `href="${BLOB_BASE}/$1"`);
 md = md.replace(/\]\(\.\/([^)]+)\)/g, `](${BLOB_BASE}/$1)`);
 
+// Links written without a leading "./" -- e.g. `](docs/REDACTION_SETUP.md)` -- were
+// left untouched by the two rules above and copied into the npm README as relative
+// paths. The tarball ships only what `files` lists, so anything outside it resolves to
+// nothing on npmjs.com. That is how four docs/ links shipped broken. Absolutize every
+// relative target the package does not actually carry, and read the list from
+// package.json so adding an entry there cannot silently break this again.
+const NPM_FILES = require("../package.json").files || [];
+const shipsInTarball = (target) =>
+  NPM_FILES.some((f) => target === f || target.startsWith(`${f}/`));
+
+md = md.replace(/\]\((?!https?:|mailto:|#|\/)([^)]+)\)/g, (whole, target) => {
+  const [pathPart] = target.split("#");
+  if (!pathPart || shipsInTarball(pathPart)) return whole;
+  return `](${BLOB_BASE}/${target})`;
+});
+
 // Header banner: add a short "Installed from npm? Full docs on GitHub" hint
 // right after the title block so npm visitors know the canonical home.
 const NPM_NOTE = `\n> **You're viewing this on npm.** Full docs, screenshots, and changelog: [github.com/sifxprime/krouter](https://github.com/sifxprime/krouter).\n`;

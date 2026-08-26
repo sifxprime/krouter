@@ -1,4 +1,5 @@
 import { FORMATS } from "../../translator/formats.js";
+import { geminiFinishReasonToOpenAI } from "../../utils/geminiFinishReason.js";
 import { needsTranslation } from "../../translator/index.js";
 import { convertFinishReason } from "../../translator/response/openai-to-claude.js";
 import { ollamaBodyToOpenAI } from "../../translator/response/ollama-to-openai.js";
@@ -28,18 +29,6 @@ function parseToolArguments(value) {
  * request was non-streaming. Mirrors the block order the streaming translator
  * produces: thinking, then text, then tool_use.
  */
-// Gemini/Antigravity finishReason -> OpenAI finish_reason. Anything unrecognised is
-// treated as a normal stop rather than invented, matching the previous fallback.
-const GEMINI_FINISH_REASONS = {
-  stop: "stop",
-  max_tokens: "length",
-  safety: "content_filter",
-  recitation: "content_filter",
-  blocklist: "content_filter",
-  prohibited_content: "content_filter",
-  spii: "content_filter",
-};
-
 function openAICompletionToClaudeMessage(responseBody) {
   if (!responseBody?.choices?.[0]) return responseBody;
   const choice = responseBody.choices[0];
@@ -141,7 +130,7 @@ export function translateNonStreamingResponse(responseBody, targetFormat, source
     // not an OpenAI finish_reason at all, so convertFinishReason fell through to its
     // default and a Claude client saw a truncated answer reported as a clean end_turn.
     // Verified live on ag/gemini-3.5-flash-low with max_tokens:8 (completion_tokens 0).
-    let finishReason = GEMINI_FINISH_REASONS[(candidate.finishReason || "STOP").toLowerCase()] || "stop";
+    let finishReason = geminiFinishReasonToOpenAI(candidate.finishReason);
     if (finishReason === "stop" && toolCalls.length > 0) finishReason = "tool_calls";
 
     const result = {
