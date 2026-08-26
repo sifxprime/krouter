@@ -21,6 +21,7 @@ export const ENV_VAR_CATALOG = [
   { name: "ROUTER_API_KEY", category: "security", desc: "Override of the local API key used by MITM/tray", default: "(generated)", secret: true },
   { name: "AUTH_COOKIE_SECURE", category: "security", desc: "Force Secure auth cookie (set true behind HTTPS reverse proxy)", default: "false", secret: false },
   { name: "TRUST_PROXY", category: "security", desc: "Honor X-Forwarded-For for rate-limit IP source", default: "false", secret: false },
+  { name: "KROUTER_SKIP_RUNTIME_HEAL", category: "app", desc: "Skip the startup npm self-heal of the SQLite/tray runtime (air-gapped or CI machines)", default: "false", secret: false },
   { name: "REQUIRE_API_KEY", category: "security", desc: "Enforce Bearer API key on /v1/* routes", default: "false", secret: false },
   { name: "SHUTDOWN_SECRET", category: "security", desc: "Token required to hit /api/shutdown from another process", default: "(auto)", secret: true },
 

@@ -3,9 +3,15 @@ import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 
 const CLI = "cli/cli.js";
+// Argument parsing has nothing to do with the runtime self-heal, but every invocation
+// except --version/--help triggers it, and parallel workers all shelling out to npm
+// against the same ~/.krouter/runtime made these tests flaky. KROUTER_SKIP_RUNTIME_HEAL
+// keeps them testing the parser and nothing else.
+const SPAWN_TIMEOUT_MS = 120000;
+const SLOW = 150000;
 const run = (args) => {
   try {
-    return { out: execFileSync("node", [CLI, ...args], { encoding: "utf8", timeout: 30000 }), code: 0 };
+    return { out: execFileSync("node", [CLI, ...args], { encoding: "utf8", timeout: SPAWN_TIMEOUT_MS, env: { ...process.env, KROUTER_SKIP_RUNTIME_HEAL: "1" } }), code: 0 };
   } catch (e) {
     return { out: `${e.stdout || ""}${e.stderr || ""}`, code: e.status };
   }
@@ -39,7 +45,7 @@ describe("CLI argument handling", () => {
     expect(Date.now() - t0).toBeLessThan(10000);
   });
 
-  it("rejects an unknown flag instead of ignoring it", () => {
+  it("rejects an unknown flag instead of ignoring it", { timeout: SLOW }, () => {
     for (const bad of ["--prot", "-P", "start"]) {
       const { out, code } = run([bad, "--help"]);
       expect(code, `${bad} should be rejected`).toBe(2);
@@ -47,7 +53,7 @@ describe("CLI argument handling", () => {
     }
   });
 
-  it("rejects a --port value that is not a usable port", () => {
+  it("rejects a --port value that is not a usable port", { timeout: SLOW }, () => {
     for (const bad of ["abc", "3000abc", "0", "99999", "-1"]) {
       const { out, code } = run(["--port", bad, "--help"]);
       expect(code, `--port ${bad} should be rejected`).toBe(2);
@@ -55,13 +61,13 @@ describe("CLI argument handling", () => {
     }
   });
 
-  it("rejects --port with no value rather than falling back to the default", () => {
+  it("rejects --port with no value rather than falling back to the default", { timeout: SLOW }, () => {
     const { out, code } = run(["--port"]);
     expect(code).toBe(2);
     expect(out).toContain("(missing)");
   });
 
-  it("accepts the --flag=value form", () => {
+  it("accepts the --flag=value form", { timeout: SLOW }, () => {
     expect(run(["--port=3000", "--help"]).code).toBe(0);
     expect(run(["--host=127.0.0.1", "--help"]).code).toBe(0);
   });

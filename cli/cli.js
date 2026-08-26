@@ -55,8 +55,15 @@ const args = process.argv.slice(2);
 // it too: on a machine where the runtime is missing it shells out to a blocking
 // `npm install` whose spawnSync timeout is 180s, printing nothing the whole time.
 // Asking a program its version should never reach the network.
+//
+// KROUTER_SKIP_RUNTIME_HEAL=1 opts out entirely, for an air-gapped or CI machine where
+// reaching npm is either impossible or unwanted. The server still starts; it just uses
+// whatever runtime is already present instead of trying to repair it.
 const RUNTIME_FREE_ARGS = new Set(["--version", "-v", "--help", "-h"]);
-if (!args.some((a) => RUNTIME_FREE_ARGS.has(a))) {
+const skipRuntimeHeal =
+  process.env.KROUTER_SKIP_RUNTIME_HEAL === "1" ||
+  process.env.KROUTER_SKIP_RUNTIME_HEAL === "true";
+if (!skipRuntimeHeal && !args.some((a) => RUNTIME_FREE_ARGS.has(a))) {
   try { ensureSqliteRuntime({ silent: true }); } catch {}
   // Self-heal tray runtime (systray for macOS/Linux only). Windows skipped.
   try { ensureTrayRuntime({ silent: true }); } catch {}
