@@ -85,7 +85,7 @@ and point `SIDECAR_URL` at it. See the setup guide below.
 
 Redaction is **off by default**; enable it from Dashboard -> Presidio.
 
-See [docs/REDACTION_SETUP.md](docs/REDACTION_SETUP.md) for full configuration and customization options.
+See [docs/REDACTION_SETUP.md](https://github.com/sifxprime/krouter/blob/main/docs/REDACTION_SETUP.md) for full configuration and customization options.
 
 Then open **[http://localhost:20128/dashboard](http://localhost:20128/dashboard)**.
 
@@ -335,9 +335,9 @@ docker-compose up -d presidio-sidecar
 ### Customization
 
 For advanced customization, see:
-- **Full configuration guide:** [docs/REDACTION_SETUP.md](docs/REDACTION_SETUP.md)
-- **Pattern examples:** [docs/REDACTION_SETUP.md#custom-patterns](docs/REDACTION_SETUP.md#custom-patterns)
-- **Fail-closed behaviour and limits:** [docs/REDACTION_SETUP.md#a-note-on-trust](docs/REDACTION_SETUP.md#a-note-on-trust)
+- **Full configuration guide:** [docs/REDACTION_SETUP.md](https://github.com/sifxprime/krouter/blob/main/docs/REDACTION_SETUP.md)
+- **Pattern examples:** [docs/REDACTION_SETUP.md#custom-patterns](https://github.com/sifxprime/krouter/blob/main/docs/REDACTION_SETUP.md#custom-patterns)
+- **Fail-closed behaviour and limits:** [docs/REDACTION_SETUP.md#a-note-on-trust](https://github.com/sifxprime/krouter/blob/main/docs/REDACTION_SETUP.md#a-note-on-trust)
 
 ---
 
