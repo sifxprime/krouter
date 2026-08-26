@@ -4,6 +4,7 @@ import { resolveKiroModel } from "../config/kiroConstants.js";
 import { v4 as uuidv4 } from "uuid";
 import { refreshKiroToken } from "../services/tokenRefresh.js";
 import { SSE_DONE, SSE_HEADERS } from "../utils/sseConstants.js";
+import { createThinkingSplitter } from "./kiroThinking.js";
 import { getCapabilitiesForModel } from "../providers/capabilities.js";
 import { STREAM_FIRST_CHUNK_TIMEOUT_MS } from "../config/runtimeConfig.js";
 
@@ -607,7 +608,6 @@ export class KiroExecutor extends BaseExecutor {
       hasContextUsage: false,
       hasMetering: false,
       usage: null,
-      inThinking: false,
       toolValidationError: null,
       validatedFrames: 0,
       finished: false
@@ -721,6 +721,7 @@ export class KiroExecutor extends BaseExecutor {
         throw new Error("Kiro tool_use stop reason did not include a complete tool call");
       }
     };
+    const thinking = createThinkingSplitter();
     const processEvent = (event, controller) => {
       const messageType = event.headers[":message-type"];
       if (messageType === "error" || messageType === "exception") {
@@ -738,26 +739,9 @@ export class KiroExecutor extends BaseExecutor {
       const eventCountKey = KIRO_EVENT_TYPES.has(eventType) ? eventType : "other";
       eventCounts[eventCountKey] = (eventCounts[eventCountKey] || 0) + 1;
       if (eventType === "assistantResponseEvent" && typeof event.payload?.content === "string") {
-        let content = event.payload.content;
-        if (state.inThinking) {
-          const end = content.indexOf("</thinking>");
-          if (end < 0) content = "";
-          else {
-            state.inThinking = false;
-            content = content.slice(end + 11).replace(/^\n/u, "");
-          }
-        } else {
-          const start = content.indexOf("<thinking>");
-          if (start >= 0) {
-            const end = content.indexOf("</thinking>", start + 10);
-            if (end < 0) {
-              state.inThinking = true;
-              content = content.slice(0, start);
-            } else {
-              content = content.slice(0, start) + content.slice(end + 11).replace(/^\n/u, "");
-            }
-          }
-        }
+        // The reasoning half is intentionally dropped: a -thinking variant buys a better
+        // answer, not a visible scratchpad. Only the leak into `content` was the bug.
+        const { text: content } = thinking.split(event.payload.content);
         if (content || !state.hasReasoning) {
           state.hasText ||= content.length > 0;
           state.totalContentLength += content.length;
@@ -1021,6 +1005,14 @@ export class KiroExecutor extends BaseExecutor {
           completion_tokens: completion,
           total_tokens: prompt + completion
         };
+      }
+      // The stream can end while the splitter is still holding a possible partial
+      // tag. Emit it rather than silently truncating the tail of the response.
+      const held = thinking.flush();
+      if (held.text) {
+        state.hasText = true;
+        state.totalContentLength += held.text.length;
+        emitDelta(controller, { content: held.text });
       }
       const finishReason = state.hasToolCalls
         ? "tool_calls"

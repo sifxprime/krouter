@@ -28,6 +28,18 @@ function parseToolArguments(value) {
  * request was non-streaming. Mirrors the block order the streaming translator
  * produces: thinking, then text, then tool_use.
  */
+// Gemini/Antigravity finishReason -> OpenAI finish_reason. Anything unrecognised is
+// treated as a normal stop rather than invented, matching the previous fallback.
+const GEMINI_FINISH_REASONS = {
+  stop: "stop",
+  max_tokens: "length",
+  safety: "content_filter",
+  recitation: "content_filter",
+  blocklist: "content_filter",
+  prohibited_content: "content_filter",
+  spii: "content_filter",
+};
+
 function openAICompletionToClaudeMessage(responseBody) {
   if (!responseBody?.choices?.[0]) return responseBody;
   const choice = responseBody.choices[0];
@@ -124,7 +136,12 @@ export function translateNonStreamingResponse(responseBody, targetFormat, source
     if (toolCalls.length > 0) message.tool_calls = toolCalls;
     if (!message.content && !message.tool_calls) message.content = "";
 
-    let finishReason = (candidate.finishReason || "stop").toLowerCase();
+    // Gemini reports STOP / MAX_TOKENS / SAFETY / RECITATION; OpenAI clients expect
+    // stop / length / content_filter. Lower-casing alone yielded "max_tokens", which is
+    // not an OpenAI finish_reason at all, so convertFinishReason fell through to its
+    // default and a Claude client saw a truncated answer reported as a clean end_turn.
+    // Verified live on ag/gemini-3.5-flash-low with max_tokens:8 (completion_tokens 0).
+    let finishReason = GEMINI_FINISH_REASONS[(candidate.finishReason || "STOP").toLowerCase()] || "stop";
     if (finishReason === "stop" && toolCalls.length > 0) finishReason = "tool_calls";
 
     const result = {
@@ -145,6 +162,14 @@ export function translateNonStreamingResponse(responseBody, targetFormat, source
         result.usage.completion_tokens_details = { reasoning_tokens: usage.thoughtsTokenCount };
       }
     }
+    // 0.5.146 — same gap as openai (0.5.109) and kiro (0.5.117), now for Antigravity.
+    // Antigravity normalises every model to the Gemini envelope, including its Claude
+    // and GPT ones, so this branch is the only path they take -- and it ended here
+    // returning an OpenAI completion no matter what the client speaks. A Claude client
+    // then got {object:"chat.completion", choices:[...]} with no `content` array it
+    // could parse. Verified live before the fix on ag/claude-sonnet-4-6, ag/gemini-3-flash
+    // and ag/gpt-oss-120b-medium; the streaming path on the same models was already correct.
+    if (sourceFormat === FORMATS.CLAUDE) return openAICompletionToClaudeMessage(result);
     return result;
   }
 
