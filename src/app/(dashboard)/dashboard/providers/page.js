@@ -332,24 +332,35 @@ export default function ProvidersPage() {
       {/* Custom Providers (OpenAI/Anthropic Compatible) — dynamic */}
       <div className="flex flex-col gap-4">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <h2 className="text-lg sm:text-xl font-semibold flex items-center gap-2 leading-tight">
-            Custom Providers (OpenAI/Anthropic Compatible){" "}
-          </h2>
-          <div className="grid grid-cols-1 gap-2 sm:flex sm:w-auto">
+          {/* The parenthetical used to sit inside the heading, which pushed it onto two
+              lines and made it read louder than the page title. It is a subtitle. */}
+          <div className="min-w-0">
+            <h2 className="text-[17px] sm:text-lg font-semibold leading-tight tracking-[-0.01em]">
+              Custom Providers
+            </h2>
+            <p className="text-[13px] leading-5 text-text-muted/80 mt-0.5">
+              OpenAI or Anthropic compatible endpoints
+            </p>
+          </div>
+          <div className="grid grid-cols-1 gap-2 sm:flex sm:w-auto sm:shrink-0">
             <Button
               size="sm"
               icon="add"
               onClick={() => setShowAddAnthropicCompatibleModal(true)}
-              className="w-full sm:w-auto"
+              className="w-full sm:w-auto whitespace-nowrap"
             >
               Add Anthropic Compatible
             </Button>
+            {/* This forced a hardcoded white background and black text with Tailwind's
+                important modifier, so the dark theme could not override it and the
+                button rendered stark white on a dark page. The secondary variant is
+                already theme-aware. See tests/unit/theme-safe-styling.test.js. */}
             <Button
               size="sm"
               variant="secondary"
               icon="add"
               onClick={() => setShowAddCompatibleModal(true)}
-              className="w-full !bg-white !text-black hover:!bg-gray-100 sm:w-auto"
+              className="w-full sm:w-auto whitespace-nowrap"
             >
               Add OpenAI Compatible
             </Button>

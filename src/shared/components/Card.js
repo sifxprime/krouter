@@ -2,6 +2,20 @@
 
 import { cn } from "@/shared/utils/cn";
 
+/**
+ * Every card rendered at one visual weight, so a page of six cards gave the reader no
+ * clue which one mattered. `variant` provides three: `primary` for the subject of the
+ * page, `default` for ordinary content, and `inline` for a card nested inside another
+ * card or a list, where a full border and shadow only add noise.
+ *
+ * `elev` predates this and is kept working: it maps onto the primary weight.
+ */
+const VARIANTS = {
+  primary: "bg-surface border border-border-subtle rounded-[16px] shadow-[var(--shadow-elev)]",
+  default: "bg-surface border border-border-subtle rounded-[14px] shadow-[var(--shadow-soft)]",
+  inline: "bg-bg border border-border-subtle rounded-[12px]",
+};
+
 export default function Card({
   children,
   title,
@@ -11,6 +25,7 @@ export default function Card({
   padding = "md",
   hover = false,
   elev = false,
+  variant,
   className,
   ...props
 }) {
@@ -22,11 +37,12 @@ export default function Card({
     lg: "p-8",
   };
 
+  const weight = VARIANTS[variant] || (elev ? VARIANTS.primary : VARIANTS.default);
+
   return (
     <div
       className={cn(
-        "bg-surface border border-border-subtle",
-        elev ? "rounded-[14px] shadow-[var(--shadow-elev)]" : "rounded-[14px] shadow-[var(--shadow-soft)]",
+        weight,
         hover && "hover:shadow-[var(--shadow-warm)] hover:border-brand-500/30 transition-all cursor-pointer",
         paddings[padding],
         className
@@ -43,10 +59,10 @@ export default function Card({
             )}
             <div>
               {title && (
-                <h3 className="text-text-main font-semibold">{title}</h3>
+                <h3 className="text-[15px] leading-5 text-text-main font-semibold tracking-[-0.01em]">{title}</h3>
               )}
               {subtitle && (
-                <p className="text-sm text-text-muted">{subtitle}</p>
+                <p className="text-[13px] leading-5 text-text-muted/80 mt-0.5">{subtitle}</p>
               )}
             </div>
           </div>
