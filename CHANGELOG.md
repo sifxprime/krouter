@@ -1,3 +1,87 @@
+# v0.5.146 (2026-08-27) — MITM setup was unusable, Antigravity broke Claude clients, Kiro leaked its reasoning
+
+Six user-facing defects, all found by working through the product as a user rather
+than by running the suite: 1691 tests passed against every one of them.
+
+**MITM could never be set up.** The PATCH guard on `/api/cli-tools/antigravity-mitm`
+required both `tool` and `action`, but `trust-cert` is a global action that correctly
+sends no tool, so its own branch further down was unreachable and Trust Cert always
+returned `400 "tool and action required"`. Trust Cert is step one of MITM setup, so on
+a clean install the MITM server could not be started at all.
+
+**Then it failed for a reason it would not name.** With the guard fixed, a mistyped
+sudo password surfaced as `Certificate install failed`. `installCertMac` captured
+sudo's stderr and threw it away, collapsing every failure into one string — the one
+thing it never said was "retype your password". `describeSudoFailure` now separates a
+wrong or empty password, a cancellation, and an account that cannot sudo, and passes
+anything else through with its real stderr. sudo is invoked with `-p ''` so its prompt
+stops being concatenated into the message.
+
+Two more surfaced while reproducing that: the keychain can hold a stale certificate
+with the same CN but a different key from an earlier run, and `delete-certificate`
+removes one match per call, so a single call could leave older copies behind — it now
+loops. And the install reported success purely because the command exited 0;
+`add-trusted-cert` can exit 0 without the certificate becoming trusted, so the
+dashboard could show green over an unchanged keychain. It now re-checks fingerprints
+and fails with what to fix in Keychain Access.
+
+**Antigravity returned bodies Claude clients cannot read.** Antigravity normalises
+every model it serves — Gemini, Claude and GPT alike — to the Gemini envelope, so all
+of its traffic takes the Gemini branch of `translateNonStreamingResponse`, which ended
+by returning an OpenAI completion regardless of what the client spoke. A Claude client
+on `/v1/messages` received `{object:"chat.completion", choices:[...]}` with no
+`content` array. Same defect class as 0.5.109 (openai) and 0.5.117 (kiro); Antigravity
+was never covered because its payload is nested a level deeper. Streaming was correct
+throughout, so it only ever showed up on non-streaming requests.
+
+**Truncation was invisible.** That branch also lower-cased Gemini's `finishReason` and
+passed it off as an OpenAI value. Gemini says `MAX_TOKENS`; OpenAI says `length`. The
+result, `"max_tokens"`, is not an OpenAI finish_reason, so `convertFinishReason` fell
+through to its default and a cut-off answer reached the client as a clean `end_turn`.
+Fixed on the non-streaming path first and then found still present on the streaming
+one, so the mapping now lives in `open-sse/utils/geminiFinishReason.js` and both paths
+import it.
+
+**Kiro leaked its reasoning into every answer.** Kiro has no native reasoning field —
+thinking is enabled by injecting `<thinking_mode>enabled</thinking_mode>` into the
+system prompt, so the model returns `<thinking>` tags inside ordinary assistant text.
+The stripper scanned one chunk at a time with `indexOf`, but the tags are not
+chunk-aligned: a real stream opens with the delta `"<thinking"` and completes the tag
+only in the next one, so neither half matched and the entire reasoning block streamed
+through as visible content on every `-thinking` model. Extracted into
+`open-sse/executors/kiroThinking.js`, which carries a partial tag across chunk
+boundaries and flushes at end of stream. Discard semantics are unchanged.
+
+**MITM vanished from the sidebar.** v0.5.111 added the Token Saver page by overwriting
+the MITM line rather than inserting beside it. The page was untouched and still served
+200, so nothing failed — MITM was simply unreachable unless you typed the URL.
+
+**What else landed:**
+- Page titles rendered smaller than the section headings inside them, so on Providers the heading read louder than the word "Providers" above it. Titles now sit at 28px with subtitles at 13px and card titles at 15px — three steps instead of one flat band. `Card` gained a `variant` (primary / default / inline); `elev` maps onto primary, so the 24 call sites already using it gain hierarchy with no page edits.
+- The "Add OpenAI Compatible" button forced white-on-black through Tailwind's important modifier, which the dark theme could not override. `theme-safe-styling` now fails on any important-flagged hardcoded colour in dashboard or shared UI.
+- The sidebar wordmark carried `uppercase`, rendering "KROUTER" while the login screen rendered "kRouter".
+- `docs/REDACTION_SETUP.md` was excluded by `.gitignore`, so eight README links 404'd on GitHub and npm. Its npm section also pointed at an image no workflow builds and a directory the tarball does not ship — both dead ends for exactly the readers that section is for.
+- llm7 Test Connection support (upstream `b57c0413`).
+
+**Packaging:** the tarball carried the build's isolated HOME — a generated jwt-secret,
+a machine-id and five SQLite databases. The databases are empty (`providerConnections`
+has no rows, so no credentials were exposed) but the jwt-secret would have been
+identical for everyone who installed the package. Excluded, with 187 unused `.nft.json`
+trace manifests. Because reading a tarball is what let v0.5.143 ship broken, the build
+now *fails* on it: `assertNothingSensitiveShipped` exits non-zero on a jwt-secret,
+machine-id, `.build-home` or any SQLite file, and was confirmed to fail against the
+pre-fix output. `sync-readme.js` would also have reverted the README fix at publish
+time, since its rewrite rules only matched links beginning with `./`.
+
+**Verification:** every fix was confirmed against live providers, not only in tests.
+All 43 connected models answered correctly across both API surfaces — Antigravity 9/9,
+Kiro 34/34, zero thinking leaks. Truncation was checked on all four combinations of
+endpoint and stream, and healthy completions still report `stop` / `end_turn`. The
+certificate fix was confirmed in the operator's own keychain: the stale `BEAEAE…` entry
+was removed, the remaining certificate matches `rootCA.crt` at `790C96…`, and
+`security verify-cert` reports success where it previously reported
+`CSSMERR_TP_NOT_TRUSTED`. Full suite **1651 passed**, 20 expected-fail, 20 skipped.
+
 # v0.5.145 (2026-08-26) — Presidio PII redaction middleware (community contribution)
 
 Redacts personally identifiable information from requests before they reach any
