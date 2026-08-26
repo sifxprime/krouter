@@ -157,7 +157,19 @@ async function selectMenu(title, items, defaultIndex = 0, subtitle = "", headerC
       if (key.name === "down") return move(1);
       if (key.name === "return") { cleanup(); resolve(selectedIndex); return; }
       if (key.name === "escape") { cleanup(); resolve(-1); return; }
-      if (key.ctrl && key.name === "c") { cleanup(); process.exit(0); }
+      if (key.ctrl && key.name === "c") {
+        cleanup();
+        // Raw mode clears termios ISIG, so Ctrl-C arrives here as an ordinary
+        // keypress rather than as SIGINT. Exiting straight from here skipped
+        // cli.js's SIGINT handler -- the only thing that kills the detached server
+        // child, the privileged MITM process and any tunnel -- so quitting from the
+        // menu left all three running with no UI left to stop them. Restore cooked
+        // mode and re-raise the signal so that handler actually runs.
+        try { process.stdin.setRawMode(false); } catch {}
+        rawPrimed = false;
+        process.kill(process.pid, "SIGINT");
+        return;
+      }
     };
 
     process.stdin.on("keypress", onKeypress);

@@ -50,10 +50,17 @@ const args = process.argv.slice(2);
 // Self-heal SQLite runtime deps (sql.js + better-sqlite3) into ~/.krouter/runtime
 // so the server can resolve them via NODE_PATH. Best-effort — sql.js is required,
 // better-sqlite3 is optional. Logs to stderr only on failure.
-try { ensureSqliteRuntime({ silent: true }); } catch {}
-
-// Self-heal tray runtime (systray for macOS/Linux only). Windows skipped.
-try { ensureTrayRuntime({ silent: true }); } catch {}
+//
+// This runs before the argument parser, so `--version` and `--help` used to pay for
+// it too: on a machine where the runtime is missing it shells out to a blocking
+// `npm install` whose spawnSync timeout is 180s, printing nothing the whole time.
+// Asking a program its version should never reach the network.
+const RUNTIME_FREE_ARGS = new Set(["--version", "-v", "--help", "-h"]);
+if (!args.some((a) => RUNTIME_FREE_ARGS.has(a))) {
+  try { ensureSqliteRuntime({ silent: true }); } catch {}
+  // Self-heal tray runtime (systray for macOS/Linux only). Windows skipped.
+  try { ensureTrayRuntime({ silent: true }); } catch {}
+}
 
 // Sweep autostart entries whose binary path no longer exists on disk (e.g. the
 // user uninstalled the global kRouter then reinstalled to a different path).
@@ -141,23 +148,49 @@ let skipUpdate = false;
 let showLog = false;
 let trayMode = false;
 
+// `--flag=value` is the other half of the convention people expect; it used to fall
+// through every branch and be dropped in silence, so `--port=3000` started the server
+// on the default port instead.
+function splitInlineValue(arg) {
+  const eq = arg.indexOf("=");
+  if (!arg.startsWith("-") || eq < 0) return null;
+  return { flag: arg.slice(0, eq), value: arg.slice(eq + 1) };
+}
+
 for (let i = 0; i < args.length; i++) {
-  if (args[i] === "--port" || args[i] === "-p") {
-    port = parseInt(args[i + 1], 10) || DEFAULT_PORT;
-    i++;
-  } else if (args[i] === "--host" || args[i] === "-H") {
-    host = args[i + 1] || DEFAULT_HOST;
-    i++;
-  } else if (args[i] === "--no-browser" || args[i] === "-n") {
+  const inline = splitInlineValue(args[i]);
+  const arg = inline ? inline.flag : args[i];
+  // Reading a value consumes the next argv entry only when it was not inlined.
+  const takeValue = () => (inline ? inline.value : args[++i]);
+
+  if (arg === "--port" || arg === "-p") {
+    const raw = takeValue();
+    // parseInt used to accept "3000abc" as 3000 and turn a typo, an empty value or a
+    // missing one into DEFAULT_PORT — which is then force-freed by killProcessOnPort.
+    // Silently starting on a different port than asked is worse than refusing.
+    const parsed = Number(raw);
+    if (raw === undefined || raw === "" || !Number.isInteger(parsed) || parsed < 1 || parsed > 65535) {
+      console.error(`Invalid --port value: ${raw === undefined || raw === "" ? "(missing)" : raw}. Expected an integer between 1 and 65535.`);
+      process.exit(2);
+    }
+    port = parsed;
+  } else if (arg === "--host" || arg === "-H") {
+    const raw = takeValue();
+    if (!raw) {
+      console.error("Invalid --host value: (missing). Expected a hostname or IP, e.g. 127.0.0.1.");
+      process.exit(2);
+    }
+    host = raw;
+  } else if (arg === "--no-browser" || arg === "-n") {
     noBrowser = true;
-  } else if (args[i] === "--log" || args[i] === "-l") {
+  } else if (arg === "--log" || arg === "-l") {
     showLog = true;
-  } else if (args[i] === "--skip-update") {
+  } else if (arg === "--skip-update") {
     skipUpdate = true;
-  } else if (args[i] === "--tray" || args[i] === "-t") {
+  } else if (arg === "--tray" || arg === "-t") {
     trayMode = true;
     process.env.TRAY_MODE = "1";
-  } else if (args[i] === "--help" || args[i] === "-h") {
+  } else if (arg === "--help" || arg === "-h") {
     console.log(`
 Usage: ${APP_NAME} [options]
 
@@ -172,9 +205,16 @@ Options:
   -v, --version       Show version
 `);
     process.exit(0);
-  } else if (args[i] === "--version" || args[i] === "-v") {
+  } else if (arg === "--version" || arg === "-v") {
     console.log(pkg.version);
     process.exit(0);
+  } else {
+    // No terminal branch existed, so anything unrecognised was dropped without a
+    // word: `krouter --prot 3000` or `krouter start` ran on the default port and
+    // looked like it had worked.
+    console.error(`Unknown option: ${args[i]}`);
+    console.error(`Run \`${APP_NAME} --help\` to see the available options.`);
+    process.exit(2);
   }
 }
 
@@ -442,6 +482,42 @@ function killProxyByPidFile() {
   } catch { }
 }
 
+// Is this PID one of our own server processes?
+//
+// killProcessOnPort used to kill-9 whatever `lsof -ti:PORT` returned, with no check on
+// what it was. `krouter --port 3000` destroyed the user's own app on 3000 and
+// `--port 5432` took out their Postgres, silently and before anything was printed.
+//
+// An orphaned kRouter server is the hard case: its parent CLI is gone, so ancestry
+// cannot reach it, and Next has renamed it to a bare "next-server (vX)", so the command
+// line says nothing either. spawnServer pins cwd to standaloneDir, and that survives
+// both — it is the one durable marker of "this install's server".
+function isOwnServerPid(pid) {
+  try {
+    const mine = fs.realpathSync(standaloneDir);
+    if (process.platform === "linux") {
+      return fs.realpathSync(`/proc/${pid}/cwd`) === mine;
+    }
+    if (process.platform === "darwin") {
+      const out = execSync(`lsof -a -p ${pid} -d cwd -Fn 2>/dev/null`, {
+        encoding: "utf8", timeout: 3000, stdio: ["pipe", "pipe", "ignore"],
+      });
+      const line = out.split("\n").find((l) => l.startsWith("n"));
+      return !!line && fs.realpathSync(line.slice(1).trim()) === mine;
+    }
+    if (process.platform === "win32") {
+      // No cheap cwd read on Windows. Fall back to the executable path, which for our
+      // server points inside the package directory.
+      const out = execSync(
+        `powershell -NonInteractive -WindowStyle Hidden -Command "(Get-Process -Id ${pid} -ErrorAction SilentlyContinue).Path"`,
+        { encoding: "utf8", windowsHide: true, timeout: 4000 }
+      ).trim();
+      return !!out && out.toLowerCase().includes("krouter");
+    }
+  } catch { /* process gone, or no permission to inspect it — treat as not ours */ }
+  return false;
+}
+
 // Kill ALL processes listening on the given port. Returns true if any were killed.
 // Previous version: on Windows only killed the first PID from netstat, missing
 // parent/child pairs (next-server has a watcher + worker). Now sweeps all PIDs.
@@ -451,6 +527,7 @@ function killProcessOnPort(port) {
     try {
       const platform = process.platform;
       const pidsToKill = new Set();
+      const foreign = [];
 
       if (platform === "win32") {
         try {
@@ -462,7 +539,9 @@ function killProcessOnPort(port) {
           }).trim();
           output.split('\n').filter(l => l.includes('LISTENING')).forEach(line => {
             const pid = line.trim().split(/\s+/).pop();
-            if (pid && /^\d+$/.test(pid) && pid !== String(process.pid)) pidsToKill.add(pid);
+            if (!pid || !/^\d+$/.test(pid) || pid === String(process.pid)) return;
+            if (isOwnServerPid(pid)) pidsToKill.add(pid);
+            else foreign.push(pid);
           });
           for (const pid of pidsToKill) {
             try {
@@ -481,7 +560,11 @@ function killProcessOnPort(port) {
             stdio: ['pipe', 'pipe', 'ignore']
           }).trim();
           pidOutput.split('\n').filter(Boolean).forEach(pid => {
-            if (pid !== String(process.pid)) pidsToKill.add(pid);
+            if (pid === String(process.pid)) return;
+            // Only ever kill our own server. Anything else holding the port is the
+            // user's — say so and let them choose the port, rather than killing it.
+            if (isOwnServerPid(pid)) pidsToKill.add(pid);
+            else foreign.push(pid);
           });
           for (const pid of pidsToKill) {
             try {
@@ -492,6 +575,26 @@ function killProcessOnPort(port) {
         } catch (e) {
           // Port is free or lsof errored
         }
+      }
+
+      // Something that is not ours is holding the port. Say so and name it, instead
+      // of failing to start with no explanation -- the caller only learns "port busy".
+      if (foreign.length) {
+        const described = foreign.map((pid) => {
+          try {
+            const name = platform === "win32"
+              ? execSync(`powershell -NonInteractive -WindowStyle Hidden -Command "(Get-Process -Id ${pid} -ErrorAction SilentlyContinue).ProcessName"`,
+                  { encoding: "utf8", windowsHide: true, timeout: 4000 }).trim()
+              : execSync(`ps -p ${pid} -o comm= 2>/dev/null`, { encoding: "utf8", timeout: 3000 }).trim();
+            return name ? `${name} (pid ${pid})` : `pid ${pid}`;
+          } catch { return `pid ${pid}`; }
+        });
+        console.error(`\n⚠️  Port ${port} is held by ${described.join(", ")} — not kRouter.`);
+        console.error(`   Refusing to kill it. Start kRouter on another port, e.g. --port ${port + 1}.\n`);
+        // Exit rather than fall through: we deliberately did not free the port, so
+        // every subsequent bind attempt fails. The retry path treats EADDRINUSE as
+        // transient and would spin here forever.
+        process.exit(1);
       }
 
       // Wait for kernel to release the socket (Windows is slow here, give it 1s).
