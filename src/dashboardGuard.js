@@ -163,7 +163,13 @@ async function hasValidApiKey(request) {
 }
 
 async function canAccessPublicLlmApi(request) {
-  if (isLocalRequest(request)) return true;
+  // REQUIRE_API_KEY is catalogued in src/shared/constants/envVars.js and documented in
+  // both READMEs as "Enforce Bearer API key on /v1/* routes", but nothing read it, so
+  // setting it did nothing. Remote callers already needed a key; what the flag adds is
+  // dropping the loopback exemption, which is what an operator on a shared or
+  // multi-user machine is asking for when they set it.
+  const requireKey = process.env.REQUIRE_API_KEY === "true";
+  if (!requireKey && isLocalRequest(request)) return true;
   if (await hasValidCliToken(request)) return true;
   return await hasValidApiKey(request);
 }
@@ -285,7 +291,9 @@ export async function proxy(request) {
       return NextResponse.next();
     }
     noteAuthResult(false);
-    return NextResponse.json({ error: "API key required for remote API access" }, { status: 401 });
+    return NextResponse.json({ error: process.env.REQUIRE_API_KEY === "true"
+          ? "API key required (REQUIRE_API_KEY is enabled)"
+          : "API key required for remote API access" }, { status: 401 });
   }
 
   // Deny-by-default for /api/* — public allow-list bypasses, everything else requires auth.

@@ -648,6 +648,10 @@ function startServer(latestVersion) {
     const lanIp = getLanIp();
     if (lanIp) {
       console.log(`\x1b[33m⚠ Network-exposed: reachable at http://${lanIp}:${port} (bound 0.0.0.0). Use --host 127.0.0.1 for local-only.\x1b[0m`);
+      // Remote callers already need an API key for /v1/* and a login for the
+      // dashboard, so the exposure is bounded. Say so, rather than leaving the
+      // reader to guess whether their provider quota is reachable.
+      console.log(`\x1b[33m  Remote callers still need an API key for /v1/* and a login for the dashboard.\x1b[0m`);
     }
   }
 
