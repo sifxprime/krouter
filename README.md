@@ -68,11 +68,19 @@ docker run -d \
 
 #### With PII Redaction (Presidio)
 
-To enable automatic PII redaction before sending requests to AI providers:
+To enable automatic PII redaction before sending requests to AI providers.
+`INITIAL_PASSWORD` has no default — set one before starting, or compose will
+refuse to come up:
 
 ```bash
-docker-compose up -d
+export KROUTER_INITIAL_PASSWORD="$(openssl rand -base64 24)"
+docker compose up -d
 ```
+
+Not using Docker? kRouter has no Python dependency — run the sidecar separately
+and point `SIDECAR_URL` at it. See the setup guide below.
+
+Redaction is **off by default**; enable it from Dashboard -> Presidio.
 
 See [docs/REDACTION_SETUP.md](docs/REDACTION_SETUP.md) for full configuration and customization options.
 
@@ -325,8 +333,8 @@ docker-compose up -d presidio-sidecar
 
 For advanced customization, see:
 - **Full configuration guide:** [docs/REDACTION_SETUP.md](docs/REDACTION_SETUP.md)
-- **Pattern examples:** [presidio-sidecar/README.md](presidio-sidecar/README.md)
-- **Security considerations:** [docs/REDACTION_FAIL_CLOSED.md](docs/REDACTION_FAIL_CLOSED.md)
+- **Pattern examples:** [docs/REDACTION_SETUP.md#custom-patterns](docs/REDACTION_SETUP.md#custom-patterns)
+- **Fail-closed behaviour and limits:** [docs/REDACTION_SETUP.md#a-note-on-trust](docs/REDACTION_SETUP.md#a-note-on-trust)
 
 ---
 

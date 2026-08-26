@@ -1,3 +1,35 @@
+# v0.5.145 (2026-08-26) — Presidio PII redaction middleware (community contribution)
+
+Redacts personally identifiable information from requests before they reach any
+provider. Contributed by **[manindersarao](https://github.com/manindersarao)** in
+[PR #1](https://github.com/sifxprime/krouter/pull/1) — the feature, the design and
+the sidecar are his work; this release merges it with review fixes on top.
+
+Opt-in and off by default: both `presidioEnabled` and `presidioPiiRedaction`
+default to false, and the published Docker image behaves exactly as before for
+anyone who does not turn it on.
+
+**What landed:**
+- `src/middleware/redaction/middleware.js` — wraps the six LLM entry points, extracts text, sends it to a Presidio sidecar, and substitutes the redacted result before the request continues. Fail-closed by default: if redaction cannot be completed the request is rejected rather than forwarded unredacted. `REDACTION_FAIL_OPEN=true` opts out, `REDACTION_TIMEOUT_MS` tunes the sidecar timeout (default 15s).
+- `presidio-sidecar/` — FastAPI service wrapping presidio-analyzer/anonymizer, with a watchdog-based hot reload so pattern edits apply without a restart.
+- Dashboard page at `/dashboard/presidio` — toggles plus a YAML editor for custom regex patterns, validated server-side before it is written.
+- `src/app/api/settings/presidio/route.js` — GET/PUT for the configuration, behind the existing deny-by-default `/api/*` guard.
+- Coverage spans `messages`, the Anthropic top-level `system` prompt, Responses-API `input`/`instructions`, and tool traffic — `role:"tool"` results, `tool_calls[].function.arguments`, `tool_result` blocks, and tool descriptions. Tool arguments are only replaced when the redacted string still parses as JSON, so a redaction can never turn a valid tool call into a malformed one.
+
+**Review fixes merged on top:**
+- `docker-compose.yml` pinned `INITIAL_PASSWORD=123456` to bypass the default-password restriction. That restriction is the v0.5.136 remote-auth-bypass fix, which keys on `!storedHash && !process.env.INITIAL_PASSWORD` — setting the variable to the public default satisfies the guard while keeping the known password. Now required from the operator via `${KROUTER_INITIAL_PASSWORD:?...}`.
+- Redaction was a silent no-op on `/v1/responses` and `/v1/responses/compact` and skipped the Anthropic `system` prompt, because the middleware returned early without `body.messages`. PII reached providers while the dashboard reported redaction as active.
+- The fail-closed guarantee did not hold on `/v1beta/models/[...path]`: the middleware's error Response was passed to `handleChat()` where a Request was expected, so the rejection never reached the client.
+- `getSettings()` is an uncached SQLite read; calling it per request put the database back on the hot path the in-memory HealthCache exists to keep it off. The enablement decision is now cached for 10s, and a settings-read failure no longer returns 500 to users who never enabled the feature.
+- `PRESIDIO_CONFIG_PATH` defaulted to the container path `/app/redaction_config.yaml`, so saving patterns on an npm install always failed with ENOENT. Falls back to `DATA_DIR` (`~/.krouter`).
+- The YAML write is a real `rename()`. The original had an `if/else` with two byte-identical branches and a cleanup step that overwrote the temp file with an empty string, so nothing was ever renamed.
+- `hot_reload.py` tested the reload lock with `acquire(blocking=False)` and never released it, so one `/status` call killed hot reload for the life of the process.
+- The container ENTRYPOINT ran a new root-owned init script on every start of the published image. Now gated on `PRESIDIO_CONFIG_PATH`.
+- `requirements.txt` pinned exactly; pytest/pytest-asyncio/httpx moved to `requirements-dev.txt`, since the sidecar Dockerfile copies `/usr/local` out of the builder and was shipping test frameworks into a service that sees prompt text. Base image pinned to `python:3.11.16-slim`.
+- `ToggleSwitch` rendered `<button role="switch">` whose only child was a decorative span, so it had no accessible name (WCAG 4.1.2).
+
+**Verification:** full suite **1609 passed**, 20 expected-fail, 20 skipped, 0 failures; production build clean. The 20 tests the PR shipped failing were repaired — most were fixture escaping (YAML regex patterns need four backslashes, not two, so js-yaml threw and the route correctly returned 400), not defects in the handler. `PresidioSettingsCard.e2e.test.js` was removed: it collected zero tests and running it would need four new devDependencies plus a vitest environment change affecting 146 other files.
+
 # v0.5.144 (2026-08-22) — v0.5.143 crash-loop fix, empty-completion diagnosis, MITM packaging and container gating
 
 v0.5.143 was unusable: `app/custom-server.js` is the CLI's entry point and its first statement is `require("./server-peer-patch.js")`, but the build copied only `custom-server.js` into the package, so every install crash-looped with MODULE_NOT_FOUND. This release fixes that, ships the module the MITM child process requires inside the Docker image, and stops a provider that returns HTTP 200 with no output from being filed as an ordinary success.
