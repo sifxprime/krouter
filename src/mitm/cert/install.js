@@ -103,17 +103,61 @@ async function installCert(sudoPassword, certPath) {
   }
 }
 
+/**
+ * Turn a failed privileged command into something the user can act on.
+ *
+ * Everything here used to collapse into the single string "Certificate install failed".
+ * A mistyped sudo password produces stderr like:
+ *
+ *   Password:Sorry, try again.\nsudo: no password was provided\nsudo: 1 incorrect password attempt
+ *
+ * which the user saw as a broken certificate rather than a typo, with nothing in the
+ * UI to suggest retyping the password. The real stderr is the only diagnostic there is.
+ */
+function describeSudoFailure(error) {
+  const raw = (error && error.message) || "";
+  if (/incorrect password attempt|Sorry, try again|no password was provided/i.test(raw)) {
+    return "Incorrect sudo password — check the password and try again";
+  }
+  if (/canceled|cancelled/i.test(raw)) return "User canceled authorization";
+  if (/not allowed to execute|not in the sudoers/i.test(raw)) {
+    return "This account is not permitted to use sudo, so the certificate cannot be installed system-wide";
+  }
+  const detail = raw
+    .replace(/Password:/gi, "")
+    .split("\n")
+    .map((l) => l.trim())
+    .filter(Boolean)
+    .slice(-3)
+    .join("; ");
+  return detail ? `Certificate install failed: ${detail}` : "Certificate install failed";
+}
+
 async function installCertMac(sudoPassword, certPath) {
-  // Remove all old certs with same name first to avoid duplicate/stale cert conflict
-  const deleteOld = `security delete-certificate -c "9Router MITM Root CA" /Library/Keychains/System.keychain 2>/dev/null || true`;
+  // A certificate with this CN can already be present from an earlier run under a
+  // different key -- checkCertInstalled compares fingerprints, so it correctly reports
+  // "not trusted" in that case. delete-certificate removes one match per call, so a
+  // single call can leave older copies behind; loop until there are none left.
+  const deleteOld =
+    `for _ in 1 2 3 4 5; do security delete-certificate -c "${ROOT_CA_CN}" ` +
+    `/Library/Keychains/System.keychain >/dev/null 2>&1 || break; done`;
   const install = `security add-trusted-cert -d -r trustRoot -k /Library/Keychains/System.keychain "${certPath}"`;
   try {
-    await execWithPassword(`${deleteOld} && ${install}`, sudoPassword);
-    log("🔐 Cert: ✅ installed to system keychain");
+    // `;` not `&&`: the install must run even when there was nothing to delete.
+    await execWithPassword(`${deleteOld}; ${install}`, sudoPassword);
   } catch (error) {
-    const msg = error.message?.includes("canceled") ? "User canceled authorization" : "Certificate install failed";
-    throw new Error(msg);
+    throw new Error(describeSudoFailure(error));
   }
+
+  // add-trusted-cert can exit 0 without the certificate actually becoming trusted.
+  // Confirm it rather than reporting a success that was never verified.
+  if (!(await checkCertInstalled(certPath))) {
+    throw new Error(
+      `Certificate was installed but is still not trusted. Open Keychain Access, ` +
+      `select the System keychain, and remove any older "${ROOT_CA_CN}" entry, then retry.`
+    );
+  }
+  log("🔐 Cert: ✅ installed to system keychain");
 }
 
 async function installCertWindows(certPath) {
@@ -270,4 +314,4 @@ async function uninstallCertLinux(sudoPassword) {
   }
 }
 
-module.exports = { installCert, uninstallCert, checkCertInstalled };
+module.exports = { installCert, uninstallCert, checkCertInstalled, describeSudoFailure };

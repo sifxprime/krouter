@@ -69,8 +69,10 @@ function isSudoPasswordRequired() {
 function execWithPassword(command, password) {
   return new Promise((resolve, reject) => {
     const useSudo = isSudoAvailable();
+    // -p '' silences sudo's prompt, which otherwise lands in stderr and gets mixed
+    // into the error text callers show the user ("Password:Sorry, try again.").
     const child = useSudo
-      ? spawn("sudo", ["-S", "sh", "-c", command], { stdio: ["pipe", "pipe", "pipe"], windowsHide: true })
+      ? spawn("sudo", ["-S", "-p", "", "sh", "-c", command], { stdio: ["pipe", "pipe", "pipe"], windowsHide: true })
       : spawn("sh", ["-c", command], { stdio: ["ignore", "pipe", "pipe"], windowsHide: true });
 
     let stdout = "";
