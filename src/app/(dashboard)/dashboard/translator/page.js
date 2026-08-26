@@ -243,9 +243,9 @@ export default function TranslatorPage() {
                   <span className="material-symbols-outlined text-[20px] text-text-muted group-hover:text-primary transition-colors">
                     {isExpanded ? "expand_more" : "chevron_right"}
                   </span>
-                  <span className="text-xs font-mono text-text-muted/60 w-4">{step.id}</span>
+                  <span className="text-xs font-mono text-text-muted w-4">{step.id}</span>
                   <h3 className="text-sm font-semibold text-text-main">{step.label}</h3>
-                  <span className="text-xs text-text-muted/60 font-mono">{step.file}</span>
+                  <span className="text-xs text-text-muted font-mono">{step.file}</span>
                   {content && <span className="text-xs text-green-500">({content.length} chars)</span>}
                 </button>
                 {!isExpanded && (
@@ -297,7 +297,7 @@ function MetaBadge({ label, value, color }) {
   };
   return (
     <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-mono ${colors[color]}`}>
-      <span className="text-text-muted/70 font-sans text-[10px]">{label}:</span>{value}
+      <span className="text-text-muted font-sans text-[10px]">{label}:</span>{value}
     </span>
   );
 }

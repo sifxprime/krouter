@@ -203,7 +203,7 @@ export default function Sidebar({ onClose }) {
 
           {/* System section */}
           <div className="pt-3 mt-2 space-y-0.5">
-            <p className="px-4 text-xs font-semibold text-text-muted/60 uppercase tracking-wider mb-2">
+            <p className="px-4 text-xs font-semibold text-text-muted uppercase tracking-wider mb-2">
               System
             </p>
 

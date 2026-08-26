@@ -338,7 +338,7 @@ export default function ProvidersPage() {
             <h2 className="text-[17px] sm:text-lg font-semibold leading-tight tracking-[-0.01em]">
               Custom Providers
             </h2>
-            <p className="text-[13px] leading-5 text-text-muted/80 mt-0.5">
+            <p className="text-[13px] leading-5 text-text-muted mt-0.5">
               OpenAI or Anthropic compatible endpoints
             </p>
           </div>

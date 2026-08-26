@@ -111,6 +111,36 @@ export function readCompletionShape(body) {
 
   const usage = body.usage && typeof body.usage === "object" ? body.usage : null;
 
+  // Gemini / Antigravity envelope. This has to come first: the handler diagnoses the
+  // response BEFORE translating it, so what arrives here is the provider's own body,
+  // not an OpenAI completion. Antigravity normalises every model it serves to this
+  // shape, so without this branch each of its healthy non-streaming responses read as
+  // {text:"", usage:null} and was filed as empty_completion_no_output.
+  // Note the envelope may be wrapped ({response:{candidates}}) or bare ({candidates}).
+  const gemini = Array.isArray(body.response?.candidates)
+    ? body.response
+    : Array.isArray(body.candidates)
+      ? body
+      : null;
+  if (gemini) {
+    const parts = gemini.candidates[0]?.content?.parts || [];
+    const meta = gemini.usageMetadata || {};
+    return {
+      // parts carrying `thought: true` are reasoning, not answer text -- counting them
+      // as output would mask the reasoning-budget case this module exists to detect.
+      text: parts
+        .filter((pt) => pt && pt.thought !== true && typeof pt.text === "string")
+        .map((pt) => pt.text)
+        .join(""),
+      finishReason: gemini.candidates[0]?.finishReason ?? null,
+      toolCalls: parts.filter((pt) => pt && pt.functionCall),
+      usage: {
+        completion_tokens: meta.candidatesTokenCount || 0,
+        completion_tokens_details: { reasoning_tokens: meta.thoughtsTokenCount || 0 },
+      },
+    };
+  }
+
   // Claude Messages shape: { type: "message", content: [...], stop_reason }
   if (Array.isArray(body.content)) {
     const blocks = body.content.filter(Boolean);

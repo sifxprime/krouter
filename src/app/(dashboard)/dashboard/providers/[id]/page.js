@@ -1234,16 +1234,16 @@ export default function ProviderDetailPage() {
 
                 {/* Search */}
                 <div className="relative flex-1 min-w-0">
-                  <span className="material-symbols-outlined absolute left-2.5 top-1/2 -translate-y-1/2 text-[13px] text-text-muted/60 pointer-events-none select-none">search</span>
+                  <span className="material-symbols-outlined absolute left-2.5 top-1/2 -translate-y-1/2 text-[13px] text-text-muted pointer-events-none select-none">search</span>
                   <input
                     type="text"
                     value={liveModelsSearch}
                     onChange={e => setLiveModelsSearch(e.target.value)}
                     placeholder="Search models..."
-                    className="w-full h-7 pl-7 pr-7 text-xs rounded-lg bg-bg border border-border-subtle text-text-main placeholder:text-text-muted/50 focus:outline-none focus:ring-1 focus:ring-primary/30 focus:border-primary/40 transition-colors"
+                    className="w-full h-7 pl-7 pr-7 text-xs rounded-lg bg-bg border border-border-subtle text-text-main placeholder:text-text-muted focus:outline-none focus:ring-1 focus:ring-primary/30 focus:border-primary/40 transition-colors"
                   />
                   {liveModelsSearch && (
-                    <button onClick={() => setLiveModelsSearch("")} className="absolute right-2 top-1/2 -translate-y-1/2 text-text-muted/50 hover:text-text-muted transition-colors">
+                    <button onClick={() => setLiveModelsSearch("")} className="absolute right-2 top-1/2 -translate-y-1/2 text-text-muted hover:text-text-muted transition-colors">
                       <span className="material-symbols-outlined text-[13px]">close</span>
                     </button>
                   )}
@@ -1312,7 +1312,7 @@ export default function ProviderDetailPage() {
                             </span>
                           )}
                           <span className="px-1.5 py-0.5 rounded-md bg-black/[0.06] dark:bg-white/[0.06] text-text-muted tabular-nums font-medium">{groupModels.length}</span>
-                          <span className="material-symbols-outlined text-[15px] text-text-muted/60">{isExpanded ? "expand_less" : "expand_more"}</span>
+                          <span className="material-symbols-outlined text-[15px] text-text-muted">{isExpanded ? "expand_less" : "expand_more"}</span>
                         </button>
                         {isExpanded && (
                           <div className="px-3 pt-2 pb-3 flex flex-wrap gap-1.5 border-t border-border-subtle bg-surface/50">

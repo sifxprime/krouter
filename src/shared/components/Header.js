@@ -292,7 +292,7 @@ export default function Header({ onMenuClick, showMenuButton = true }) {
               </h1>
             </div>
             {description && (
-              <p className="hidden lg:block text-[13px] leading-5 text-text-muted/80 truncate mt-0.5">
+              <p className="hidden lg:block text-[13px] leading-5 text-text-muted truncate mt-0.5">
                 {translate(description)}
               </p>
             )}

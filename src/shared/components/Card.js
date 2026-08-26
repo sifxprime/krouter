@@ -62,7 +62,7 @@ export default function Card({
                 <h3 className="text-[15px] leading-5 text-text-main font-semibold tracking-[-0.01em]">{title}</h3>
               )}
               {subtitle && (
-                <p className="text-[13px] leading-5 text-text-muted/80 mt-0.5">{subtitle}</p>
+                <p className="text-[13px] leading-5 text-text-muted mt-0.5">{subtitle}</p>
               )}
             </div>
           </div>

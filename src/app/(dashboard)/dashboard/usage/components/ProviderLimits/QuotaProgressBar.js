@@ -92,7 +92,7 @@ export default function QuotaProgressBar({
         <div className="h-2 rounded-full overflow-hidden bg-amber-500/10">
           <div className="h-full bg-amber-500/40" style={{ width: "100%" }} />
         </div>
-        <div className="text-xs text-text-muted/80 italic">
+        <div className="text-xs text-text-muted italic">
           Awaiting reset{countdown !== "-" ? ` in ${countdown}` : ""}
           {resetDisplay ? ` (at ${resetDisplay})` : ""}
         </div>
@@ -146,7 +146,7 @@ export default function QuotaProgressBar({
 
       {/* Reset time display */}
       {resetDisplay && (
-        <div className="text-xs text-text-muted/70">
+        <div className="text-xs text-text-muted">
           Reset at {resetDisplay}
         </div>
       )}
