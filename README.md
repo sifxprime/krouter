@@ -15,6 +15,12 @@
   **[🌐 Website & Full Docs — krouter.kodelyht.com](https://krouter.kodelyht.com)**
 
   [🚀 Quick Start](#-quick-start) • [💡 Features](#-features) • [📖 Setup](#-setup-guide) • [🌐 Supported Providers](#-supported-providers)
+
+---
+
+### Contributors Note
+
+For contributors: Ensure your git identity is properly configured before committing to ensure accurate attribution in pull requests.
 </div>
 
 ---
