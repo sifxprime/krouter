@@ -1,3 +1,137 @@
+# v0.5.147 (2026-08-27) — Windows was unusable in places, and the CLI was killing other people's processes
+
+A feature-by-feature pass over the product as a user rather than as a test suite. Every
+defect below was reachable by an ordinary person and none of them failed a test: 1727
+tests pass against all of them.
+
+**The CLI was dangerous to other software on the machine.**
+`killAllAppProcesses` selected processes by command line, and one clause was
+unqualified — `|| cmd.includes("next-server")`. Next renames its server to a bare
+`next-server (v16.3.1)` with no path or project in it, so that matched *every* Next
+server running, and starting or quitting kRouter SIGKILLed a developer's unrelated dev
+server along with its unsaved state. kRouter's own server matches by that same string
+and nothing else, so the two are indistinguishable by name; both platform branches now
+walk the process tree from the cli.js invocation instead. Verified with two processes
+whose command lines were byte-identical: ours was selected, the other left running.
+
+`killProcessOnPort` ran `lsof -ti:PORT` and kill -9 on everything it returned, so
+`krouter --port 3000` destroyed the user's own app and `--port 5432` took out their
+Postgres, silently, before anything printed. It now kills only a process it has
+identified as this install's server — by working directory, which survives both
+orphaning and Next's rename — and otherwise names the holder and exits.
+
+`--version` and `--help` ran the runtime self-heal first, which shells out to a blocking
+npm install with a 180s timeout, so asking the program its version could print nothing
+for three minutes. Now 73ms. `KROUTER_SKIP_RUNTIME_HEAL=1` opts out entirely for
+air-gapped and CI machines.
+
+The argument parser had no terminal else, so `--prot 3000`, `-P 3000` and `start` were
+dropped without a word and the server came up on the default port — which the old kill
+path then force-freed. `--port` used parseInt with a `|| DEFAULT_PORT` fallback, so
+"3000abc" became 3000 and a typo or missing value became the default. Both now refuse.
+`--flag=value` works.
+
+Ctrl-C at the interactive menu called process.exit(0) directly. Raw mode clears termios
+ISIG so Ctrl-C arrives as a keypress, and exiting there skipped cli.js's SIGINT handler
+— the only thing that kills the detached server, the privileged MITM process and any
+tunnel. It now re-raises the signal.
+
+**Windows.**
+The tray was dead. tray.ps1 polls stdin from a System.Windows.Forms.Timer, whose Tick
+runs on the thread Application::Run() pumps, and the loop guarded on
+`[Console]::In.Peek()` — which blocks on an open-but-idle pipe rather than returning -1.
+The first tick after the startup burst never returned, the message pump stopped, and the
+icon appeared but ignored every click: no menu, no Quit, and since `hide` spawns a
+detached --tray process, Task Manager was the only way out. Measured against a live pipe
+in PowerShell 7: the old loop sat inside one tick from 212ms until the pipe closed at
+2024ms; the new one returns in 0-39ms and still receives a message sent two seconds
+later. An EOF branch exits instead of leaving an orphaned powershell.exe.
+
+PXPIPE could never install: `where npm` lists the extensionless shell script first and
+spawning it without a shell fails ENOEXEC. Kilo Code wrote to `~/.config/Code/User/` on
+every platform — a directory VS Code never reads on Windows or macOS — and reported
+success anyway. The stale-DNS recovery message printed a macOS-only `sed -i ''` against
+a hosts path Windows does not have, so the single instruction offered to a user whose
+provider traffic was blackholed did not work on two platforms out of three.
+`krouter backfill-tokens` shelled out to a sqlite3 CLI Windows does not ship; the same
+backfill already runs in pure JS at every server start.
+
+**Security.**
+`REQUIRE_API_KEY` was catalogued in envVars.js and documented in both READMEs as
+"Enforce Bearer API key on /v1/* routes" — and no code read it. Remote callers already
+required a key (a LAN neighbour never could spend your quota), but the loopback
+exemption was unconditional, which is exactly what an operator on a shared machine is
+asking to remove. The flag now gates it.
+
+Three privileged routes were missing from LOCAL_ONLY_PATHS despite meeting its stated
+bar: `/api/mitm/*` runs sudo against the OS trust store, `/api/pxpipe/*` shells out to
+npm install, `/api/headroom/*` spawns a long-lived child. They fell back to the ordinary
+/api gate, satisfied by holding a session rather than by being local.
+
+"Tunnel dashboard access" only ever covered the HTML. The host test lived inside the
+/dashboard branch and /api/* returns before reaching it, so with requireLogin=false a
+user who enabled a tunnel for /v1 and switched dashboard access off got exactly that on
+/dashboard and plaintext API keys from /api/keys over the same public hostname.
+
+Tunnel activation's safety interlock lived only in React, so the CLI's Enable Tunnel
+produced a public Cloudflare URL with the default password live. Both routes now
+evaluate the same condition server-side.
+
+`POST /api/import` took `body.sourceDir` straight into existsSync/readdirSync/readFileSync
+with no allow-list or containment check, and the 404 echoed the path back as an
+existence oracle. No caller passed it and GET already hardcoded the constant.
+
+`importDb` validated only that the payload was a non-array object, so `{}` — or any
+unrelated JSON picked in the file dialog — wiped settings, providerConnections,
+providerNodes, proxyPools, apiKeys and combos and inserted nothing, behind a modal whose
+only text was "Enter your current password to import the database." It now rejects a
+payload with no recognised section and snapshots the database first.
+
+**The dashboard reported success it had not verified.**
+Enabling Presidio bricked every request on an npm install: the sidecar URL defaulted to
+a Docker Compose service name, and docker-compose.yml sets that variable explicitly — so
+the default only ever applied where the hostname cannot resolve. Redaction is fail-closed
+by design, so flipping the toggles returned 503 on every /v1 call with nothing connecting
+the two. Default fixed, and the settings route now probes the sidecar and refuses with
+the URL it tried.
+
+The MITM certificate card's sudo field was gated on `busy`, which is only set while a
+request is in flight — so it appeared *after* the request had already been sent empty,
+the API answered 400 "Sudo password required", and it vanished again. It could never be
+typed into.
+
+The provider master toggle awaited Promise.allSettled and discarded the results, so the
+switch stayed flipped even when every write failed. The MITM DNS toggle threw an error
+with the server's reason and caught it with `catch { /* ignore */ }`, leaving an open
+modal with nothing to explain it. saveMappings neither checked res.ok nor reported a
+throw, so a model mapping could fail to save while the field still showed it.
+Bulk-deleting connections removed every attempted row regardless of outcome, so a failed
+delete vanished from the list while still existing on the server.
+
+GET /api/settings/presidio answered 404 when the config file was absent — but it is
+written on first save, so a fresh install opened the page on an error quoting an absolute
+filesystem path while the toggle state, readable all along, never arrived.
+
+/v1/models fell back to the full static catalogue whenever `connections.length === 0`.
+The comment said "DB unavailable", but that is equally true for a first-run user with
+nothing connected, whose coding CLI then listed hundreds of models where every choice
+fails. The fallback now keys on the query having failed.
+
+**Also:** the type-hierarchy pass in 0.5.146 set secondary text to `text-text-muted/80`,
+which measures 3.20:1 against the 4.5 WCAG AA minimum. Dropped, along with eleven
+pre-existing sites at /50-/70. Antigravity's healthy non-streaming responses were being
+filed as `empty_completion_no_output`, because the detector runs before translation and
+did not know the Gemini envelope — every one of them put a false "empty" on ordinary
+successful traffic in the request log and usage stats.
+
+**Verification:** full suite **1727 passed**, 20 expected-fail, 20 skipped, stable across
+four consecutive runs; production build clean. The tray fix was measured in a PowerShell
+7 container against a real pipe. The process-selection fix was proven against two
+byte-identical command lines. The port fix was proven in both directions — a foreign
+listener survives and is named, a second kRouter instance still reclaims the port. The
+security fixes were each confirmed live over the LAN interface or a simulated tunnel Host
+header, with /v1 verified still reachable in every case.
+
 # v0.5.146 (2026-08-27) — MITM setup was unusable, Antigravity broke Claude clients, Kiro leaked its reasoning
 
 Six user-facing defects, all found by working through the product as a user rather
