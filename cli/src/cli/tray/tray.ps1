@@ -48,26 +48,50 @@ function Set-Tooltip($text) {
   $script:notifyIcon.Text = $text
 }
 
-# Background reader thread polls stdin via timer on UI thread
+# stdin is polled from a System.Windows.Forms.Timer, whose Tick runs on the very
+# thread Application::Run() pumps. The previous loop guarded on [Console]::In.Peek(),
+# which does not return -1 on an open-but-idle pipe -- it blocks until the next byte
+# arrives. So the first tick after the startup burst never returned, the message pump
+# stopped, and the tray icon appeared but ignored every click: no menu, no Quit.
+#
+# [Console]::In is a SyncTextReader whose ReadLineAsync() is synchronous too, so it
+# cannot be used either. Read the raw handle through our own StreamReader and poll a
+# genuinely async task, so the Tick handler always returns immediately.
+$script:stdin   = New-Object System.IO.StreamReader([Console]::OpenStandardInput(), [System.Text.Encoding]::UTF8)
+$script:pending = $null
+
 $script:timer = New-Object System.Windows.Forms.Timer
 $script:timer.Interval = 100
 $script:timer.Add_Tick({
   try {
-    while ([Console]::In.Peek() -ne -1) {
-      $line = [Console]::In.ReadLine()
-      if ([string]::IsNullOrWhiteSpace($line)) { continue }
-      $cmd = $line | ConvertFrom-Json
-      switch ($cmd.action) {
-        "add-item"    { Add-MenuItem $cmd.index $cmd.title $cmd.enabled }
-        "update-item" { Update-MenuItem $cmd.index $cmd.title $cmd.enabled }
-        "set-tooltip" { Set-Tooltip $cmd.text }
-        "ready"       { Write-Event @{ type = "ready" } }
-        "kill"        {
-          $script:notifyIcon.Visible = $false
-          $script:notifyIcon.Dispose()
-          [System.Windows.Forms.Application]::Exit()
+    if ($null -eq $script:pending) { $script:pending = $script:stdin.ReadLineAsync() }
+    while ($script:pending.IsCompleted) {
+      $line = $script:pending.Result
+      $script:pending = $null
+      if ($null -eq $line) {
+        # EOF: the Node parent is gone. Exit instead of lingering as a dead icon the
+        # user can only clear through Task Manager.
+        $script:notifyIcon.Visible = $false
+        $script:notifyIcon.Dispose()
+        [System.Windows.Forms.Application]::Exit()
+        return
+      }
+      if (-not [string]::IsNullOrWhiteSpace($line)) {
+        $cmd = $line | ConvertFrom-Json
+        switch ($cmd.action) {
+          "add-item"    { Add-MenuItem $cmd.index $cmd.title $cmd.enabled }
+          "update-item" { Update-MenuItem $cmd.index $cmd.title $cmd.enabled }
+          "set-tooltip" { Set-Tooltip $cmd.text }
+          "ready"       { Write-Event @{ type = "ready" } }
+          "kill"        {
+            $script:notifyIcon.Visible = $false
+            $script:notifyIcon.Dispose()
+            [System.Windows.Forms.Application]::Exit()
+            return
+          }
         }
       }
+      $script:pending = $script:stdin.ReadLineAsync()
     }
   } catch {
     Write-Event @{ type = "error"; message = $_.Exception.Message }

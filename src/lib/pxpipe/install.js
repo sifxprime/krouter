@@ -97,12 +97,21 @@ async function runInstall() {
   fs.writeSync(outFd, `\n[${new Date().toISOString()}] npm install ${PXPIPE_PACKAGE}@latest\n`);
 
   await new Promise((resolve, reject) => {
-    const child = spawn(npm, ["install", `${PXPIPE_PACKAGE}@latest`, "--no-audit", "--no-fund", "--omit=dev"], {
-      cwd: PXPIPE_DIR,
-      stdio: ["ignore", outFd, outFd],
-      windowsHide: true,
-      env: { ...process.env, PATH: EXTENDED_PATH },
-    });
+    // findNpm stays the presence check, but its result is not spawnable on Windows:
+    // `where npm` lists C:\Program Files\nodejs\npm first, and that is the
+    // extensionless shell script, not npm.cmd. Spawning it directly fails with
+    // ENOEXEC, so the install could never succeed there. Use npm.cmd through a shell.
+    const child = spawn(
+      IS_WIN ? NPM_CMD : npm,
+      ["install", `${PXPIPE_PACKAGE}@latest`, "--no-audit", "--no-fund", "--omit=dev"],
+      {
+        cwd: PXPIPE_DIR,
+        stdio: ["ignore", outFd, outFd],
+        windowsHide: true,
+        shell: IS_WIN,
+        env: { ...process.env, PATH: EXTENDED_PATH },
+      }
+    );
     const timer = setTimeout(() => {
       child.kill("SIGKILL");
       reject(new Error("npm install timed out after 5 minutes — see install.log"));

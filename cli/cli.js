@@ -93,57 +93,14 @@ const PROCESS_IDENTIFIERS = ['krouter'];
 // fixed in 0.5.51. Safe to re-run — only touches rows that actually
 // have something to lift.
 if (args[0] === "backfill-tokens") {
-  const candidates = [
-    path.join(process.env.HOME || "", ".krouter", "db", "data.sqlite"),
-    process.env.APPDATA ? path.join(process.env.APPDATA, "krouter", "db", "data.sqlite") : null,
-  ].filter(Boolean);
-  const dbPath = candidates.find(p => fs.existsSync(p));
-  if (!dbPath) {
-    console.error("No krouter database found at:", candidates.join(" or "));
-    process.exit(1);
-  }
-  console.log("DB:", dbPath);
-  const rows = JSON.parse(execSync(
-    `sqlite3 -json "${dbPath}" "SELECT id, data FROM requestDetails WHERE json_extract(data,'$.tokens.prompt_tokens')=0 AND (json_extract(data,'$.providerResponse.response.usageMetadata.promptTokenCount') IS NOT NULL OR json_extract(data,'$.providerResponse.usageMetadata.promptTokenCount') IS NOT NULL)"`,
-    { encoding: "utf8", maxBuffer: 512 * 1024 * 1024 }
-  ) || "[]");
-  console.log(`Candidates with extractable tokens: ${rows.length}`);
-  let updated = 0;
-  // 0.5.53 — stream UPDATEs through stdin so SQLite parses each statement
-  // itself. Avoids the JSON-in-shell-quoted-SQL mangling that swallowed
-  // every row silently on the first attempt.
-  const tmpScript = path.join(os.tmpdir(), `krouter-backfill-${Date.now()}.sql`);
-  const sqlLines = ["BEGIN;"];
-  for (const row of rows) {
-    try {
-      const d = JSON.parse(row.data);
-      const um = d.providerResponse?.response?.usageMetadata || d.providerResponse?.usageMetadata;
-      if (!um) continue;
-      const promptTokens = um.promptTokenCount || 0;
-      const completionTokens = um.candidatesTokenCount || 0;
-      const reasoningTokens = um.thoughtsTokenCount;
-      if (promptTokens === 0 && completionTokens === 0) continue;
-      d.tokens = { ...(d.tokens || {}), prompt_tokens: promptTokens, completion_tokens: completionTokens };
-      if (reasoningTokens !== undefined) d.tokens.reasoning_tokens = reasoningTokens;
-      const escapedData = JSON.stringify(d).replace(/'/g, "''");
-      const escapedId = String(row.id).replace(/'/g, "''");
-      sqlLines.push(`UPDATE requestDetails SET data='${escapedData}' WHERE id='${escapedId}';`);
-      updated++;
-    } catch (e) {
-      console.error(`  row ${row.id} skipped: ${e.message}`);
-    }
-  }
-  sqlLines.push("COMMIT;");
-  fs.writeFileSync(tmpScript, sqlLines.join("\n"));
-  try {
-    execSync(`sqlite3 "${dbPath}" < "${tmpScript}"`, { stdio: ["ignore", "pipe", "pipe"] });
-    console.log(`Backfilled ${updated} rows. Usage page totals will now reflect real token spend.`);
-  } catch (e) {
-    console.error(`Failed to apply: ${e.message?.split("\n")?.[0] || e}`);
-    console.error(`SQL script left at ${tmpScript} for inspection.`);
-    process.exit(2);
-  }
-  try { fs.unlinkSync(tmpScript); } catch { /* ignore */ }
+  // Kept so any script that calls it keeps working, but it no longer does the work
+  // itself. It used to shell out to the `sqlite3` CLI, which is not present on a
+  // stock Windows install, so it exited with a raw Node stack there. The same
+  // backfill now runs unconditionally at every server start via
+  // autoBackfillTokensIfNeeded() in src/shared/services/initializeApp.js, in pure JS
+  // through the app's own DB adapter — no external binary, no shell quoting.
+  console.log("Token backfill now runs automatically every time kRouter starts.");
+  console.log("Nothing to do here — start kRouter normally and it will be applied.");
   process.exit(0);
 }
 

@@ -14,6 +14,7 @@ import {
   WATCHDOG_INTERVAL_MS, NETWORK_CHECK_INTERVAL_MS, VIRTUAL_IFACE_REGEX,
 } from "@/lib/tunnel";
 import { getMitmStatus, startMitm, loadEncryptedPassword, initDbHooks, restoreToolDNS, removeAllDNSEntriesSync, removeAllDNSEntries } from "@/mitm/manager";
+import { TOOL_HOSTS } from "@/mitm/dns/dnsConfig";
 import { startQuotaAutoPing } from "@/shared/services/quotaAutoPing";
 import { startTokenWarmer } from "@/shared/services/tokenWarmer";
 import { syncToJson as syncMitmAliasCache } from "@/lib/mitmAliasCache";
@@ -190,11 +191,33 @@ async function autoStartMitm() {
       if (!after.staleDns) {
         console.warn("[InitApp] ✓ Stale MITM DNS entries removed — provider traffic restored.");
       } else {
+        // The manual command was macOS-only -- `sed -i ''` is a BSD-ism that GNU sed
+        // rejects, and neither the hosts path nor the cache flush is right on Windows,
+        // so the one instruction offered to a stuck user did not work on two of three
+        // platforms. The host list is derived from TOOL_HOSTS so it cannot drift from
+        // what the router actually writes.
+        const stale = after.staleDnsTools;
+        const hosts = [...new Set(stale.flatMap((t) => TOOL_HOSTS[t] || []))];
+        const pattern = hosts.map((h) => h.replace(/\./g, "\\.")).join("|");
+        let manualFix;
+        if (process.platform === "win32") {
+          manualFix =
+            "  Open an elevated PowerShell and run:\n" +
+            `    $h="$env:SystemRoot\\System32\\drivers\\etc\\hosts"; ` +
+            `(Get-Content $h) | Where-Object { $_ -notmatch '${pattern}' } | Set-Content $h; ipconfig /flushdns`;
+        } else if (process.platform === "darwin") {
+          manualFix =
+            `  sudo sed -i '' -E '/(${pattern})/d' /etc/hosts && sudo dscacheutil -flushcache`;
+        } else {
+          manualFix =
+            `  sudo sed -i -E '/(${pattern})/d' /etc/hosts` +
+            " && (sudo resolvectl flush-caches 2>/dev/null || sudo systemd-resolve --flush-caches 2>/dev/null || true)";
+        }
         console.warn(
-          `[InitApp] ✗ Could NOT remove the stale DNS entries automatically (needs root; still active for: ${after.staleDnsTools.join(", ")}). ` +
+          `[InitApp] ✗ Could NOT remove the stale DNS entries automatically (needs root; still active for: ${stale.join(", ")}). ` +
           "Requests to those providers WILL keep failing until this is fixed. " +
           "FIX: toggle MITM on in the dashboard (it will prompt for your sudo password), or run:\n" +
-          "  sudo sed -i '' -E '/(cloudcode-pa|kiro\\.dev|codewhisperer|githubcopilot|cursor\\.sh)/d' /etc/hosts && sudo dscacheutil -flushcache"
+          manualFix
         );
       }
     }

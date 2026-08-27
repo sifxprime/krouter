@@ -11,7 +11,20 @@ const execAsync = promisify(exec);
 
 const getDataDir = () => path.join(os.homedir(), ".local", "share", "kilo");
 const getAuthPath = () => path.join(getDataDir(), "auth.json");
-const getVscodeSettingsPath = () => path.join(os.homedir(), ".config", "Code", "User", "settings.json");
+// VS Code stores user settings in a different place on each OS. This was hardcoded to
+// the Linux path, so on Windows and macOS the integration wrote to a directory VS Code
+// never reads -- and still reported success. Same branch copilot-settings/route.js uses.
+const getVscodeSettingsPath = () => {
+  const home = os.homedir();
+  const platform = os.platform();
+  if (platform === "win32") {
+    return path.join(process.env.APPDATA || home, "Code", "User", "settings.json");
+  }
+  if (platform === "darwin") {
+    return path.join(home, "Library", "Application Support", "Code", "User", "settings.json");
+  }
+  return path.join(home, ".config", "Code", "User", "settings.json");
+};
 
 const checkInstalled = async () => {
   try {
