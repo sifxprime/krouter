@@ -92,6 +92,11 @@ describe("PUT /api/settings/presidio", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    // Enabling redaction now probes the sidecar's /health first and refuses with 409
+    // if it cannot be reached, because redaction is fail-closed and turning it on
+    // blind 503s every /v1 request. These tests exercise the settings write, not the
+    // probe, so stand a reachable sidecar up. The refusal path has its own tests.
+    vi.stubGlobal("fetch", vi.fn(async () => ({ ok: true, status: 200 })));
     writtenFiles = new Map();
     mocks.readFile.mockImplementation(async (filePath) =>
       writtenFiles.has(filePath) ? writtenFiles.get(filePath) : mockYamlContent
@@ -116,6 +121,7 @@ describe("PUT /api/settings/presidio", () => {
   });
 
   afterEach(() => {
+    vi.unstubAllGlobals();
     vi.restoreAllMocks();
   });
 
@@ -808,6 +814,52 @@ describe("PUT /api/settings/presidio", () => {
       const writeCalls = mocks.writeFile.mock.calls;
       expect(writeCalls.length).toBeGreaterThan(0);
       expect(writeCalls[0][1]).toBe(updatedYamlContent);
+    });
+  });
+
+  describe("sidecar preflight", () => {
+    // Redaction is fail-closed: with no reachable sidecar every /v1 request returns
+    // 503. Enabling it from the dashboard used to do exactly that with no warning, so
+    // a first-run npm user flipped two toggles and their coding CLI stopped working.
+    const put = (body) =>
+      routeHandler(
+        new Request("http://localhost:20128/api/settings/presidio", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        })
+      );
+
+    it("refuses to enable when the sidecar cannot be reached", async () => {
+      if (!routeHandler) return;
+      vi.stubGlobal("fetch", vi.fn(async () => { throw new Error("fetch failed"); }));
+      const response = await put({ enabled: true, piiRedaction: true, customRegex: false });
+      const body = await response.json();
+      expect(response.status).toBe(409);
+      expect(body.error.code).toBe("SIDECAR_UNREACHABLE");
+      // The message has to name what was tried, or it is not actionable.
+      expect(body.error.details).toContain("/health");
+      expect(mocks.updateSettings).not.toHaveBeenCalled();
+    });
+
+    it("refuses when the sidecar answers but is unhealthy", async () => {
+      if (!routeHandler) return;
+      vi.stubGlobal("fetch", vi.fn(async () => ({ ok: false, status: 503 })));
+      const response = await put({ enabled: true, piiRedaction: false, customRegex: false });
+      expect(response.status).toBe(409);
+      expect(mocks.updateSettings).not.toHaveBeenCalled();
+    });
+
+    it("does not probe when redaction is being turned OFF", async () => {
+      // Disabling must work even while the sidecar is down -- otherwise a user whose
+      // sidecar died could not switch redaction back off to unblock their traffic.
+      if (!routeHandler) return;
+      const fetchSpy = vi.fn(async () => { throw new Error("fetch failed"); });
+      vi.stubGlobal("fetch", fetchSpy);
+      const response = await put({ enabled: false, piiRedaction: false, customRegex: false });
+      expect(response.status).toBe(200);
+      expect(fetchSpy).not.toHaveBeenCalled();
+      expect(mocks.updateSettings).toHaveBeenCalled();
     });
   });
 });
