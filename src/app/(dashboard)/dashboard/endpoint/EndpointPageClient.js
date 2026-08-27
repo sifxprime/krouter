@@ -1111,7 +1111,14 @@ export default function APIPageClient({ machineId }) {
           <div className="mt-4 flex flex-col gap-2">
             {!requireApiKey && (
               <SecurityWarning
-                message="Require API key is disabled — your endpoint is publicly accessible without authentication."
+                // "publicly accessible without authentication" was not true: a request
+                // arriving through a tunnel carries X-Forwarded-For, server-peer-patch
+                // stamps it as via-proxy, and isLocalRequest then refuses to treat it as
+                // local — so /v1 already answers 401 without a key. Overstating a risk
+                // teaches people to ignore the warning. The real gap is narrower and
+                // worth naming: a proxy that forwards nothing identifying the client
+                // looks like loopback, and loopback is exempt unless this is on.
+                message="Require API key is off. Remote callers still need a key, but any proxy that forwards without a client-IP header is treated as local and can reach /v1 without one. Enabling this requires a key from every caller."
                 action={{ label: "Enable", href: "#require-api-key" }}
               />
             )}

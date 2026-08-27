@@ -14,8 +14,6 @@ export default function LoginPage() {
   const [authMode, setAuthMode] = useState("password");
   const [oidcConfigured, setOidcConfigured] = useState(false);
   const [oidcLoginLabel, setOidcLoginLabel] = useState("Sign in with OIDC");
-  const [mustChange, setMustChange] = useState(false);
-  const [newPassword, setNewPassword] = useState("");
   const router = useRouter();
 
   // Countdown for rate-limit
@@ -74,11 +72,9 @@ export default function LoginPage() {
       });
 
       if (res.ok) {
-        const data = await res.json();
-        if (data.mustChangePassword) {
-          setMustChange(true);
-          return;
-        }
+        // No mustChangePassword branch here: the API only sets that flag alongside a
+        // 403, so it can never arrive on the ok path. See the note above the warning
+        // text below for what actually happens on a default-password remote login.
         router.push("/dashboard");
         router.refresh();
       } else {
@@ -86,31 +82,6 @@ export default function LoginPage() {
         setError(data.error || "Invalid password");
         if (data.resetHint) setResetHint(data.resetHint);
         if (data.retryAfter) setRetryAfter(Number(data.retryAfter));
-      }
-    } catch (err) {
-      setError("An error occurred. Please try again.");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // Force a new password before entering the dashboard (default + remote).
-  const handleSetNewPassword = async (e) => {
-    e.preventDefault();
-    setLoading(true);
-    setError("");
-    try {
-      const res = await fetch("/api/settings", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ currentPassword: password, newPassword }),
-      });
-      if (res.ok) {
-        router.push("/dashboard");
-        router.refresh();
-      } else {
-        const data = await res.json();
-        setError(data.error || "Failed to set password");
       }
     } catch (err) {
       setError("An error occurred. Please try again.");
@@ -172,28 +143,10 @@ export default function LoginPage() {
         </div>
 
         <Card>
-          {mustChange ? (
-            <form onSubmit={handleSetNewPassword} className="flex flex-col gap-4">
-              <p className="text-sm text-amber-600 dark:text-amber-400 text-center">
-                Set a new password before accessing the dashboard remotely.
-              </p>
-              <div className="flex flex-col gap-2">
-                <label className="text-sm font-medium">New password</label>
-                <Input
-                  type="password"
-                  placeholder="Enter new password"
-                  value={newPassword}
-                  onChange={(e) => setNewPassword(e.target.value)}
-                  required
-                  autoFocus
-                />
-                {error && <p className="text-xs text-red-500">{error}</p>}
-              </div>
-              <Button type="submit" variant="primary" className="w-full" loading={loading} disabled={!newPassword}>
-                Set password
-              </Button>
-            </form>
-          ) : (
+          {/* v0.5.136 made a default-password remote login a hard 403 rather than an
+              advisory flag, which left the "set a new password here" form this page used
+              to show unreachable: mustChangePassword only ever ships with that 403, and
+              the page read it on the ok path. The form and its state are gone. */}
           <div className="flex flex-col gap-4">
             {oidcAvailable && (
               <Button type="button" variant="primary" className="w-full" onClick={handleOidcLogin}>
@@ -255,7 +208,8 @@ export default function LoginPage() {
                 </p>
                 {hasPassword === false && (
                   <p className="text-xs text-center text-amber-600 dark:text-amber-400">
-                    Security risk: no password set. You will be asked to set one when logging in remotely.
+                    Security risk: no password set. Remote logins are refused until you set
+                    one — sign in here, then open your profile from the sidebar to set a password.
                   </p>
                 )}
               </form>
@@ -263,7 +217,6 @@ export default function LoginPage() {
               error && <p className="text-xs text-red-500">{error}</p>
             )}
           </div>
-          )}
         </Card>
       </div>
     </div>
