@@ -88,6 +88,15 @@ const LOCAL_ONLY_PATHS = [
   "/api/cli-tools/cowork-settings",
   "/api/cli-tools/antigravity-mitm",
   "/api/mcp/",
+  // These three were never listed even though they meet the same bar as everything
+  // else here: /api/mitm/* runs sudo against the OS trust store (src/mitm/cert/install.js),
+  // /api/pxpipe/* shells out to npm install on the host (src/lib/pxpipe/install.js),
+  // and /api/headroom/* spawns a long-lived child process (src/lib/headroom/process.js).
+  // Without them they fell back to the ordinary /api gate, which is satisfied by a
+  // session rather than by being local.
+  "/api/mitm/",
+  "/api/pxpipe/",
+  "/api/headroom/",
   "/api/tunnel/tailscale-install",
   "/api/tunnel/tailscale-enable",
   "/api/tunnel/tailscale-disable",
@@ -231,6 +240,34 @@ async function isAuthenticated(request) {
   return false;
 }
 
+/**
+ * Is this request arriving on a tunnel hostname while the operator has turned tunnel
+ * dashboard access off?
+ *
+ * The host test used to live inline inside the /dashboard branch, and the /api/* branch
+ * returns before ever reaching it. With requireLogin=false -- the common local-tool
+ * setting -- isAuthenticated() returns true unconditionally, so /dashboard correctly
+ * redirected over the tunnel while /api/keys served plaintext API keys over the same
+ * public hostname. The switch read as "the admin surface is private" and covered only
+ * the HTML half of it.
+ */
+async function isTunnelDashboardBlocked(request) {
+  let settings;
+  try {
+    settings = await loadSettings();
+  } catch {
+    return false; // settings unreadable: fall back to the ordinary auth path
+  }
+  if (!settings || settings.tunnelDashboardAccess === true) return false;
+
+  const host = (request.headers.get("host") || "").split(":")[0].toLowerCase();
+  if (!host) return false;
+  const hostOf = (u) => { try { return u ? new URL(u).hostname.toLowerCase() : ""; } catch { return ""; } };
+  const tunnelHost = hostOf(settings.tunnelUrl);
+  const tailscaleHost = hostOf(settings.tailscaleUrl);
+  return (!!tunnelHost && host === tunnelHost) || (!!tailscaleHost && host === tailscaleHost);
+}
+
 function isPublicApi(pathname) {
   if (isPublicLlmApi(pathname)) return true;
   return PUBLIC_API_PATHS.some((p) => pathname === p || pathname.startsWith(`${p}/`));
@@ -299,6 +336,12 @@ export async function proxy(request) {
   // Deny-by-default for /api/* — public allow-list bypasses, everything else requires auth.
   if (pathname.startsWith("/api/")) {
     if (isPublicApi(pathname)) return NextResponse.next();
+    // Everything past this line is the dashboard API. /v1 traffic -- the reason the
+    // tunnel exists -- was already returned above by isPublicApi, so this gates the
+    // admin surface only.
+    if (await isTunnelDashboardBlocked(request)) {
+      return NextResponse.json({ error: "Dashboard access via tunnel is disabled" }, { status: 403 });
+    }
     if (await hasValidCliToken(request) || await isAuthenticated(request)) {
       noteAuthResult(true);
       return NextResponse.next();
