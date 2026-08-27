@@ -198,23 +198,46 @@ describe("GET /api/settings/presidio", () => {
   });
 
   describe("YAML file handling", () => {
-    it("should return 404 when YAML file does not exist", async () => {
+    // The config file is written on first save, so a fresh install does not have one.
+    // Answering 404 meant the Presidio page opened on an error quoting an absolute
+    // filesystem path before the user had done anything, and the toggle state -- which
+    // lives in the database and was perfectly readable -- never reached the page.
+    // A missing file is an empty config, not a failure.
+    it("treats a missing YAML file as an empty config, not an error", async () => {
       if (!routeHandler) {
         console.log("Skipping test - route not implemented yet");
         return;
       }
 
-      // File access check fails
-      mocks.access.mockRejectedValue(new Error("File not found"));
+      const enoent = new Error("ENOENT: no such file or directory");
+      enoent.code = "ENOENT";
+      mocks.readFile.mockRejectedValue(enoent);
+      mocks.getSettings.mockResolvedValue({ presidioEnabled: true, presidioPiiRedaction: true });
+
+      const response = await routeHandler();
+      const body = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(body.success).toBe(true);
+      expect(body.data.yamlContent).toBe("");
+      // The toggle state must survive — it is what the page renders.
+      expect(body.data.enabled).toBe(true);
+      expect(body.data.piiRedaction).toBe(true);
+    });
+
+    it("still reports a genuine read failure rather than hiding it", async () => {
+      if (!routeHandler) return;
+      const denied = new Error("EACCES: permission denied");
+      denied.code = "EACCES";
+      mocks.readFile.mockRejectedValue(denied);
       mocks.getSettings.mockResolvedValue({});
 
       const response = await routeHandler();
       const body = await response.json();
 
-      expect(response.status).toBe(404);
+      expect(response.status).toBe(500);
       expect(body.success).toBe(false);
-      expect(body.error.code).toBe("CONFIG_NOT_FOUND");
-      expect(body.error.message).toContain("not found");
+      expect(body.error.details).toContain("EACCES");
     });
 
     it("should handle empty YAML file", async () => {

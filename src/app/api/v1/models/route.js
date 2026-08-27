@@ -194,10 +194,18 @@ function comboMatchesKinds(combo, kindFilter) {
  */
 export async function buildModelsList(kindFilter) {
   let connections = [];
+  // "no rows" and "the query failed" are different answers and used to be conflated:
+  // the static-catalog fallback below keyed on connections.length === 0, which is just
+  // as true for a first-run user with nothing connected as it is for an unreadable
+  // database. That user's /v1/models advertised the entire catalogue -- hundreds of
+  // models, none of which can serve a request -- so their coding CLI listed a full
+  // model picker where every choice fails.
+  let connectionsUnavailable = false;
   try {
     connections = await getProviderConnections();
     connections = connections.filter(c => c.isActive !== false);
   } catch (e) {
+    connectionsUnavailable = true;
     console.log("Could not fetch providers, returning all models");
   }
 
@@ -253,8 +261,10 @@ export async function buildModelsList(kindFilter) {
     models.push(entry);
   }
 
-  if (connections.length === 0) {
-    // DB unavailable -> return static models, filtered by per-model kind
+  if (connectionsUnavailable) {
+    // DB genuinely unreadable -> fall back to the static catalogue so the endpoint
+    // still answers something. A user with zero providers connected falls through
+    // instead and gets an empty list, which is the truthful answer.
     const aliasToProviderId = Object.fromEntries(
       Object.entries(PROVIDER_ID_TO_ALIAS).map(([id, alias]) => [alias, id])
     );

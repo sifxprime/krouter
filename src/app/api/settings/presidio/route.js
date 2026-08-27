@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getSettings, updateSettings } from "@/lib/localDb";
-import { readFile, access } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import { validateYamlSyntax } from "@/lib/presidio/validateYaml";
 import { writeFile, rename, mkdir } from "node:fs/promises";
 import path from "node:path";
@@ -33,28 +33,19 @@ export async function GET() {
     // Get toggle states from database
     const settings = await getSettings();
 
-    // Check if YAML file exists
-    try {
-      await access(PRESIDIO_CONFIG_PATH);
-    } catch (error) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: {
-            code: "CONFIG_NOT_FOUND",
-            message: `Presidio configuration file not found at ${PRESIDIO_CONFIG_PATH}`,
-          },
-        },
-        { status: 404, headers: SETTINGS_RESPONSE_HEADERS }
-      );
-    }
-
-    // Read YAML content
-    let yamlContent;
+    // The config file is written on first save, so it does not exist yet on a fresh
+    // install. Treating that as 404 meant the Presidio page opened with an error
+    // quoting an absolute filesystem path before the user had done anything wrong --
+    // and the toggle state, which lives in the database and was perfectly readable,
+    // never reached the page at all. A missing file is an empty config, not a failure.
+    let yamlContent = "";
     try {
       yamlContent = await readFile(PRESIDIO_CONFIG_PATH, "utf-8");
     } catch (error) {
-      return NextResponse.json(
+      if (error?.code === "ENOENT") {
+        yamlContent = "";
+      } else {
+        return NextResponse.json(
         {
           success: false,
           error: {
@@ -64,7 +55,8 @@ export async function GET() {
           },
         },
         { status: 500, headers: SETTINGS_RESPONSE_HEADERS }
-      );
+        );
+      }
     }
 
     // Build response with toggle states

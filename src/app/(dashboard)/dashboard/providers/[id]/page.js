@@ -695,18 +695,25 @@ export default function ProviderDetailPage() {
         setConfirmState(null);
         let failed = 0;
         const idsToDelete = [...selectedConnectionIds];
+        // Track what actually went, not what was attempted. The filter below used to
+        // drop every attempted id, so a connection whose DELETE failed disappeared from
+        // the list while still existing on the server -- the alert said "N failed" but
+        // the row was gone and there was nothing left to retry.
+        const deletedIds = [];
         for (const id of idsToDelete) {
           try {
             const res = await fetch(`/api/providers/${id}`, { method: "DELETE" });
-            if (!res.ok) failed += 1;
+            if (res.ok) deletedIds.push(id);
+            else failed += 1;
           } catch (error) {
             console.log("Error deleting connection:", error);
             failed += 1;
           }
         }
-        setConnections(prev => prev.filter(c => !idsToDelete.includes(c.id)));
-        setSelectedConnectionIds([]);
-        if (failed > 0) alert(`Deleted ${idsToDelete.length - failed} connection(s), ${failed} failed.`);
+        setConnections(prev => prev.filter(c => !deletedIds.includes(c.id)));
+        // Leave the ones that failed selected, so a retry is one click away.
+        setSelectedConnectionIds(idsToDelete.filter(id => !deletedIds.includes(id)));
+        if (failed > 0) alert(`Deleted ${deletedIds.length} connection(s), ${failed} failed and are still selected.`);
       }
     });
   };

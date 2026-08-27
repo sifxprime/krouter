@@ -210,6 +210,8 @@ export default function ProvidersPage() {
     const providerConns = connections.filter(
       (c) => c.provider === providerId && c.authType === authType,
     );
+    // Keep what was on screen: the optimistic flip below has to be undoable.
+    const previous = connections;
     setConnections((prev) =>
       prev.map((c) =>
         c.provider === providerId && c.authType === authType
@@ -217,7 +219,12 @@ export default function ProvidersPage() {
           : c,
       ),
     );
-    await Promise.allSettled(
+
+    // allSettled was awaited and its results thrown away, so the switch stayed in its
+    // new position even when every PUT had failed. The user then believed a provider
+    // was disabled while it kept serving traffic -- or the reverse -- with nothing on
+    // screen to say otherwise. Inspect the outcomes and put the UI back if they failed.
+    const results = await Promise.allSettled(
       providerConns.map((c) =>
         fetch(`/api/providers/${c.id}`, {
           method: "PUT",
@@ -226,6 +233,15 @@ export default function ProvidersPage() {
         }),
       ),
     );
+    const failed = results.filter((r) => r.status !== "fulfilled" || !r.value?.ok).length;
+    if (failed > 0) {
+      setConnections(previous);
+      notify.error(
+        failed === providerConns.length
+          ? `Could not ${newActive ? "enable" : "disable"} ${providerId} — no changes were saved`
+          : `${failed} of ${providerConns.length} ${providerId} connections could not be updated — reverted`,
+      );
+    }
   };
 
   const handleBatchTest = async (mode, providerId = null) => {

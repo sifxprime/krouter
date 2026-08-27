@@ -33,6 +33,7 @@ export default function MitmToolCard({
   const [sudoPassword, setSudoPassword] = useState("");
   const [pendingDnsAction, setPendingDnsAction] = useState(null);
   const [modalError, setModalError] = useState(null);
+  const [actionError, setActionError] = useState(null);
   const [modelMappings, setModelMappings] = useState({});
   const [modalOpen, setModalOpen] = useState(false);
   const [currentEditingAlias, setCurrentEditingAlias] = useState(null);
@@ -51,17 +52,32 @@ export default function MitmToolCard({
         const data = await res.json();
         if (Object.keys(data.aliases || {}).length > 0) setModelMappings(data.aliases);
       }
-    } catch { /* ignore */ }
+    } catch (error) {
+      // A read that only populates optional UI state — degrading to "no saved
+      // mappings shown" is acceptable, but say so rather than vanishing.
+      console.warn(`[MitmToolCard] could not load saved mappings for ${tool.id}:`, error?.message);
+    }
   };
 
   const saveMappings = useCallback(async (mappings) => {
+    // This is a write, and it neither checked res.ok nor reported a thrown error: a
+    // model mapping the user had just typed could fail to save and the field would
+    // still show it, so the mapping simply did not exist the next time the card loaded.
     try {
-      await fetch("/api/cli-tools/antigravity-mitm/alias", {
+      const res = await fetch("/api/cli-tools/antigravity-mitm/alias", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ tool: tool.id, mappings }),
       });
-    } catch { /* ignore */ }
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setActionError(data.error || `Could not save model mapping (${res.status})`);
+        return;
+      }
+      setActionError(null);
+    } catch (error) {
+      setActionError(error?.message || "Could not save model mapping");
+    }
   }, [tool.id]);
 
   const handleMappingBlur = (alias, value) => {
@@ -99,6 +115,8 @@ export default function MitmToolCard({
   const doDnsAction = async (action, password) => {
     setLoading(true);
     setWarning(null);
+    setActionError(null);
+    setModalError(null);
     try {
       const res = await fetch("/api/cli-tools/antigravity-mitm", {
         method: "PATCH",
@@ -115,10 +133,22 @@ export default function MitmToolCard({
       setShowPasswordModal(false);
       setSudoPassword("");
       onDnsChange?.(data);
-    } catch { /* ignore */ } finally {
+    } catch (error) {
+      // The throw two lines up carries the server's reason -- a wrong sudo password,
+      // a hosts file that could not be written -- and it was discarded by an empty
+      // catch. The modal is only closed on success, so the user was left staring at
+      // an open dialog that had silently failed, with nothing to indicate why.
+      const message = error?.message || "Failed to toggle DNS";
+      if (showPasswordModal) setModalError(message);
+      else setActionError(message);
+      // Keep the pending action so the retry inside the modal still knows what to do;
+      // clearing it made a second attempt a no-op.
       setLoading(false);
-      setPendingDnsAction(null);
+      return;
+    } finally {
+      setLoading(false);
     }
+    setPendingDnsAction(null);
   };
 
   const handleConfirmPassword = () => {
@@ -262,6 +292,12 @@ export default function MitmToolCard({
                 <div className="flex items-center gap-2 px-2 py-1.5 rounded text-xs text-amber-500">
                   <span className="material-symbols-outlined text-[14px]">warning</span>
                   <span>{warning}</span>
+                </div>
+              )}
+              {actionError && (
+                <div className="flex items-center gap-2 px-2 py-1.5 rounded text-xs text-red-500">
+                  <span className="material-symbols-outlined text-[14px]">error</span>
+                  <span>{actionError}</span>
                 </div>
               )}
             </div>
