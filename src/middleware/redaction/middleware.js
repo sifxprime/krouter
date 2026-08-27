@@ -44,7 +44,12 @@ export function invalidateRedactionSettingsCache() {
  */
 export function createRedactionMiddleware(options = {}) {
   const {
-    sidecarUrl = process.env.SIDECAR_URL || "http://presidio-sidecar:5001/redact",
+    // "presidio-sidecar" is a Docker Compose service name. docker-compose.yml sets
+    // SIDECAR_URL explicitly (line 42), so Compose never relied on this default --
+    // which means the default only ever applied where the hostname cannot resolve.
+    // On an npm install that made enabling redaction fail-closed on every request.
+    // Point it at the loopback address docs/REDACTION_SETUP.md tells people to use.
+    sidecarUrl = process.env.SIDECAR_URL || "http://127.0.0.1:5001/redact",
     // Presidio analyses each text in a serial spaCy loop, so the time scales
     // with total conversation size, not request count. A fixed 2s ceiling meant
     // enabling redaction 503'd any large-context client. Overridable, and the

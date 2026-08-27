@@ -25,12 +25,17 @@ function detectProvider(authJson, fileName) {
 
 export async function POST(request) {
   try {
-    const body = await request.json().catch(() => ({}));
-    const sourceDir = body.sourceDir || CLI_PROXY_DIR;
+    // sourceDir used to come straight off the request body and go into existsSync,
+    // readdirSync and readFileSync with no allow-list, normalisation or containment
+    // check — so a caller through the /api gate could walk any directory on the host
+    // and read credential-shaped JSON out of it, with the 404 echoing the path back
+    // as an existence oracle. No caller in the repo ever passed it, and GET already
+    // hardcodes the constant, so the override was reachable-but-unused. Pinned.
+    const sourceDir = CLI_PROXY_DIR;
 
     if (!fs.existsSync(sourceDir)) {
       return NextResponse.json(
-        { error: `Directory not found: ${sourceDir}`, imported: 0 },
+        { error: "No CLI proxy directory found to import from", imported: 0 },
         { status: 404 }
       );
     }

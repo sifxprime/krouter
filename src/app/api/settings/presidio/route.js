@@ -216,6 +216,40 @@ export async function PUT(request) {
       }
     }
 
+    // Redaction is deliberately fail-closed: if the sidecar cannot be reached, the
+    // request is rejected rather than forwarded unredacted. That is the right default,
+    // but it means turning this on without a reachable sidecar 503s every /v1 call and
+    // the dashboard gave no hint that would happen. Refuse the switch instead of
+    // letting someone brick their own traffic from a settings page.
+    if (body.enabled === true) {
+      const sidecarUrl = process.env.SIDECAR_URL || "http://127.0.0.1:5001/redact";
+      const healthUrl = sidecarUrl.replace(/\/redact\/?$/, "/health");
+      let reachable = false;
+      let reason = "";
+      try {
+        const probe = await fetch(healthUrl, { signal: AbortSignal.timeout(4000) });
+        reachable = probe.ok;
+        if (!probe.ok) reason = `responded ${probe.status}`;
+      } catch (e) {
+        reason = e?.name === "TimeoutError" ? "timed out after 4s" : (e?.message || "unreachable");
+      }
+      if (!reachable) {
+        return NextResponse.json(
+          {
+            error: {
+              code: "SIDECAR_UNREACHABLE",
+              message: "Presidio sidecar is not reachable — refusing to enable redaction",
+              details:
+                `Tried ${healthUrl} (${reason}). Redaction fails closed, so enabling it now ` +
+                `would reject every /v1 request. Start the sidecar first, or set SIDECAR_URL ` +
+                `if it runs elsewhere. Setup: docs/REDACTION_SETUP.md`,
+            },
+          },
+          { status: 409, headers: SETTINGS_RESPONSE_HEADERS }
+        );
+      }
+    }
+
     // Update database toggle states
     const updateData = {
       presidioEnabled: body.enabled,

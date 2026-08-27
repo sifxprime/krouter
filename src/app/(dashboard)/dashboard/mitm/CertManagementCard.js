@@ -97,7 +97,14 @@ export default function CertManagementCard() {
   const showInstall = krouter.certFileExists;
   const showUninstall = krouter.certFileExists; // safe to remove even if not currently trusted
   const showCleanupLegacy = legacy.certFileExists;
-  const showSudoInput = !isWin && needsSudoPassword && (busy === "install" || busy === "uninstall");
+  // `busy` is only set while a request is in flight, so gating the field on it meant
+  // the input appeared *after* the request had already been sent with
+  // sudoPassword: undefined (runAction reads the still-empty state), the API answered
+  // 400 "Sudo password required", and the field vanished again as busy cleared. It
+  // flashed for the duration of a failing request and could never be typed into.
+  // Show it whenever an action that needs sudo is on offer. needsSudoPassword already
+  // means "no usable cached password", so a cached one still hides it.
+  const showSudoInput = !isWin && needsSudoPassword && (showInstall || showUninstall);
 
   // Badge logic
   let mainBadge;

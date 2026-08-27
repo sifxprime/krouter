@@ -1,5 +1,7 @@
 // Public API barrel — all DB functions
+import fs from "node:fs";
 import { getAdapter } from "./driver.js";
+import { DATA_FILE } from "./paths.js";
 import { stringifyJson, parseJson } from "./helpers/jsonCol.js";
 
 // Settings
@@ -93,10 +95,46 @@ export async function exportDb() {
   return out;
 }
 
+// Sections importDb knows how to restore. A payload carrying none of them cannot be a
+// kRouter backup, and importing it would delete everything and put nothing back.
+const IMPORT_SECTIONS = [
+  "settings", "providerConnections", "providerNodes", "proxyPools",
+  "apiKeys", "combos", "modelAliases", "customModels", "mitmAlias", "pricing",
+];
+
 export async function importDb(payload) {
   if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
     throw new Error("Invalid database payload");
   }
+
+  // The only check used to be "is it a non-array object", so `{}` -- or any unrelated
+  // JSON file picked in the file dialog -- passed, wiped six tables and inserted
+  // nothing. Every provider connection, API key, proxy pool and combo was gone, with
+  // the modal having said only "Enter your current password to import the database."
+  const present = IMPORT_SECTIONS.filter((k) => payload[k] !== undefined);
+  if (present.length === 0) {
+    throw new Error(
+      "This file does not look like a kRouter backup — it contains none of: " +
+      IMPORT_SECTIONS.join(", ") + ". Nothing was changed."
+    );
+  }
+
+  // Even a well-formed import replaces everything, so keep a copy of what was there.
+  // Restoring is then a file copy rather than re-authenticating every provider.
+  try {
+    const { makeBackupDir, backupFile, pruneOldBackups } = await import("./backup.js");
+    if (fs.existsSync(DATA_FILE)) {
+      const dir = makeBackupDir("pre-import");
+      backupFile(DATA_FILE, dir);
+      pruneOldBackups();
+      console.log(`[DB] Pre-import snapshot written to ${dir}`);
+    }
+  } catch (e) {
+    // A snapshot is a safety net, not a precondition -- but say so rather than
+    // silently proceeding as if one had been taken.
+    console.warn(`[DB] Could not write pre-import snapshot: ${e.message}`);
+  }
+
   const db = await getAdapter();
 
   db.transaction(() => {
