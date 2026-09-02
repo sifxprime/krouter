@@ -1,3 +1,39 @@
+# v0.5.148 (2026-09-02) — the login page stopped promising something that never happens
+
+A small release: one commit, two pieces of user-facing text that described behaviour the
+code does not have.
+
+**The forced-password-change form was unreachable, and its warning was wrong.**
+v0.5.136 turned a default-password remote login into a hard 403 rather than an advisory
+flag — the right call, and the security fix stands untouched. But it orphaned the "set a
+new password" form the login page existed to show: `mustChangePassword` now only ever
+ships alongside that 403, and the page read it inside `if (res.ok)`, so `setMustChange(true)`
+could never fire. The form, its submit handler and both pieces of state were dead code;
+a grep found exactly three references and all of them were in the unreachable path.
+
+The copy above the login button had drifted with it, telling anyone without a password
+"you will be asked to set one when logging in remotely". Nobody ever is. What actually
+happens is the reverse of what it promised: a local login on the default password goes
+straight through with no prompt at all, and a remote one is refused outright. The warning
+now says that, and points at the profile page where a password is actually set.
+
+**A security banner overstated its own risk.**
+The endpoint page claimed "your endpoint is publicly accessible without authentication"
+whenever REQUIRE_API_KEY was off and a tunnel was up. It is not: a tunnelled request
+carries X-Forwarded-For, server-peer-patch stamps it via-proxy, isLocalRequest then
+refuses to treat it as local, and /v1 answers 401 without a key — confirmed against the
+LAN interface, which takes the same path. Overstating a risk teaches people to ignore the
+warning, which is worse than not showing one.
+
+There is a real gap underneath, and it is narrower than the banner claimed: a proxy that
+forwards nothing identifying the client looks like loopback, and loopback is exempt unless
+the flag is on. The banner says that now instead.
+
+**Verification:** full suite **1734 passed**, 20 expected-fail, 20 skipped; production
+build clean. Checked in a browser rather than only in tests — the corrected warning
+renders, signing in still reaches the dashboard, and a remote default-password login
+still returns its 403 with the full explanation intact.
+
 # v0.5.147 (2026-08-27) — Windows was unusable in places, and the CLI was killing other people's processes
 
 A feature-by-feature pass over the product as a user rather than as a test suite. Every
