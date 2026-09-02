@@ -18,4 +18,13 @@ jobs:
             https://api.github.com/repos/sifxprime/krouter-web/dispatches \
             -d '{"event_type":"krouter-release"}'  )
           echo "Response status: $STATUS"
-          [ "$STATUS" = "204" ] && echo "Dispatch succeeded!" || echo "Dispatch failed status $STATUS"
+          # `[ ... ] && echo || echo` always exits 0, so a rejected dispatch still
+          # reported this job green. It has been failing with 403 on every release and
+          # nothing said so -- the site only stayed current because krouter-web also
+          # runs on a 10-minute cron. Fail loudly instead.
+          if [ "$STATUS" != "204" ]; then
+            echo "::error::repository_dispatch to krouter-web was rejected with HTTP $STATUS."
+            echo "::error::403 usually means KDL_ROUTER_WEB_TOKEN lacks access to the private repo, or has expired."
+            exit 1
+          fi
+          echo "Dispatch accepted (204)."
