@@ -1,3 +1,124 @@
+# v0.5.150 (2026-09-07) — a token in the logs, a billing hole, and five broken client paths
+
+The second half of the upstream triage. v0.5.149 shipped the security findings; this ships the
+seven high-value functional ones. Every commit was checked against our own code rather than
+applied on the strength of its message, and each fix was verified against the *unfixed* build —
+if reverting the change did not turn a test red, the test was wrong and got rewritten.
+
+**A live token pair, written to stdout.**
+`refreshCline` in `open-sse/executors/default.js` logged the refresh response:
+
+    console.log('[DEBUG] Cline refresh payload:', JSON.stringify(payload).substring(0, 200))
+
+That response is `{ data: { accessToken, refreshToken, expiresAt } }` — the shape the very next
+line parses. 200 characters is more than enough for both tokens in full, so every Cline token
+refresh printed working credentials to the terminal and into any log capture behind it. Four more
+`[DEBUG]` lines around it logged the token length and the raw error body. All five are gone, and
+a test now fails if the string `[DEBUG]` reappears in that executor or if any captured console
+output contains a token.
+
+This was found while porting upstream `88676b30`, which turned out to be a fix we already had —
+our fork already spoke the extension JSON contract. What we did not have was the hardening, now
+adopted: a failed refresh returns `null` instead of throwing out of the caller and aborting the
+whole request, a body with no `accessToken` bails instead of returning `{ accessToken: undefined }`
+for something downstream to trip over, expiry falls back to `expiresIn`/`expires_in`/3600 rather
+than `undefined`, and the refresh URL is read from `PROVIDERS.cline` instead of a second hardcoded
+copy of it.
+
+**Requests that billed nothing at all.**
+The Responses API has no `[DONE]` sentinel, so codex closes the socket the moment
+`response.completed` arrives. That cancels the reader, `flush()` never runs — and every usage side
+effect lived only in `flush()`. Not an estimate, not a zero row: no row. The usage tail is now a
+once-guarded `finalizeStream()` called from the terminal event as well as from flush.
+
+Placement is the whole fix. It fires *after* the terminal chunk's usage is extracted and handed to
+the client, not where the event is detected; anchored at the detection point it would have
+estimated instead of using the real numbers the provider had just sent. Verified against the
+unfixed code: zero usage records before, one after. (upstream `d7f7d70d`)
+
+**Codex could not authenticate at all.**
+Codex reads a custom model provider's credentials from `env_key`, `http_headers`,
+`env_http_headers` or a token command. `auth.json` is read only by its *built-in* openai provider
+— so writing `OPENAI_API_KEY` there left every request unauthenticated with `401 Missing API key`,
+while overwriting the user's existing ChatGPT login on the way past.
+
+The key now goes in `[model_providers.krouter.http_headers]` and `auth.json` is no longer written.
+`DELETE` still clears it, to repair machines the previous version already configured. The subagent
+model moved to the `agents.default_subagent_model` scalar, because `agents.<role>` now declares a
+custom role and requires a description — the old `[agents.subagent]` table was being discarded
+with a startup warning. The card's status regex reads the new key too, or the dashboard showed it
+blank. Verified the emitted TOML round-trips with the header intact, preserves unrelated
+`[agents]` keys, and orders the sub-table after the provider scalars — wrong order and Codex
+refuses the file. (upstream `9c45b27c`)
+
+**Ollama's last chunk — the one with the token counts — was dropped.**
+`createSSEStream` splits on `\n` and keeps the remainder for `flush()` to parse, but that call
+omitted `targetFormat`, so `parseSSELine` demanded a `data: ` prefix and discarded whatever an
+NDJSON provider left without a closing newline. The `!parsed.done` guard compounded it: the SSE
+sentinel and an Ollama final chunk both carry `done:true`, but the latter is the real last chunk,
+holding `done_reason` and the token counts. The sentinel check is now scoped to formats that emit
+one. (upstream `f9d82c65`)
+
+**Claude requests that 400'd before failover could try the next hop.**
+Anthropic rejects a tool carrying both `defer_loading:true` and `cache_control`. MCP clients put
+deferred tools at the tail — exactly where we anchored the 1h cache breakpoint. The anchor now
+lands on the last tool that *can* be cached, so caching is kept for the tools that can use it
+instead of dropped wholesale. (upstream `6ab9ca9e`, #3567)
+
+**Parallel tool calls arriving as one malformed call.**
+Responses-to-chat translation attributed every arguments delta to a positional index that only
+advanced on `output_item.done`. When an upstream emits all `output_item.added` events before any
+dones — normal for parallel tool calls — every delta landed on index 0, and the client
+concatenated N JSON payloads into a single tool input and failed validation. Indices are now keyed
+off the server item id, assigned when the item is added; a duplicate added (a retry) reuses its
+index rather than allocating a new one. (upstream `e74db4d0`, taking only this half — the
+`muse-spark` model it also adds needs two modules this fork does not have)
+
+**CommandCode errors shown to users as assistant output.**
+CommandCode reports failures as a `type:"error"` event inside an HTTP 200 NDJSON stream. Combo and
+account fallback key off `response.status`, so a 200 never triggered them and the error text was
+streamed to the client as if the model had said it. The leading events are now peeked before the
+stream is committed; an error event becomes a real 4xx/5xx that the existing fallback can see,
+with the status taken from the event or inferred from its text so a rate limit fails over
+differently than an auth failure. Normal streams replay losslessly and the peek stops at the first
+event proving real content. (upstream `67d9182e`)
+
+Two things came out of porting that one. Upstream's tests exercise the helper directly, so they
+stay green even if `execute()` never calls it — reverting the wiring did not turn them red, so
+coverage for `execute()` itself was added. That new test then caught a defect upstream carries
+too: the response headers were built from an object literal holding both `Content-Type` and
+`content-type`. Those are two distinct JS keys and the `Headers` constructor appends rather than
+replaces, so every CommandCode response went out with a doubled
+`text/event-stream, text/event-stream`.
+
+**The peek that fix needed, fixed in turn.**
+An adversarial sweep over this release's own diff, run before publishing, found that the new
+CommandCode peek rebuilt the stream it had already consumed out of parsed, trimmed text lines.
+Three defects came from that, every one of them dependent on where the network split the body —
+which is exactly why the suite stayed green: it fed one line per read, the single framing that
+never exercised the replay.
+
+Lines sharing a read with the first content event were dropped, because the peek stopped there
+and the rest of that chunk existed nowhere else — a short answer arriving in one chunk lost
+everything past its first token, terminal event included. A final line with no trailing newline
+was emitted twice, the done branch having pushed it into the replay list without clearing the
+text buffer. And a multi-byte character split across a read came out corrupted, because the peek
+and the wrapper each held their own `TextDecoder` and the bytes stranded in the first were never
+handed to the second.
+
+The peek now keeps each raw chunk and replays those bytes verbatim; nothing is re-derived, so
+there is nothing to lose, duplicate or mis-decode. Reproduced independently before fixing —
+identical bytes framed as one read versus one line per read gave `AAA` against `AAABBBCCC`,
+`ONCEONCE` against `ONCE`, and `AA你好世界` arriving with a replacement character where its
+third character should be — and the new tests vary the framing rather than the content.
+
+**`npm test` failed after `npm run build`.**
+`next build` copies the tree, tests included, into `.next/standalone`, and vitest had no exclude —
+so it ran every test twice and went red on stale build artifacts rather than on anything in
+source. Excluded, and verified by planting a stale copy and watching the count stay put.
+
+1824 tests pass, up from 1777.
+
 # v0.5.149 (2026-09-07) — an unauthenticated remote bypass, and seven SSRF holes
 
 A security release. Everything here was found by triaging the 94 upstream commits this
