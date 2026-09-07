@@ -7,15 +7,18 @@ FROM base AS builder
 
 RUN apk --no-cache upgrade && apk --no-cache add python3 make g++ linux-headers
 
-COPY package.json ./
-# node:22-alpine ships npm 10.9.x, whose arborist crashes on this dependency graph with
-# "Cannot read properties of null (reading 'edgesOut')". v0.5.148 built fine on the same
-# image five days earlier, so a transitive dependency published since then started
-# tripping it; the same package.json installs cleanly on npm 11. Pin the builder's npm
-# rather than the base image, so the runtime stage keeps the distro default.
+COPY package.json package-lock.json ./
+# `npm ci` installs exactly what the lockfile pins, so a build cannot pick up a version
+# nobody chose. Without it this build resolved fresh every time, which is how a
+# transitive dependency published between v0.5.148 and v0.5.149 broke a release five days
+# after the last green build, with no source change in between.
+#
+# The npm pin stays: node:22-alpine ships npm 10.9.x, whose arborist crashed on this
+# dependency graph with "Cannot read properties of null (reading 'edgesOut')". Only the
+# builder is upgraded; the runtime stage keeps the image default.
 RUN --mount=type=cache,target=/root/.npm \
   npm install -g npm@11 \
-  && npm install
+  && npm ci
 
 COPY . ./
 ENV NEXT_TELEMETRY_DISABLED=1

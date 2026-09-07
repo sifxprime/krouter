@@ -61,7 +61,9 @@ PUBLIC.md
 Thanks.md
 PUBLIC.en.md
 PR/*
-package-lock.json
+# package-lock.json is committed on purpose: the Docker build resolves dependencies
+# fresh without one, which is how a transitive dependency published between v0.5.148
+# and v0.5.149 silently broke a release five days later. Builds use `npm ci`.
 
 
 #Ignore vscode AI rules
