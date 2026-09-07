@@ -1,6 +1,8 @@
 "use server";
 
 import { NextResponse } from "next/server";
+import { assertPublicUrl } from "@/shared/utils/ssrfGuard.js";
+import { isLocalRequest } from "@/dashboardGuard";
 
 const TIMEOUT_MS = 8000;
 
@@ -86,6 +88,19 @@ export async function POST(request) {
     const { url } = await request.json();
     if (!url || typeof url !== "string") {
       return NextResponse.json({ error: "url required" }, { status: 400 });
+    }
+    // `url` came from the request body and went straight into three fetch() calls, so a
+    // caller who cleared the /api gate could point this probe at cloud metadata or an
+    // internal service and read the response back. This route is not in
+    // LOCAL_ONLY_PATHS -- only cowork-settings is -- so a session was enough to reach it.
+    // Guard remote callers only: a local operator's self-hosted MCP server is normally
+    // on loopback and must keep working.
+    if (!isLocalRequest(request)) {
+      try {
+        assertPublicUrl(url);
+      } catch {
+        return NextResponse.json({ error: "URL not allowed" }, { status: 400 });
+      }
     }
     const result = await probeMcp(url);
     return NextResponse.json(result);
