@@ -8,8 +8,14 @@ FROM base AS builder
 RUN apk --no-cache upgrade && apk --no-cache add python3 make g++ linux-headers
 
 COPY package.json ./
+# node:22-alpine ships npm 10.9.x, whose arborist crashes on this dependency graph with
+# "Cannot read properties of null (reading 'edgesOut')". v0.5.148 built fine on the same
+# image five days earlier, so a transitive dependency published since then started
+# tripping it; the same package.json installs cleanly on npm 11. Pin the builder's npm
+# rather than the base image, so the runtime stage keeps the distro default.
 RUN --mount=type=cache,target=/root/.npm \
-  npm install
+  npm install -g npm@11 \
+  && npm install
 
 COPY . ./
 ENV NEXT_TELEMETRY_DISABLED=1
