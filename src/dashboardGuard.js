@@ -50,7 +50,19 @@ const PUBLIC_API_PATHS = [
 ];
 
 // Public top-level prefixes (LLM API endpoints with their own API key auth).
-const PUBLIC_PREFIXES = ["/v1", "/v1beta", "/api/v1", "/api/v1beta"];
+// Middleware runs BEFORE Next's rewrites, so it sees the literal request path. A
+// root-level rewrite whose prefix is missing here matches no branch of the guard --
+// not this one, not the /api/* deny-by-default, not /dashboard -- and falls through
+// entirely, reaching its destination with no auth at all.
+//
+// That is what happened to /codex, which next.config.mjs rewrites to /api/v1/responses:
+// from off-machine, POST /v1/responses correctly returned 401 while POST /codex/responses
+// returned 200 and a real completion. Being listed here is what routes a path into
+// canAccessPublicLlmApi, which is what demands an API key from a remote caller.
+//
+// Every root-level rewrite source in next.config.mjs must have its top-level prefix in
+// this list. tests/unit/rewrite-prefix-coverage.test.js enforces that.
+const PUBLIC_PREFIXES = ["/v1", "/v1beta", "/api/v1", "/api/v1beta", "/codex"];
 
 // Always require JWT token regardless of requireLogin setting
 const ALWAYS_PROTECTED = [
