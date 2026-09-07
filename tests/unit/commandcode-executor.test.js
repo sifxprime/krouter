@@ -257,3 +257,72 @@ describe("CommandCodeExecutor.execute wiring", () => {
     expect(text.endsWith("data: [DONE]\n\n")).toBe(true);
   });
 });
+
+// The peek consumes whole reads, so where the network splits the body must not change
+// what the client receives. Every test above feeds exactly one line per enqueue, which
+// is the one framing that never exercised the replay. These do.
+describe("peek replay is byte-exact regardless of chunk boundaries", () => {
+  const bytes = (s) => new TextEncoder().encode(s);
+  const bodyOf = (chunks) => new ReadableStream({
+    start(c) { for (const ch of chunks) c.enqueue(ch); c.close(); },
+  });
+  const run = async (byteChunks) => {
+    const res = await inspectAndWrapCommandCodeResponse(
+      new Response(bodyOf(byteChunks), { status: 200 }), "m");
+    return await res.text();
+  };
+  const content = (sse) => sse.split("\n")
+    .filter((l) => l.startsWith("data: ") && l !== "data: [DONE]")
+    .map((l) => JSON.parse(l.slice(6)))
+    .map((c) => c.choices?.[0]?.delta?.content || "")
+    .join("");
+
+  const CONVO = [
+    { type: "start" },
+    { type: "start-step" },
+    { type: "text-start", id: "t1" },
+    { type: "text-delta", id: "t1", delta: "AAA" },
+    { type: "text-delta", id: "t1", delta: "BBB" },
+    { type: "text-delta", id: "t1", delta: "CCC" },
+    { type: "finish" },
+  ].map((l) => JSON.stringify(l) + "\n");
+
+  it("keeps events that share a read with the first content event", async () => {
+    // The stop event is text-delta AAA; BBB, CCC and finish ride in the same read.
+    // Rebuilding the replay from parsed lines dropped them and truncated the answer.
+    expect(content(await run([bytes(CONVO.join(""))]))).toBe("AAABBBCCC");
+  });
+
+  it("gives the same output whatever the framing", async () => {
+    const whole = content(await run([bytes(CONVO.join(""))]));
+    const perLine = content(await run(CONVO.map(bytes)));
+    const split = content(await run([
+      bytes(CONVO.join("").slice(0, 90)),
+      bytes(CONVO.join("").slice(90)),
+    ]));
+    expect([whole, perLine, split]).toEqual(["AAABBBCCC", "AAABBBCCC", "AAABBBCCC"]);
+  });
+
+  it("does not emit a trailing line twice when the body has no final newline", async () => {
+    // Nothing here is in the stop list until the last line, which never terminates --
+    // it stayed in the text buffer and was replayed on top of itself.
+    const text =
+      JSON.stringify({ type: "start" }) + "\n" +
+      JSON.stringify({ type: "start-step" }) + "\n" +
+      JSON.stringify({ type: "text-delta", id: "t", delta: "ONCE" });
+    expect(content(await run([bytes(text)]))).toBe("ONCE");
+  });
+
+  it("does not corrupt a multi-byte character split across a read", async () => {
+    const raw =
+      JSON.stringify({ type: "start" }) + "\n" +
+      JSON.stringify({ type: "text-delta", id: "t", delta: "AA" }) + "\n" +
+      JSON.stringify({ type: "text-delta", id: "t", delta: "你好世界" }) + "\n";
+    const buf = bytes(raw);
+    // Cut on a UTF-8 continuation byte, i.e. inside a character.
+    let cut = buf.length - 6;
+    while (cut > 0 && (buf[cut] & 0xC0) !== 0x80) cut--;
+    // Two decoders across the peek boundary lost the leading bytes of that character.
+    expect(content(await run([buf.slice(0, cut), buf.slice(cut)]))).toBe("AA你好世界");
+  });
+});

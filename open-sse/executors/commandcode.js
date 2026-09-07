@@ -133,30 +133,30 @@ export async function inspectAndWrapCommandCodeResponse(originalResponse, model)
   const reader = originalResponse.body.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
-  const bufferedLines = [];
+  // Every chunk pulled off the reader, kept as raw bytes. The replay re-emits these
+  // verbatim rather than rebuilding text from parsed lines: reconstructing loses any
+  // line the peek did not walk, duplicates the trailing partial one, and splits
+  // multi-byte characters across two decoders. Bytes in, same bytes out.
+  const consumed = [];
   let detectedError = null;
 
   try {
     while (true) {
       const { value, done } = await reader.read();
       if (done) {
+        // A final line with no trailing newline never became a complete line above.
         const trimmed = buffer.trim();
         if (trimmed) {
           try {
             const jsonStr = trimmed.startsWith("data:") ? trimmed.slice(5).trim() : trimmed;
             const parsed = JSON.parse(jsonStr);
-            if (parsed?.type === "error") {
-              detectedError = parsed;
-            } else {
-              bufferedLines.push(trimmed);
-            }
-          } catch {
-            bufferedLines.push(trimmed);
-          }
+            if (parsed?.type === "error") detectedError = parsed;
+          } catch { /* not an error event; it replays with everything else */ }
         }
         break;
       }
 
+      consumed.push(value);
       buffer += decoder.decode(value, { stream: true });
       const lines = buffer.split("\n");
       buffer = lines.pop() || "";
@@ -166,17 +166,12 @@ export async function inspectAndWrapCommandCodeResponse(originalResponse, model)
         const trimmed = line.trim();
         if (!trimmed) continue;
         const jsonStr = trimmed.startsWith("data:") ? trimmed.slice(5).trim() : trimmed;
-        if (!jsonStr || jsonStr === "[DONE]") {
-          bufferedLines.push(trimmed);
-          stopLoop = true;
-          break;
-        }
+        if (!jsonStr || jsonStr === "[DONE]") { stopLoop = true; break; }
 
         let event;
         try {
           event = JSON.parse(jsonStr);
         } catch {
-          bufferedLines.push(trimmed);
           continue;
         }
 
@@ -185,8 +180,6 @@ export async function inspectAndWrapCommandCodeResponse(originalResponse, model)
           stopLoop = true;
           break;
         }
-
-        bufferedLines.push(trimmed);
 
         // Any of these proves real content is flowing -- stop peeking.
         if (
@@ -223,30 +216,18 @@ export async function inspectAndWrapCommandCodeResponse(originalResponse, model)
     );
   }
 
-  const combinedStream = createReplayedStream(bufferedLines, buffer, reader);
-  return wrapNdjsonAsOpenAISse(combinedStream, model, originalResponse);
+  return wrapNdjsonAsOpenAISse(createReplayedStream(consumed, reader), model, originalResponse);
 }
 
-// Replays the peeked prefix, then hands through the rest of the reader untouched.
-function createReplayedStream(bufferedLines, remainingBuffer, reader) {
-  const encoder = new TextEncoder();
+// Re-emits the bytes the peek consumed, then hands through the rest of the reader.
+function createReplayedStream(consumedChunks, reader) {
   let replayed = false;
 
   return new ReadableStream({
     async pull(controller) {
       if (!replayed) {
         replayed = true;
-        let prefix = bufferedLines.join("\n");
-        if (prefix && remainingBuffer) {
-          prefix += "\n" + remainingBuffer;
-        } else if (remainingBuffer) {
-          prefix = remainingBuffer;
-        } else if (prefix) {
-          prefix += "\n";
-        }
-        if (prefix) {
-          controller.enqueue(encoder.encode(prefix));
-        }
+        for (const chunk of consumedChunks) controller.enqueue(chunk);
       }
 
       try {
@@ -266,10 +247,6 @@ function createReplayedStream(bufferedLines, remainingBuffer, reader) {
   });
 }
 
-// Upstream's own content-type is NDJSON while we emit SSE, so it has to be replaced
-// rather than merged. Built with Headers.set(): an object literal holding both
-// "Content-Type" and "content-type" is two distinct JS keys, and the Headers
-// constructor appends them into one doubled value.
 function buildSseHeaders(originalResponse) {
   const headers = new Headers();
   if (originalResponse?.headers) {
