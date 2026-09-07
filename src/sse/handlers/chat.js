@@ -10,6 +10,7 @@ import {
 import { getSettings } from "@/lib/localDb";
 import { getModelInfo, getComboModels } from "../services/model.js";
 import { handleChatCore } from "open-sse/handlers/chatCore.js";
+import { stripModelContextMarker } from "open-sse/utils/modelMarkers.js";
 import { errorResponse, unavailableResponse } from "open-sse/utils/error.js";
 import { getRetiredModelError } from "open-sse/config/retiredModels.js";
 import { getEffectiveFallbackStrategy } from "open-sse/config/providerStrategy.js";
@@ -75,7 +76,12 @@ export async function handleChat(request, clientRawRequest = null) {
 
   // Log request endpoint and model
   const url = new URL(request.url);
-  const modelStr = body.model;
+  // Claude Code appends `[1m]` to the model name when the 1M-context beta is on, and the
+  // marker matches no combo, alias or provider/model pair — so the request died at model
+  // resolution with "Invalid model format". The capability itself rides in the
+  // anthropic-beta header, which is forwarded untouched. (upstream ee7a9616)
+  const { model: modelStr, contextMarker } = stripModelContextMarker(body.model);
+  if (contextMarker) body.model = modelStr;
 
   // Count messages (support both messages[] and input[] formats)
   const msgCount = body.messages?.length || body.input?.length || 0;

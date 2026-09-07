@@ -1,10 +1,13 @@
 import { createHash, randomBytes, randomUUID } from "crypto";
 import { CLAUDE_TOOL_SUFFIX, CC_DEFAULT_TOOLS } from "../config/appConstants.js";
 
-const CLAUDE_VERSION = "2.1.92";
+// Anthropic gates newly released models on the Claude Code version a client reports:
+// anything below ~2.1.251 gets HTTP 400 for them. This is a live functional break when
+// it goes stale, not cosmetic — the spoof has to keep up. (upstream 009cac63)
+const CLAUDE_VERSION = "2.1.258";
 const CC_ENTRYPOINT = "sdk-cli";
 
-// Generate billing header matching real Claude Code 2.1.92+ format:
+// Generate billing header matching real Claude Code 2.1.258+ format:
 // x-anthropic-billing-header: cc_version=<ver>.<build>; cc_entrypoint=sdk-cli; cch=<hash>;
 function generateBillingHeader(payload) {
   const content = JSON.stringify(payload);
@@ -13,7 +16,7 @@ function generateBillingHeader(payload) {
   return `x-anthropic-billing-header: cc_version=${CLAUDE_VERSION}.${buildHash}; cc_entrypoint=${CC_ENTRYPOINT}; cch=${cch};`;
 }
 
-// Generate fake user ID in Claude Code 2.1.92+ JSON format:
+// Generate fake user ID in Claude Code 2.1.258+ JSON format:
 // {"device_id":"<64hex>","account_uuid":"<uuid>","session_id":"<uuid>"}
 function generateFakeUserID(sessionId) {
   const deviceId = randomBytes(32).toString("hex");
@@ -24,7 +27,7 @@ function generateFakeUserID(sessionId) {
 
 /**
  * Cloak tools before sending to Claude provider (anti-ban):
- * - Rename non-CC client tools with _cc suffix in tools[] and messages[]
+ * - Rename client tools with the CLAUDE_TOOL_SUFFIX ("_ide") in tools[] and messages[]
  * - Skip tools that are already CC default names (they become decoys as-is)
  * - Inject CC_DECOY_TOOLS after client tools
  * Returns { body, toolNameMap } where toolNameMap maps suffixed → original
@@ -125,6 +128,45 @@ const CC_DECOY_TOOLS = [
  * @param {string} [sessionId] - Session ID to align with X-Claude-Code-Session-Id header
  * @returns {object} Modified body
  */
+/**
+ * Decloak the tool name inside a single streamed Claude SSE event.
+ *
+ * Streaming counterpart of decloakToolNames(). Required for claude→claude
+ * proxying: translateResponse() returns same-format chunks untouched, so
+ * without this the client receives the cloaked ("_ide"-suffixed) tool name
+ * and rejects the call as an unknown tool. In a Claude SSE stream a tool
+ * name appears exactly once per call — on the content_block_start event of
+ * a tool_use block; argument deltas carry no name.
+ *
+ * Unknown names (e.g. a CC decoy tool the model called anyway) pass through
+ * unchanged, matching the non-streaming decloak behavior.
+ *
+ * @param {object|null} chunk - Parsed SSE event (may be null on stream flush)
+ * @param {Map|null} toolNameMap - Suffixed → original name map from cloakClaudeTools()
+ * @returns {object|null} The chunk, with the tool_use name restored when cloaked
+ */
+export function decloakStreamChunk(chunk, toolNameMap) {
+  if (!toolNameMap?.size || !chunk || typeof chunk !== "object") return chunk;
+  if (chunk.type !== "content_block_start") return chunk;
+  const block = chunk.content_block;
+  if (block?.type !== "tool_use" || typeof block.name !== "string") return chunk;
+  const original = toolNameMap.get(block.name);
+  if (!original) return chunk;
+  return { ...chunk, content_block: { ...block, name: original } };
+}
+
+// CC decoy tools — Claude Code native tool names, marked unavailable
+/**
+ * Apply Claude cloaking to request body:
+ * 1. Inject billing header as first system block
+ * 2. Inject fake user ID into metadata (JSON format, session_id aligned with X-Claude-Code-Session-Id)
+ * Only applies when using OAuth token (sk-ant-oat).
+ * @param {object} body - Claude API request body
+ * @param {string} apiKey - API key or OAuth token
+ * @param {string} [sessionId] - Session ID to align with X-Claude-Code-Session-Id header
+ * @returns {object} Modified body
+ */
+
 export function applyCloaking(body, apiKey, sessionId) {
   if (!apiKey || !apiKey.includes("sk-ant-oat")) return body;
 

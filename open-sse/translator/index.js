@@ -1,7 +1,7 @@
 import { FORMATS } from "./formats.js";
 import { ensureToolCallIds, fixMissingToolResponses } from "./helpers/toolCallHelper.js";
 import { prepareClaudeRequest } from "./helpers/claudeHelper.js";
-import { cloakClaudeTools } from "../utils/claudeCloaking.js";
+import { cloakClaudeTools, decloakStreamChunk } from "../utils/claudeCloaking.js";
 import { filterToOpenAIFormat } from "./helpers/openaiHelper.js";
 import { normalizeThinkingConfig } from "../services/provider.js";
 import { AntigravityExecutor } from "../executors/antigravity.js";
@@ -168,9 +168,13 @@ export function translateRequest(sourceFormat, targetFormat, model, body, stream
 // Translate response chunk: target -> openai -> source
 export function translateResponse(targetFormat, sourceFormat, chunk, state) {
   ensureInitialized();
-  // If same format, return as-is
+  // If same format, return as-is — except the tool name may still be cloaked.
+  // translateRequest() suffixes client tools for OAuth-cloaked Claude providers even
+  // when no format conversion happens, so on claude->claude streaming the cloaked
+  // ("_ide"-suffixed) name reached the client and every tool call was rejected as
+  // unknown. state.toolNameMap is populated at open-sse/utils/stream.js:57.
   if (sourceFormat === targetFormat) {
-    return [chunk];
+    return [decloakStreamChunk(chunk, state?.toolNameMap)];
   }
 
   let results = [chunk];

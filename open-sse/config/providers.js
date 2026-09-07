@@ -52,7 +52,7 @@ export const CLAUDE_CLI_SPOOF_HEADERS = {
   "anthropic-version": "2023-06-01",
   "Anthropic-Beta": selectAnthropicBeta("claude-opus"),
   "Anthropic-Dangerous-Direct-Browser-Access": "true",
-  "User-Agent": "claude-cli/2.1.92 (external, sdk-cli)",
+  "User-Agent": "claude-cli/2.1.258 (external, sdk-cli)",
   "X-App": "cli",
   "X-Stainless-Helper-Method": "stream",
   "X-Stainless-Retry-Count": "0",
