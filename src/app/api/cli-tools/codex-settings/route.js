@@ -132,40 +132,32 @@ export async function POST(request) {
       parsed = parsedToWritable(parseTOML(existingConfig));
     } catch { /* No existing config */ }
 
-    // Update only kRouter-related fields (api_key goes to auth.json, not config.toml)
+    // Update only kRouter-related fields.
     parsed.model = model;
     parsed.model_provider = PROVIDER_KEY;
 
     // Update or create krouter provider section.
     const normalizedBaseUrl = baseUrl.endsWith("/v1") ? baseUrl : `${baseUrl}/v1`;
+    // Codex authenticates a custom provider from env_key, http_headers,
+    // env_http_headers or a token command only -- auth.json is read solely by its
+    // built-in openai provider. The key has to travel as a static header or every
+    // request is unauthenticated.
     setNestedSection(parsed, `model_providers.${PROVIDER_KEY}`, {
       name: "kRouter",
       base_url: normalizedBaseUrl,
       wire_api: "responses",
+      http_headers: { Authorization: `Bearer ${apiKey}` },
     });
 
-    // Add subagent configuration
-    const effectiveSubagentModel = subagentModel || model;
-    setNestedSection(parsed, "agents.subagent", {
-      model: effectiveSubagentModel,
-    });
+    // The subagent model is a scalar under [agents]; agents.<role> now declares a
+    // custom role and requires a description, so the old table is discarded with a
+    // startup warning.
+    deleteNestedSection(parsed, "agents.subagent");
+    setNestedSection(parsed, "agents.default_subagent_model", subagentModel || model);
 
     // Write merged config
     const configContent = stringifyTOML(parsed);
     await fs.writeFile(configPath, configContent);
-
-    // Update auth.json with OPENAI_API_KEY (Codex reads this first)
-    const authPath = getCodexAuthPath();
-    let authData = {};
-    try {
-      const existingAuth = await fs.readFile(authPath, "utf-8");
-      authData = JSON.parse(existingAuth);
-    } catch { /* No existing auth */ }
-    
-    // Force apikey mode (keep existing tokens untouched for ChatGPT login reuse)
-    authData.OPENAI_API_KEY = apiKey;
-    authData.auth_mode = "apikey";
-    await fs.writeFile(authPath, JSON.stringify(authData, null, 2));
 
     return NextResponse.json({
       success: true,
@@ -207,7 +199,8 @@ export async function DELETE() {
     // Remove provider section under both keys
     deleteNestedSection(parsed, `model_providers.${PROVIDER_KEY}`);
 
-    // Remove subagent configuration
+    // Remove subagent configuration (current scalar and the legacy role table)
+    deleteNestedSection(parsed, "agents.default_subagent_model");
     deleteNestedSection(parsed, "agents.subagent");
 
     // Write updated config
