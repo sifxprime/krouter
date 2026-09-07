@@ -142,6 +142,18 @@ const CLAUDE_FORMAT_PROVIDERS_WITHOUT_OUTPUT_CONFIG = new Set(["minimax", "minim
 // and the user pays full tokens on the cached prefix every turn. Port of
 // OmniRoute's same-named flag (open-sse/translator/helpers/claudeHelper.ts).
 // Default false preserves existing behaviour for non-passthrough callers.
+// Anthropic rejects a tool carrying BOTH defer_loading:true and cache_control
+// ("Tools defer_loading cannot use prompt caching"). MCP clients put deferred tools
+// at the tail, which is exactly where the cache anchor lands -- so the whole request
+// 400s. Anchor on the last tool that CAN be cached instead of dropping caching.
+export function lastCacheableToolIndex(tools) {
+  if (!Array.isArray(tools)) return -1;
+  for (let i = tools.length - 1; i >= 0; i--) {
+    if (tools[i]?.defer_loading !== true) return i;
+  }
+  return -1;
+}
+
 export function prepareClaudeRequest(body, provider = null, apiKey = null, connectionId = null, preserveCacheControl = false) {
   // MiniMax exposes a Claude-compatible endpoint but rejects Anthropic's extended
   // structured output parameter with a generic 400 "invalid params" response.
@@ -250,9 +262,10 @@ export function prepareClaudeRequest(body, provider = null, apiKey = null, conne
       body.tools = body.tools.filter(tool => !tool.type || tool.type === "function");
     }
 
+    const lastCacheable = lastCacheableToolIndex(body.tools);
     body.tools = body.tools.map((tool, i) => {
       const { cache_control, ...rest } = tool;
-      if (i === body.tools.length - 1) {
+      if (i === lastCacheable) {
         return { ...rest, cache_control: { type: "ephemeral", ttl: "1h" } };
       }
       return rest;
