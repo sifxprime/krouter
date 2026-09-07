@@ -7,6 +7,7 @@
  *   provider.searchViaChat   → wrap chat-completions (chatSearch.js)
  */
 
+import { fetchPublic } from "@/shared/utils/ssrfGuard.js";
 import { buildSearchRequest } from "./callers.js";
 import { normalizeSearchResponse } from "./normalizers.js";
 import { handleChatSearch } from "./chatSearch.js";
@@ -100,7 +101,10 @@ async function tryDedicatedProvider({ provider, providerConfig, body, credential
   log?.info?.("SEARCH", `${provider.id} | "${params.query.slice(0, 80)}" | type=${params.searchType}`);
 
   try {
-    const resp = await fetch(url, { ...init, headers: sanitizeHeaders(init.headers), signal: controller.signal });
+    // fetchPublic, not fetch: the default redirect:"follow" means a URL that passed the
+    // guard can 30x into loopback or the metadata range, and only the first hop was ever
+    // checked. fetchPublic re-validates every hop.
+    const resp = await fetchPublic(url, { ...init, headers: sanitizeHeaders(init.headers), signal: controller.signal });
     clearTimeout(timer);
     if (!resp.ok) {
       const errText = await resp.text().catch(() => "");

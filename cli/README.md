@@ -9,10 +9,10 @@
 
   [![npm](https://img.shields.io/npm/v/@sifxprime/krouter.svg)](https://www.npmjs.com/package/@sifxprime/krouter)
   [![GitHub](https://img.shields.io/badge/github-sifxprime%2Fkrouter-blue?logo=github)](https://github.com/sifxprime/krouter)
-  [![Website](https://img.shields.io/badge/website-krouter.kodelyht.com-orange)](https://krouter.kodelyht.com)
+  [![Website](https://img.shields.io/badge/website-krouter.kodelyth.com-orange)](https://krouter.kodelyth.com)
   [![License](https://img.shields.io/npm/l/@sifxprime/krouter.svg)](https://github.com/sifxprime/krouter/blob/main/LICENSE)
 
-  **[🌐 Website & Full Docs — krouter.kodelyht.com](https://krouter.kodelyht.com)**
+  **[🌐 Website & Full Docs — krouter.kodelyth.com](https://krouter.kodelyth.com)**
 
   [🚀 Quick Start](#-quick-start) • [💡 Features](#-features) • [📖 Setup](#-setup-guide) • [🌐 Supported Providers](#-supported-providers)
 </div>
@@ -357,7 +357,7 @@ For advanced customization, see:
 | 🐳 **Deploy Anywhere** | Localhost · VPS · Docker · Cloudflare Workers | Wherever you need it |
 | 🔒 **PII Redaction** | Auto-redact sensitive data (emails, phones, API keys) using Microsoft Presidio | Protect privacy before sending to AI providers |
 
-📖 **Full feature guide with screenshots → [krouter.kodelyht.com](https://krouter.kodelyht.com)**
+📖 **Full feature guide with screenshots → [krouter.kodelyth.com](https://krouter.kodelyth.com)**
 
 ---
 
@@ -440,7 +440,7 @@ OpenCode Free · MiMo Free
 
 OpenAI · Anthropic · GLM · Kimi · MiniMax · DeepSeek · Groq · xAI · Mistral · Perplexity · Together AI · Fireworks · Cerebras · Cohere · SiliconFlow · Hyperbolic · Nebius · Chutes · and 20+ more
 
-📖 **Full provider setup guide → [krouter.kodelyht.com](https://krouter.kodelyht.com)**
+📖 **Full provider setup guide → [krouter.kodelyth.com](https://krouter.kodelyth.com)**
 
 ---
 
@@ -477,7 +477,7 @@ Model:     kr/claude-sonnet-4.5   (or any provider/model)
 
 Works with any OpenAI-compatible client.
 
-📖 **Detailed integration guide (Claude Code, Cursor, Cline, and more) → [krouter.kodelyht.com](https://krouter.kodelyht.com)**
+📖 **Detailed integration guide (Claude Code, Cursor, Cline, and more) → [krouter.kodelyth.com](https://krouter.kodelyth.com)**
 
 ---
 
@@ -486,14 +486,15 @@ Works with any OpenAI-compatible client.
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `PORT` | `20128` | Server port |
-| `HOSTNAME` | `127.0.0.1` | Bind host |
+| `HOSTNAME` | `0.0.0.0` | Bind host. The default listens on every interface, so the port is reachable from your network — use `127.0.0.1` (or `--host 127.0.0.1`) for local-only |
 | `DATA_DIR` | `~/.krouter` | Data directory (SQLite, certs, cache) |
 | `NODE_ENV` | `production` | Runtime mode |
-| `REQUIRE_API_KEY` | `false` | Enforce Bearer API key on `/v1/*` (recommended for public deploys) |
+| `REQUIRE_API_KEY` | `false` | Require a Bearer key on `/v1/*` from **every** caller. Remote callers always need one; this additionally removes the loopback exemption, for shared or multi-user machines |
+| `KROUTER_SKIP_RUNTIME_HEAL` | `false` | Skip the startup npm self-heal of the SQLite/tray runtime (air-gapped or CI machines) |
 | `AUTH_COOKIE_SECURE` | `false` | Force `Secure` cookie (set behind HTTPS reverse proxy) |
 | `HTTP_PROXY` / `HTTPS_PROXY` / `NO_PROXY` | — | Outbound proxy config |
 
-Full env reference → **[krouter.kodelyht.com](https://krouter.kodelyht.com)**
+Full env reference → **[krouter.kodelyth.com](https://krouter.kodelyth.com)**
 
 ---
 
@@ -573,7 +574,7 @@ rm -rf ~/.krouter   # optional: wipe database + certs
 
 **Dashboard on wrong port** — `PORT=20128 krouter -t`
 
-**Full troubleshooting guide → [krouter.kodelyht.com](https://krouter.kodelyht.com)**
+**Full troubleshooting guide → [krouter.kodelyth.com](https://krouter.kodelyth.com)**
 
 ---
 
@@ -590,7 +591,7 @@ rm -rf ~/.krouter   # optional: wipe database + certs
 
 ## 📧 Links
 
-- **Website:** [krouter.kodelyht.com](https://krouter.kodelyht.com)
+- **Website:** [krouter.kodelyth.com](https://krouter.kodelyth.com)
 - **GitHub:** [github.com/sifxprime/krouter](https://github.com/sifxprime/krouter)
 - **Issues:** [github.com/sifxprime/krouter/issues](https://github.com/sifxprime/krouter/issues)
 - **npm:** [`@sifxprime/krouter`](https://www.npmjs.com/package/@sifxprime/krouter)
@@ -610,5 +611,5 @@ MIT License — see [LICENSE](LICENSE) for details.
 ---
 
 <div align="center">
-  <sub>Built with ❤️ by <a href="https://krouter.kodelyht.com">Kodelyth AI Infrastructure</a></sub>
+  <sub>Built with ❤️ by <a href="https://krouter.kodelyth.com">Kodelyth AI Infrastructure</a></sub>
 </div>

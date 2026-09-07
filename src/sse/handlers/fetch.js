@@ -13,7 +13,7 @@ import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
 import * as log from "../utils/logger.js";
 import { updateProviderCredentials, checkAndRefreshToken } from "../services/tokenRefresh.js";
 import { handleComboChat, getComboModelsFromData } from "open-sse/services/combo.js";
-import { assertPublicUrl } from "@/shared/utils/ssrfGuard.js";
+import { assertPublicUrlResolved } from "@/shared/utils/ssrfGuard.js";
 
 /**
  * Handle web fetch (URL extraction) request for the SSE/Next.js server.
@@ -81,7 +81,10 @@ export async function handleFetch(request) {
 
   // SSRF guard: reject internal/private/metadata targets
   try {
-    assertPublicUrl(targetUrl);
+    // Resolving variant, not the literal one: a hostname like 127.0.0.1.nip.io passes
+    // every literal check and still resolves to loopback. handleFetch is already async
+    // and the surrounding catch already maps a throw to 400.
+    await assertPublicUrlResolved(targetUrl);
   } catch (err) {
     log.warn("FETCH", "Blocked URL", { url: targetUrl });
     return errorResponse(HTTP_STATUS.BAD_REQUEST, err.message);

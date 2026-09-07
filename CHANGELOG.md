@@ -1,3 +1,68 @@
+# v0.5.149 (2026-09-07) — an unauthenticated remote bypass, and seven SSRF holes
+
+A security release. Everything here was found by triaging the 94 upstream commits this
+fork had not reviewed, then checking each one against our own code rather than trusting
+the commit message.
+
+**An unauthenticated remote bypass, ours alone.**
+`next.config.mjs` rewrites `/codex/:path*` to `/api/v1/responses`, but `/codex` was not in
+`PUBLIC_PREFIXES`. Middleware runs *before* Next's rewrites, so the guard saw the literal
+path `/codex/responses`, matched no branch — not `isPublicLlmApi`, not the `/api/*`
+deny-by-default, not `/dashboard` — and fell through with no auth at all. The rewrite then
+delivered it to the Responses API. From off-machine with no credentials:
+
+    POST /v1/responses     -> 401 API key required for remote API access
+    POST /codex/responses  -> 200, a real streaming completion
+
+Same destination, opposite outcome; anyone able to reach the port could spend the
+operator's provider quota. The counterintuitive part is that being *absent* from
+`PUBLIC_PREFIXES` is what broke it — that list routes a path into
+`canAccessPublicLlmApi`, which is precisely what demands a key from a non-loopback caller.
+`rewrite-prefix-coverage` now asserts the invariant rather than the single path: every
+root-level rewrite source must have its top-level prefix guarded.
+
+Found while triaging upstream `98579f98`, which adds `/responses` to its own list for the
+same reason. We have no root `/responses` rewrite; `/codex` was our instance of the class.
+
+**Seven SSRF bypasses.**
+Our `ssrfGuard.js` was upstream's pre-fix version, and two lines behind even that — no
+`::ffff:` handling at all. Probed directly, seven vectors reached cloud metadata or an
+internal host: IPv4-mapped IPv6 in three spellings, NAT64, IPv4-compatible, and
+trailing-dot FQDNs for both `localhost.` and `metadata.google.internal.`. The hardened
+guard (upstream `b870b5d4`) parses IPv6 into 16-bit groups instead of matching string
+prefixes, normalises trailing dots, and adds `assertPublicUrlResolved()` for wildcard DNS
+pointing into private space and `fetchPublic()` for redirects that leave the public range.
+All seven block now, and genuinely public hosts still pass — verified against example.com
+and api.openai.com, so the fix is not merely "block everything".
+
+**An unguarded probe.** `cowork-mcp-tools` took `url` from the request body straight into
+three `fetch()` calls with no validation, and that route is not in `LOCAL_ONLY_PATHS` —
+only `cowork-settings` is — so a session was enough to reach it. Remote callers are now
+checked; loopback stays exempt so a self-hosted MCP server keeps working. (upstream `97f3ab97`)
+
+**Documentation that was actively misleading.**
+The README gave `HOSTNAME` a default of `127.0.0.1`. It is `0.0.0.0` — the server listens
+on every interface — so the one place an operator would check told them they were
+loopback-bound when the port was reachable from their network. The env catalog said the
+opposite all along.
+
+`REQUIRE_API_KEY` was described as "enforce Bearer API key on /v1/*", which was never what
+it does: remote callers always need a key, and what the flag adds is removing the loopback
+exemption. `KROUTER_SKIP_RUNTIME_HEAL` was undocumented. And the website link was
+misspelled `kodelyht` for `kodelyth` in 17 places — every "Full Docs" link on GitHub and
+npm was dead, while the correct spelling resolves fine.
+
+**Upstream triage:** all 94 unreviewed commits were read against this fork. 64 are worth
+porting (3 security — all in this release — plus 10 high, 26 medium, 25 low), 5 we already
+had in a different shape, 18 touch modules this fork does not have, 7 are cosmetic. The
+non-security remainder is queued, not shipped here.
+
+**Verification:** full suite **1756 passed**, 20 expected-fail, 20 skipped; production
+build clean. Each security fix was confirmed against the running server over the LAN
+interface, not only in tests, and the `/codex` bypass was reproduced end-to-end before and
+after. `rewrite-prefix-coverage` was checked against the vulnerable state to confirm it
+actually fails there.
+
 # v0.5.148 (2026-09-02) — the login page stopped promising something that never happens
 
 A small release: one commit, two pieces of user-facing text that described behaviour the
