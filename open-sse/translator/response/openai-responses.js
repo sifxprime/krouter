@@ -408,6 +408,13 @@ export function openaiResponsesToOpenAIResponse(chunk, state) {
     state.created = Math.floor(Date.now() / 1000);
     state.toolCallIndex = 0;
     state.currentToolCallId = null;
+    // item_id -> chat tool_calls index. Deltas carry item_id; keying on it (not
+    // stream position) keeps parallel calls separate when upstream emits all
+    // output_item.added events before any done/delta. Lazily created so callers
+    // that build their own state object (stream.js) need no changes.
+    state.respToolChatIndex ??= new Map();
+    // Indices that already received argument deltas (guards done-with-args).
+    state.respToolArgsEmitted ??= new Set();
   }
 
   // Text content delta
@@ -437,6 +444,19 @@ export function openaiResponsesToOpenAIResponse(chunk, state) {
   if (eventType === "response.output_item.added" && (data.item?.type === "function_call" || data.item?.type === "custom_tool_call")) {
     const item = data.item;
     state.currentToolCallId = item.call_id || `call_${Date.now()}`;
+    // Index is assigned here, not on done: attributing deltas by stream position
+    // merges parallel calls into index 0 whenever upstream emits all addeds before
+    // any dones -- the client then concatenates N JSON payloads into one tool input
+    // and fails validation. The server item id is the correlator.
+    state.respToolChatIndex ??= new Map();
+    const key = item.id || data.item_id || state.currentToolCallId;
+    let idx;
+    if (key && state.respToolChatIndex.has(key)) {
+      idx = state.respToolChatIndex.get(key); // duplicate added (retry) -- reuse
+    } else {
+      idx = state.toolCallIndex++;
+      if (key) state.respToolChatIndex.set(key, idx);
+    }
 
     return {
       id: state.chatId,
@@ -447,7 +467,7 @@ export function openaiResponsesToOpenAIResponse(chunk, state) {
         index: 0,
         delta: {
           tool_calls: [{
-            index: state.toolCallIndex,
+            index: idx,
             id: state.currentToolCallId,
             type: "function",
             function: {
@@ -466,6 +486,12 @@ export function openaiResponsesToOpenAIResponse(chunk, state) {
     const argsDelta = data.delta || "";
     if (!argsDelta) return null;
 
+    // Routed by item_id so interleaved parallel fragments stay on their own call.
+    const known = data.item_id ? state.respToolChatIndex?.get(data.item_id) : undefined;
+    const idx = known ?? Math.max(0, (state.toolCallIndex || 1) - 1);
+    state.respToolArgsEmitted ??= new Set();
+    state.respToolArgsEmitted.add(idx);
+
     return {
       id: state.chatId,
       object: "chat.completion.chunk",
@@ -475,7 +501,7 @@ export function openaiResponsesToOpenAIResponse(chunk, state) {
         index: 0,
         delta: {
           tool_calls: [{
-            index: state.toolCallIndex,
+            index: idx,
             function: { arguments: argsDelta }
           }]
         },
@@ -484,9 +510,35 @@ export function openaiResponsesToOpenAIResponse(chunk, state) {
     };
   }
 
-  // Function call done (standard or custom_tool_call variant)
+  // Function call done (standard or custom_tool_call variant).
+  // Index was assigned at added-time; nothing to advance. Some upstreams send
+  // complete arguments only here (no deltas) -- emit them once in that case.
   if (eventType === "response.output_item.done" && (data.item?.type === "function_call" || data.item?.type === "custom_tool_call")) {
-    state.toolCallIndex++;
+    const key = data.item?.id || data.item_id;
+    const idx = (key && state.respToolChatIndex?.get(key)) ?? Math.max(0, (state.toolCallIndex || 1) - 1);
+    const fullArgs = data.item?.arguments;
+    if (typeof fullArgs === "string" && fullArgs) {
+      state.respToolArgsEmitted ??= new Set();
+      if (!state.respToolArgsEmitted.has(idx)) {
+        state.respToolArgsEmitted.add(idx);
+        return {
+          id: state.chatId,
+          object: "chat.completion.chunk",
+          created: state.created,
+          model: state.model || "unknown",
+          choices: [{
+            index: 0,
+            delta: {
+              tool_calls: [{
+                index: idx,
+                function: { arguments: fullArgs }
+              }]
+            },
+            finish_reason: null
+          }]
+        };
+      }
+    }
     return null;
   }
 
