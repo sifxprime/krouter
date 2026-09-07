@@ -270,26 +270,41 @@ export class DefaultExecutor extends BaseExecutor {
     return { accessToken: tokens.accessToken, refreshToken: tokens.refreshToken || refreshToken, expiresIn: tokens.expiresIn };
   }
 
+  // Cline authenticates the extension contract: a JSON body with grantType and
+  // clientType, answering { data: { accessToken, refreshToken, expiresAt } } (some
+  // deployments answer unwrapped, hence the `data || payload`).
+  //
+  // Nothing here logs the response. It carries both live tokens, so printing even a
+  // truncated prefix of it writes working credentials to stdout.
   async refreshCline(refreshToken, proxyOptions = null) {
-    console.log('[DEBUG] Refreshing Cline token, refreshToken length:', refreshToken?.length);
-    const response = await proxyAwareFetch("https://api.cline.bot/api/v1/auth/refresh", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "Accept": "application/json" },
-      body: JSON.stringify({ refreshToken, grantType: "refresh_token", clientType: "extension" })
-    }, proxyOptions);
-    console.log('[DEBUG] Cline refresh response status:', response.status);
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.log('[DEBUG] Cline refresh error:', errorText);
+    if (!refreshToken) return null;
+    try {
+      const refreshUrl = PROVIDERS.cline?.refreshUrl || "https://api.cline.bot/api/v1/auth/refresh";
+      const response = await proxyAwareFetch(refreshUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Accept": "application/json" },
+        body: JSON.stringify({ refreshToken, grantType: "refresh_token", clientType: "extension" })
+      }, proxyOptions);
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error(`[Cline] Token refresh failed: ${response.status} ${errorText}`);
+        return null;
+      }
+      const payload = await response.json();
+      const data = payload?.data || payload;
+      if (!data?.accessToken) return null;
+      const expiresAtIso = data.expiresAt;
+      // Prefer the absolute expiry; fall back to a relative one, then to an hour.
+      const expiresIn = expiresAtIso
+        ? Math.max(1, Math.floor((new Date(expiresAtIso).getTime() - Date.now()) / 1000))
+        : (data.expiresIn || data.expires_in || 3600);
+      return { accessToken: data.accessToken, refreshToken: data.refreshToken || refreshToken, expiresIn };
+    } catch (error) {
+      // A throw here used to escape the caller and abort the whole request; a failed
+      // refresh should just report "no token" so the caller can re-auth.
+      console.error(`[Cline] Token refresh error: ${error.message}`);
       return null;
     }
-    const payload = await response.json();
-    console.log('[DEBUG] Cline refresh payload:', JSON.stringify(payload).substring(0, 200));
-    const data = payload?.data || payload;
-    const expiresAtIso = data?.expiresAt;
-    const expiresIn = expiresAtIso ? Math.max(1, Math.floor((new Date(expiresAtIso).getTime() - Date.now()) / 1000)) : undefined;
-    console.log('[DEBUG] Cline refresh success, expiresIn:', expiresIn);
-    return { accessToken: data?.accessToken, refreshToken: data?.refreshToken || refreshToken, expiresIn };
   }
 
   // 0.5.109 (upstream efd20be8) — CodeBuddy CN refresh.
