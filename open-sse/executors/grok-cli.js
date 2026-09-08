@@ -317,13 +317,17 @@ function normalizeGrokCliTools(body) {
         : typeof fn?.description === "string"
           ? fn.description
           : "";
-    const parameters = type === "custom"
+    let parameters = type === "custom"
       ? GROK_CLI_FREEFORM_TOOL_PARAMETERS
       : tool.parameters && typeof tool.parameters === "object" && !Array.isArray(tool.parameters)
         ? tool.parameters
         : fn?.parameters && typeof fn.parameters === "object" && !Array.isArray(fn.parameters)
           ? fn.parameters
           : { type: "object", properties: {} };
+    // Mirror the request translator: {type:"object"} with no properties is rejected
+    // by strict Responses backends, and a client already speaking Responses format
+    // bypasses the translator that would otherwise fill it in.
+    if (parameters.type === "object" && !parameters.properties) parameters = { ...parameters, properties: {} };
 
     for (const k of Object.keys(tool)) delete tool[k];
     tool.type = "function";

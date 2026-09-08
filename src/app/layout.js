@@ -41,9 +41,22 @@ export default function RootLayout({ children }) {
   return (
     <html lang="en" suppressHydrationWarning>
       <head>
+        {/* Apply the persisted theme before first paint. ThemeProvider only calls
+            applyTheme() from an effect, so until React hydrated every reload painted
+            the light theme first and dark-mode users saw a white flash. Mirrors the
+            zustand-persist "theme" key and the `dark` class applyTheme() sets. */}
         <script
           dangerouslySetInnerHTML={{
-            __html: `if(document.fonts&&document.fonts.ready){document.fonts.ready.then(function(){document.documentElement.classList.add('fonts-loaded')})}else{document.documentElement.classList.add('fonts-loaded')}`,
+            __html: `(function(){try{var s=localStorage.getItem('theme');var t=s?(JSON.parse(s).state||{}).theme:'system';t=t||'system';var m=window.matchMedia('(prefers-color-scheme: dark)').matches;if(t==='dark'||(t==='system'&&m)){document.documentElement.classList.add('dark')}}catch(e){}})();`,
+          }}
+        />
+        {/* document.fonts.ready settles on the next/font faces alone -- the icon
+            woff2 is lazy and has not started downloading -- so icons were revealed
+            before the font existed. Wait for the family itself, with a 3s failsafe
+            so a font that never loads does not hide every icon permanently. */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `var d=document,r=d.documentElement,f=function(){r.classList.add('fonts-loaded')};if(d.fonts&&d.fonts.load){d.fonts.load('24px "Material Symbols Outlined"').then(f).catch(f);setTimeout(f,3000)}else{f()}`,
           }}
         />
       </head>
