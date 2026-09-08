@@ -94,6 +94,8 @@ export async function getUsageForProvider(connection, proxyOptions = null) {
     case "glm":
     case "glm-cn":
       return await getGlmUsage(apiKey, provider, proxyOptions);
+    case "opencode-go":
+      return await getOpenCodeGoUsage(apiKey, proxyOptions);
     case "minimax":
     case "minimax-cn":
       return await getMiniMaxUsage(apiKey, provider, proxyOptions);
@@ -1065,6 +1067,86 @@ async function getOllamaUsage(accessToken, providerSpecificData) {
 /**
  * GLM Coding Plan usage (international + China regions)
  */
+// OpenCode Go quota -- GET https://opencode.ai/zen/go/v1/usage, Bearer auth.
+// Upstream keeps this in services/usage/opencode-go.js and reads the URL from its
+// provider registry; this fork has neither, so the URL is inline and the function
+// lives beside the others in this file.
+const OPENCODE_GO_USAGE_URL = "https://opencode.ai/zen/go/v1/usage";
+const OPENCODE_GO_QUOTA_NAMES = { rolling: "Rolling", weekly: "Weekly", monthly: "Monthly" };
+
+function parseOpenCodeGoPercent(value) {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string" && value.trim()) {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return null;
+}
+
+async function getOpenCodeGoUsage(apiKey = null, proxyOptions = null) {
+  if (!apiKey || typeof apiKey !== "string" || !apiKey.trim()) {
+    return { message: "OpenCode Go API key not available. Add a key to view usage." };
+  }
+
+  try {
+    const response = await proxyAwareFetch(OPENCODE_GO_USAGE_URL, {
+      method: "GET",
+      headers: { Authorization: `Bearer ${apiKey.trim()}`, Accept: "application/json" },
+    }, proxyOptions);
+
+    if (response.status === 401) {
+      return { plan: "OpenCode Go", message: "OpenCode Go authentication failed. Check the API key." };
+    }
+
+    if (response.status === 403) {
+      const error = await response.json().catch(() => null);
+      // A key without a subscription and a key without access fail the same way at
+      // the transport level; the error type is the only thing that tells them apart.
+      const subscriptionRequired = error?.error?.type === "EntitlementError";
+      return {
+        plan: "OpenCode Go",
+        message: subscriptionRequired
+          ? "OpenCode Go subscription required for this API key."
+          : "OpenCode Go access forbidden for this API key.",
+      };
+    }
+
+    if (!response.ok) {
+      return { plan: "OpenCode Go", message: `OpenCode Go usage API error (${response.status}).` };
+    }
+
+    const data = await response.json().catch(() => null);
+    if (!data?.usage || typeof data.usage !== "object") {
+      return { plan: "OpenCode Go", message: "OpenCode Go usage response did not contain quota data." };
+    }
+
+    const quotas = {};
+    for (const [period, name] of Object.entries(OPENCODE_GO_QUOTA_NAMES)) {
+      const quota = data.usage[period];
+      if (!quota || typeof quota !== "object") continue;
+      const percent = parseOpenCodeGoPercent(quota.percent);
+      if (percent === null) continue;
+      const used = Math.max(0, Math.min(100, toFiniteNumber(percent, 0)));
+      quotas[name] = {
+        used,
+        total: 100,
+        remaining: 100 - used,
+        remainingPercentage: 100 - used,
+        resetAt: parseResetTime(quota.resetsAt),
+        unlimited: false,
+      };
+    }
+
+    if (Object.keys(quotas).length === 0) {
+      return { plan: "OpenCode Go", message: "OpenCode Go usage response did not contain valid quota data." };
+    }
+
+    return { plan: "OpenCode Go", quotas };
+  } catch (error) {
+    return { message: `OpenCode Go error: ${error.message}` };
+  }
+}
+
 async function getGlmUsage(apiKey, provider, proxyOptions = null) {
   if (!apiKey) {
     return { message: "GLM API key not available." };
@@ -1094,12 +1176,28 @@ async function getGlmUsage(apiKey, provider, proxyOptions = null) {
     const quotas = {};
 
     for (const limit of limits) {
-      if (!limit || limit.type !== "TOKENS_LIMIT") continue;
+      // A CREDIT_LIMIT plan was skipped entirely, so those accounts saw no quota at
+      // all rather than a wrong one.
+      if (!limit || (limit.type !== "TOKENS_LIMIT" && limit.type !== "CREDIT_LIMIT")) continue;
       const usedPercent = Number(limit.percentage) || 0;
       const resetMs = Number(limit.nextResetTime) || 0;
       const remaining = Math.max(0, 100 - usedPercent);
 
-      quotas["session"] = {
+      // Key by type and period. Every limit used to be written to "session", so an
+      // account with more than one window kept only whichever came last -- a weekly
+      // figure silently displayed as the session one.
+      let key = "session";
+      if (limit.unit === 3) {
+        key = `Session (${limit.number}h)`;
+      } else if (limit.unit === 6) {
+        key = "Weekly (7d)";
+      } else if (limit.type === "TOKENS_LIMIT") {
+        key = "Tokens";
+      } else {
+        key = `Limit (${limit.number})`;
+      }
+
+      quotas[key] = {
         used: usedPercent,
         total: 100,
         remaining,
