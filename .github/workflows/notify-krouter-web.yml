@@ -1,30 +1,94 @@
-name: Notify k‍router-web on Release
+name: Notify krouter-web on Release
+
+# krouter-web already pulls this repo's CHANGELOG on a 10-minute cron, so the site
+# updates on its own whether or not this job succeeds. All this dispatch buys is
+# immediacy — the difference between "live now" and "live within ten minutes".
+#
+# That is why a rejected dispatch is a warning and not a failure: a red X on every
+# release, for something that is not actually broken, teaches people to ignore CI.
+# The reason is written to the job summary instead, where it is actionable.
 
 on:
   push:
     branches: ["main"]
+  # So the token can be tested the moment it is rotated, without cutting a release.
+  workflow_dispatch: {}
 
 jobs:
   dispatch:
-    name: Trigger k‍router-web Sync and Deploy
+    name: Trigger krouter-web Sync and Deploy
     runs-on: ubuntu-latest
     steps:
-      - name: Send repository_dispatch to k‍router-web
+      - name: Send repository_dispatch to krouter-web
+        env:
+          TOKEN: ${{ secrets.KDL_ROUTER_WEB_TOKEN }}
         run: |
-          STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
-            -X POST \
-            -H "Authorization: Bearer ${{ secrets.KDL_ROUTER_WEB_TOKEN }}" \
-            -H "Accept: application/vnd.github.v3+json" \
-            https://api.github.com/repos/sifxprime/krouter-web/dispatches \
-            -d '{"event_type":"krouter-release"}'  )
-          echo "Response status: $STATUS"
-          # `[ ... ] && echo || echo` always exits 0, so a rejected dispatch still
-          # reported this job green. It has been failing with 403 on every release and
-          # nothing said so -- the site only stayed current because krouter-web also
-          # runs on a 10-minute cron. Fail loudly instead.
-          if [ "$STATUS" != "204" ]; then
-            echo "::error::repository_dispatch to krouter-web was rejected with HTTP $STATUS."
-            echo "::error::403 usually means KDL_ROUTER_WEB_TOKEN lacks access to the private repo, or has expired."
-            exit 1
+          set -uo pipefail
+
+          if [ -z "${TOKEN:-}" ]; then
+            {
+              echo "### krouter-web dispatch skipped"
+              echo
+              echo "\`KDL_ROUTER_WEB_TOKEN\` is not set on this repository."
+              echo "The site will still update within ten minutes via krouter-web's cron."
+            } >> "$GITHUB_STEP_SUMMARY"
+            echo "::warning::KDL_ROUTER_WEB_TOKEN is not set; relying on the krouter-web cron."
+            exit 0
           fi
-          echo "Dispatch accepted (204)."
+
+          STATUS=$(curl -sS -o /tmp/dispatch-body.txt -w "%{http_code}" \
+            -X POST \
+            -H "Authorization: Bearer ${TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            https://api.github.com/repos/sifxprime/krouter-web/dispatches \
+            -d '{"event_type":"krouter-release"}')
+
+          echo "Response status: $STATUS"
+
+          if [ "$STATUS" = "204" ]; then
+            echo "Dispatch accepted (204) — krouter-web is deploying now."
+            echo "### krouter-web dispatch accepted" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          # Each status means a different thing, and the remedy differs. Saying
+          # "403 usually means..." for all of them sends people to the wrong fix.
+          case "$STATUS" in
+            401) CAUSE="The token is invalid or has expired." ;;
+            403) CAUSE="The token is valid but lacks permission to dispatch to krouter-web." ;;
+            404) CAUSE="The token cannot see sifxprime/krouter-web at all — it has no access to the repository, or the name is wrong." ;;
+            *)   CAUSE="Unexpected status $STATUS." ;;
+          esac
+
+          {
+            echo "### krouter-web dispatch rejected — HTTP $STATUS"
+            echo
+            echo "$CAUSE"
+            echo
+            echo "**The site is not broken.** krouter-web syncs this repository's CHANGELOG"
+            echo "on a ten-minute cron, so the release reaches the site either way. Fixing this"
+            echo "only removes that delay."
+            echo
+            echo "To fix, rotate \`KDL_ROUTER_WEB_TOKEN\` with a token that can dispatch:"
+            echo
+            echo "- **Classic PAT** — tick the \`repo\` scope. Nothing else is needed."
+            echo "- **Fine-grained PAT** — grant it access to \`sifxprime/krouter-web\` and set"
+            echo "  *Repository permissions → Contents: Read and write*. Contents is the"
+            echo "  permission the dispatch endpoint checks; Actions alone is not enough."
+            echo
+            echo "Then: \`gh secret set KDL_ROUTER_WEB_TOKEN -R sifxprime/krouter\`"
+            echo
+            echo "Re-run this workflow from the Actions tab to confirm, without cutting a release."
+            echo
+            echo "<details><summary>Response body</summary>"
+            echo
+            echo '```json'
+            head -c 800 /tmp/dispatch-body.txt || true
+            echo
+            echo '```'
+            echo "</details>"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          echo "::warning::krouter-web dispatch rejected with HTTP $STATUS. $CAUSE See the job summary for the fix. The site still updates via cron."
+          exit 0
