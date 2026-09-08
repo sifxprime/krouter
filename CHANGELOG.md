@@ -1,3 +1,17 @@
+# v0.5.156 (2026-09-09) — the two support marks now read at equal weight
+
+The envelope in the support widget looked bigger than the WhatsApp mark. Measured on the live
+widget, it is not: the envelope carries 177px² of ink against WhatsApp's 255px², and the two boxes
+are within a pixel of each other in width.
+
+What differs is contrast. The envelope rendered in near-black `rgb(11, 13, 18)` on a pale badge
+while WhatsApp sat at mid-green `rgb(37, 211, 102)`, and the darker mark dominates regardless of
+size — which is why the earlier attempt at this, resizing the glyph, did not fix it.
+
+Each channel now carries its own colour with a 10% wash of it behind the glyph, so the badge takes
+some of the weight and neither mark has to carry it alone. WhatsApp keeps its brand green; email
+takes a blue. They read as a pair rather than one loud and one quiet.
+
 # v0.5.155 (2026-09-08) — the last of the upstream backlog, and 24KB of dead code that was shipping
 
 The end of the upstream triage. Of the 19 commits still marked worth porting, **11 are in**; the

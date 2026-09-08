@@ -27,5 +27,11 @@ export const SUPPORT_CHANNELS = [
     detail: SUPPORT_EMAIL,
     href: `mailto:${SUPPORT_EMAIL}`,
     icon: "mail",
+    // Tinted rather than left on body ink. Measured on the live widget, the
+    // envelope carried LESS ink than the WhatsApp mark (177px² against 255px²) and
+    // still read as the bigger of the two, because near-black on a pale badge has
+    // far more contrast than mid-green. Equal weight is what makes them look
+    // equal; resizing the glyph does not.
+    tint: "#2d5bff",
   },
 ];

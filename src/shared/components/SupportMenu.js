@@ -117,11 +117,14 @@ export default function SupportMenu({ className }) {
                   )}
                 >
                   <span
-                    className={cn(
-                      "flex items-center justify-center size-7 rounded-md shrink-0 transition-colors",
-                      "bg-surface-2 group-hover:bg-primary/10 group-hover:text-primary"
-                    )}
-                    style={channel.tint ? { color: channel.tint } : undefined}
+                    className="flex items-center justify-center size-7 rounded-md shrink-0 transition-colors"
+                    style={
+                      channel.tint
+                        // A wash of the channel's own colour. Alpha over whatever is
+                        // behind it, so one value works in both themes.
+                        ? { color: channel.tint, backgroundColor: `${channel.tint}1a` }
+                        : undefined
+                    }
                   >
                     {Icon ? <Icon className="size-4" /> : null}
                   </span>
