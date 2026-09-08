@@ -3,7 +3,7 @@
  * surface, and the docs cannot drift to different numbers or addresses.
  */
 
-export const SUPPORT_EMAIL = "support@kodelyth.com";
+export const SUPPORT_EMAIL = "krouter@kodelyth.com";
 
 // wa.me takes the number in international format with no "+" and no separators.
 // Keeping the display form beside it means the link and the text a user reads can

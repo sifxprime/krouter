@@ -6,12 +6,17 @@ const fs = require("fs");
 const os = require("os");
 const path = require("path");
 
-// Gate the pinned version by Node major. 13.x is N-API and ships per-platform
-// prebuilds inside the package, so it needs no ABI-specific download and no build
-// tools; it requires Node >= 22. Older runtimes stay on 12.6.2, which fetches an
-// ABI-specific binary via prebuild-install.
-const [NODE_MAJOR] = process.versions.node.split(".").map(Number);
-const USE_NAPI_BUILD = NODE_MAJOR >= 22;
+// 13.x ships per-platform N-API prebuilds inside the package, so it needs no
+// ABI-specific download and no build tools -- but its addons declare Node-API
+// version 10, and Node refuses to load a module whose API version exceeds its own.
+//
+// Gate on the API level Node reports rather than on the version number. Node-API 10
+// arrives in 22.14.0, NOT at the 22.x boundary: 22.11.0 -- the release that became
+// Node 22 LTS, and the most widely installed 22.x -- reports napi 9 and would fail
+// to load 13.x with "requires Node-API version 10". Those runtimes stay on 12.6.2,
+// which fetches a working ABI-specific binary via prebuild-install.
+const NODE_NAPI = Number(process.versions.napi) || 0;
+const USE_NAPI_BUILD = NODE_NAPI >= 10;
 const BETTER_SQLITE3_VERSION = USE_NAPI_BUILD ? "13.0.3" : "12.6.2";
 
 // Kept in sync with src/mitm/paths.js / src/lib/dataDir.js

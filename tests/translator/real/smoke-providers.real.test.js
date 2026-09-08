@@ -7,6 +7,13 @@
 // Each provider becomes its own test; providers without an llm model or without an
 // active credential are skipped automatically.
 import { describe, it, expect, beforeAll } from "vitest";
+// translator/index.js registers translators with require(), which is a bundler-only
+// pattern and a no-op under vitest. Without this the registry is empty,
+// translateRequest returns the body untouched, and an OpenAI-shaped payload is
+// posted to providers that expect their own envelope -- Antigravity answers
+// "Unknown name messages", Kiro answers "Improperly formed request". The suite
+// could never have passed for any provider that needs translation.
+import "../registerAll.js";
 import { getProviderConnections } from "../../../src/lib/localDb.js";
 import { getProviderCredentials } from "../../../src/sse/services/auth.js";
 import { checkAndRefreshToken } from "../../../src/sse/services/tokenRefresh.js";
@@ -50,6 +57,9 @@ beforeAll(async () => {
 
 describe.skipIf(!RUN_REAL).concurrent("REAL provider smoke", () => {
   it("has active providers in DB", () => {
+    // Name the reason: an unreadable database and an empty one are different
+    // problems, and the old bare assertion could not tell them apart.
+    expect(discoveryError ?? `found: ${providerIds.join(", ")}`).toBe(`found: ${providerIds.join(", ")}`);
     expect(providerIds.length).toBeGreaterThan(0);
   });
 
@@ -103,21 +113,41 @@ describe.skipIf(!RUN_REAL).concurrent("REAL provider smoke", () => {
 // Read the DB file directly (sync) at module-eval time so vitest can generate one
 // test per provider before beforeAll runs. Applies REAL_PROVIDERS filter.
 // Tolerates any failure (returns []).
+// Mirrors getDataDir() in cli/hooks/sqliteRuntime.js. This used to hardcode
+// ~/.9router, the upstream directory -- this fork stores its database in
+// ~/.krouter, so the path never existed, the catch below swallowed the ENOENT,
+// and the whole real-provider suite silently reported "no active providers"
+// instead of testing anything.
+function dataDir() {
+  const os = require("os");
+  const path = require("path");
+  if (process.env.DATA_DIR) return process.env.DATA_DIR;
+  if (process.platform === "win32") return path.join(process.env.APPDATA || os.homedir(), "krouter");
+  return path.join(os.homedir(), ".krouter");
+}
+
+// Why the provider list came back empty, so a misconfigured run says so instead of
+// looking like a machine with no credentials.
+let discoveryError = null;
+
 function targetProviders() {
+  const path = require("path");
+  const dbPath = path.join(dataDir(), "db", "data.sqlite");
   try {
     const Database = require("better-sqlite3");
-    const os = require("os");
-    const path = require("path");
-    const dbPath = process.env.DATA_DIR
-      ? path.join(process.env.DATA_DIR, "db", "data.sqlite")
-      : path.join(os.homedir(), ".9router", "db", "data.sqlite");
     const db = new Database(dbPath, { readonly: true });
     const rows = db.prepare("SELECT DISTINCT provider FROM providerConnections WHERE isActive = 1").all();
     db.close();
     let list = rows.map((r) => r.provider).sort();
     if (PROVIDER_FILTER.length) list = list.filter((p) => PROVIDER_FILTER.includes(p));
+    if (!list.length) {
+      discoveryError = PROVIDER_FILTER.length
+        ? `no active connection matched REAL_PROVIDERS=${PROVIDER_FILTER.join(",")} in ${dbPath}`
+        : `no active connections in ${dbPath}`;
+    }
     return list;
-  } catch {
+  } catch (err) {
+    discoveryError = `could not read ${dbPath}: ${err.message}`;
     return [];
   }
 }

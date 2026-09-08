@@ -20,12 +20,16 @@ function WhatsAppIcon({ className }) {
 }
 WhatsAppIcon.propTypes = { className: PropTypes.string };
 
+// Filled and drawn large on purpose: a wide envelope at nominal size reads as
+// the smaller mark beside a circular one. Sized so its ink height is ~75% of the
+// WhatsApp circle's, which is where the two balance optically. Same 24 viewBox as the WhatsApp mark.
+// A stroked outline beside a solid glyph reads as the smaller of the two even at an
+// identical box size, which is what made the pair look mismatched.
 function MailIcon({ className }) {
   return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"
-      strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className={className}>
-      <rect x="2.5" y="4.5" width="19" height="15" rx="2.5" />
-      <path d="m3.2 6.4 7.51 5.26a2.25 2.25 0 0 0 2.58 0L20.8 6.4" />
+    <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" className={className}>
+      <path d="M0.7 6.1V6A2.8 2.8 0 0 1 3.5 3.2h17a2.8 2.8 0 0 1 2.8 2.8v.14l-11.3 6.68L0.7 6.1Z" />
+      <path d="M23.3 8.9v9.13a2.8 2.8 0 0 1-2.8 2.8H3.5a2.8 2.8 0 0 1-2.8-2.8V8.9l10.6 6.25c.45.26.99.26 1.44 0L23.3 8.9Z" />
     </svg>
   );
 }

@@ -36,8 +36,8 @@ describe("support channels", () => {
 
   it("uses a mailto for the support address", () => {
     const email = SUPPORT_CHANNELS.find((c) => c.id === "email");
-    expect(SUPPORT_EMAIL).toBe("support@kodelyth.com");
-    expect(email.href).toBe("mailto:support@kodelyth.com");
+    expect(SUPPORT_EMAIL).toBe("krouter@kodelyth.com");
+    expect(email.href).toBe("mailto:krouter@kodelyth.com");
     expect(email.detail).toBe(SUPPORT_EMAIL);
   });
 

@@ -18,9 +18,11 @@ const src = () => fs.readFileSync(
 const noComments = (s) => s.split("\n").filter((l) => !l.trim().startsWith("//")).join("\n");
 
 describe("sqlite runtime picks a build the host can actually use", () => {
-  it("gates the pinned version on the Node major", () => {
+  it("gates the pinned version on the Node-API level", () => {
+    // Was NODE_MAJOR >= 22, which is wrong: 13.x declares Node-API 10 and Node
+    // only supports that from 22.14.0, so 22.11/22.13 could not load it.
     const s = noComments(src());
-    expect(s).toContain("NODE_MAJOR >= 22");
+    expect(s).toContain("NODE_NAPI >= 10");
     expect(s).toContain('USE_NAPI_BUILD ? "13.0.3" : "12.6.2"');
   });
 
@@ -46,11 +48,11 @@ describe("sqlite runtime picks a build the host can actually use", () => {
     expect(s).toContain("glibcVersionRuntime");
   });
 
-  it("the version gate resolves correctly per Node major", () => {
-    const pick = (major) => (major >= 22 ? "13.0.3" : "12.6.2");
-    expect(pick(20)).toBe("12.6.2");
-    expect(pick(22)).toBe("13.0.3");
-    expect(pick(26)).toBe("13.0.3");
+  it("the version gate resolves correctly per Node-API level", () => {
+    const pick = (napi) => ((Number(napi) || 0) >= 10 ? "13.0.3" : "12.6.2");
+    expect(pick(8)).toBe("12.6.2");    // Node 20
+    expect(pick(9)).toBe("12.6.2");    // Node 22.11 / 22.13 -- cannot load 13.x
+    expect(pick(10)).toBe("13.0.3");   // Node 22.14+
   });
 
   it("still loads as CommonJS from the CLI", async () => {

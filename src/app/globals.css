@@ -4,8 +4,22 @@
 @custom-variant dark (&:where(.dark, .dark *));
 
 /* Hide icon ligature text until font is ready */
-.material-symbols-outlined { opacity: 0; }
-.fonts-loaded .material-symbols-outlined { opacity: 1; transition: opacity .12s ease-out; }
+/* Inside @layer base on purpose. Unlayered rules beat every layered one, so when
+   these lived outside a layer they overrode Tailwind's own utilities (which live in
+   @layer utilities): `opacity-20` and `opacity-50` on an icon stopped dimming it,
+   and the `transition` shorthand reset transition-property to opacity alone, which
+   killed `transition-transform` on every chevron. Layered here, utilities win. */
+@layer base {
+  .material-symbols-outlined { opacity: 0; }
+  .fonts-loaded .material-symbols-outlined {
+    opacity: 1;
+    /* Longhands, not the shorthand: `transition: opacity` would reset
+       transition-property and clobber a utility's own transition. */
+    transition-property: opacity;
+    transition-duration: .12s;
+    transition-timing-function: ease-out;
+  }
+}
 
 /* ============================================================
    kRouter (Kodelyth) palette

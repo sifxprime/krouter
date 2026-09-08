@@ -94,10 +94,13 @@ describe("no theme flash, and no bare ligature text", () => {
     expect(src).toContain("setTimeout(f,3000)");
   });
 
-  it("reveals icons by opacity rather than visibility", () => {
+  it("reveals icons by opacity, layered so utilities still win", () => {
     const css = read("src/app/globals.css");
-    expect(css).toContain(".material-symbols-outlined { opacity: 0; }");
-    expect(css).toContain("transition: opacity .12s ease-out");
+    expect(css).toContain("opacity: 0;");
+    // The shorthand reset transition-property and broke transition-transform;
+    // being unlayered, it also outranked Tailwind's own opacity utilities.
+    expect(css).toContain("transition-property: opacity");
+    expect(css).toContain("@layer base {");
   });
 });
 
