@@ -19,6 +19,7 @@ import {
   KILOCODE_CONFIG,
 } from "@/lib/oauth/constants/oauth";
 import { buildClineHeaders } from "@/shared/utils/clineAuth";
+import { openCodeGoSessionId, OPENCODE_GO_SESSION_HEADER } from "open-sse/executors/opencode-go.js";
 
 // OAuth provider test endpoints
 const OAUTH_TEST_CONFIG = {
@@ -636,7 +637,13 @@ async function testApiKeyConnection(connection, effectiveProxy = null) {
       case "opencode-go": {
         const res = await fetchWithConnectionProxy("https://opencode.ai/zen/go/v1/chat/completions", {
           method: "POST",
-          headers: { "Content-Type": "application/json", Authorization: `Bearer ${connection.apiKey}` },
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${connection.apiKey}`,
+            // Without this the ping 400s and, since only 401/403 count as invalid, the
+            // connection reported healthy on an error response.
+            [OPENCODE_GO_SESSION_HEADER]: openCodeGoSessionId({ credentials: connection }),
+          },
           body: JSON.stringify({ model: getDefaultModel("opencode-go"), messages: [{ role: "user", content: "ping" }], max_tokens: 1, stream: false }),
         }, effectiveProxy);
         const valid = res.status !== 401 && res.status !== 403;

@@ -6,6 +6,7 @@ import { resolveOllamaLocalHost, resolveXiaomiTokenplanBaseUrl, PROVIDERS } from
 import { openaiToCommandCode } from "open-sse/translator/request/openai-to-commandcode.js";
 import { PROVIDER_ENDPOINTS } from "@/shared/constants/config";
 import { normalizeProviderId } from "@/lib/providerNormalization";
+import { openCodeGoSessionId, OPENCODE_GO_SESSION_HEADER } from "open-sse/executors/opencode-go.js";
 
 // Probe a webSearch/webFetch provider using its searchConfig/fetchConfig.
 // Returns true if API key is accepted (status !== 401 && !== 403).
@@ -405,9 +406,16 @@ export async function POST(request) {
         }
 
         case "opencode-go": {
+          // OpenCode Go 400s a request with no x-opencode-session, and this check grades
+          // anything that is not 401/403 as a healthy key -- so without the header the
+          // validation passed on an error and told the user nothing.
           const res = await fetch("https://opencode.ai/zen/go/v1/chat/completions", {
             method: "POST",
-            headers: { "Content-Type": "application/json", "Authorization": `Bearer ${apiKey}` },
+            headers: {
+              "Content-Type": "application/json",
+              "Authorization": `Bearer ${apiKey}`,
+              [OPENCODE_GO_SESSION_HEADER]: openCodeGoSessionId({ credentials: { apiKey } }),
+            },
             body: JSON.stringify({
               model: getDefaultModel("opencode-go"),
               messages: [{ role: "user", content: "ping" }],
