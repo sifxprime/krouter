@@ -1,3 +1,64 @@
+# v0.5.154 (2026-09-08) — three regressions from 0.5.153, and an end-to-end suite that never ran
+
+An adversarial pass over the previous release's own diff found three defects it had introduced.
+All three shipped. All three are fixed here, each verified against a real runtime rather than by
+reading the code.
+
+**SQLite silently downgraded for most Node 22 users.**
+0.5.153 chose the better-sqlite3 build by Node major version: `NODE_MAJOR >= 22` selected 13.x.
+But 13.x declares Node-API 10, and Node only supports that from **22.14.0**. Node 22.11.0 — the
+release that became Node 22 LTS, and the most widely installed 22.x — reports Node-API 9 and
+cannot load the addon at all.
+
+The failure was invisible. The binary probe found the prebuild on disk, the magic-number check
+passed, and the installer printed "SQLite engine ready" — while the driver quietly fell through to
+a slower path. Those users had a working 12.6.2 until 0.5.153 took it away and told them
+otherwise.
+
+The gate now keys on `process.versions.napi`, which is the thing that actually decides whether the
+addon loads, rather than on a version number that only correlates with it. Verified against four
+installed runtimes: 22.11.0 and 22.13.1 report napi 9 and get 12.6.2; 22.14.0 and 24.14.0 report
+napi 10 and get 13.0.3.
+
+**Dimmed icons stopped being dim, and chevrons stopped rotating.**
+The icon-reveal rule from 0.5.153 was written outside any cascade layer. Unlayered rules beat
+every layered one, and Tailwind's utilities live in `@layer utilities` — so
+`.material-symbols-outlined { opacity: … }` outranked them. Icons carrying `opacity-20` or
+`opacity-50` rendered at full strength: the faint empty-state glyphs on the usage cards became
+full-strength 48–64px icons, and a hover affordance meant to fade from 50% to 100% was simply
+always lit.
+
+The same rule used the `transition` shorthand, which resets `transition-property`. That clobbered
+`transition-transform` on every element that is also an icon — the expand chevrons on 15 CLI tool
+cards, the usage table row expander, and the sidebar caret all snapped instead of rotating.
+
+Both are fixed by moving the rules into `@layer base` and setting transition longhands. Verified
+in a browser against the compiled stylesheet: an icon with `opacity-20` now computes `0.2`, one
+with `opacity-50` computes `0.5`, `transition-transform` reports its own properties again, and a
+plain icon still reveals to full opacity once the font loads.
+
+**The real end-to-end suite has never run.**
+There is a smoke test that drives the full production path — `handleChatCore`, real credentials,
+real network — against every provider with an active connection. It looked for the database at
+`~/.9router`, the *upstream* directory. This fork stores it in `~/.krouter`, so the path never
+existed; a bare `catch` swallowed the ENOENT and the suite reported "no active providers" as if
+the machine simply had none configured. It has been silently testing nothing since the fork
+renamed its data directory.
+
+Fixed to resolve the data directory the way the CLI does, Windows branch included, and to say
+*why* it found nothing — an unreadable database and an empty one are different problems.
+
+With the path corrected it ran, and failed for a second reason: `translator/index.js` registers
+translators with `require()`, a bundler-only pattern that no-ops under vitest. With an empty
+registry `translateRequest` returns the body untouched, so a raw OpenAI payload was posted to
+providers that expect their own envelope — Antigravity answered `Unknown name "messages"`, Kiro
+answered `Improperly formed request`. `tests/translator/registerAll.js` exists for exactly this
+case and the suite did not import it.
+
+Both fixed, and the suite now passes against live Antigravity and Kiro credentials.
+
+1913 tests pass.
+
 # v0.5.153 (2026-09-08) — fifteen upstream fixes, and a claim the dashboard should never have made
 
 The remaining upstream backlog, triaged commit by commit against our own code. Of 83 candidates,
