@@ -10,6 +10,7 @@ import { MEDIA_PROVIDER_KINDS } from "@/shared/constants/providers";
 import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
 import Button from "./Button";
 import { ConfirmModal } from "./Modal";
+import SupportMenu from "./SupportMenu";
 
 // const VISIBLE_MEDIA_KINDS = ["embedding", "image", "imageToText", "tts", "stt", "webSearch", "webFetch", "video", "music"];
 const VISIBLE_MEDIA_KINDS = ["embedding", "image", "video", "tts", "stt"];
@@ -333,6 +334,11 @@ export default function Sidebar({ onClose }) {
             </Link>
           </div>
         </nav>
+
+        {/* Pinned below the scrolling nav so it stays reachable from any page. */}
+        <div className="px-4 pb-3 pt-2 border-t border-border-subtle">
+          <SupportMenu />
+        </div>
 
       </aside>
 

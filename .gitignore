@@ -79,3 +79,6 @@ gitbook/README.md
 # npm credentials — never commit (use ~/.npmrc instead)
 .npmrc
 CLAUDE_HANDOFF.md
+
+# Local preview/launch config for agent tooling — not part of the project.
+.claude/

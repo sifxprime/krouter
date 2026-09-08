@@ -13,7 +13,8 @@
     "build:bun": "bun --bun next build --webpack",
     "start:bun": "bun ./custom-server.js",
     "cli:pack": "npm --prefix cli run pack:cli",
-    "cli:publish": "npm --prefix cli run publish:cli"
+    "cli:publish": "npm --prefix cli run publish:cli",
+    "dev:preview": "NODE_OPTIONS='--require ./server-peer-patch.js' next dev --webpack --port 20129"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
