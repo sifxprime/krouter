@@ -1,3 +1,46 @@
+# v0.5.152 (2026-09-08) — MiniMax M3 on the right endpoint, and a way to reach a human
+
+**MiniMax M3 was being sent to the wrong endpoint.**
+Upstream's provider registry lists `minimax-m3` with `supportedFormats: ["openai", "claude"]` —
+the same pair as `minimax-m2.5` and `m2.7`, both of which this fork already routes to
+`/zen/go/v1/messages`. M3 was missing from our catalog altogether, so it carried no
+`targetFormat` and fell through to `/chat/completions` with an OpenAI-shaped body.
+
+That choice lives in two places that have to agree: `targetFormat: "claude"` in
+`config/providerModels.js` decides how the request *body* is translated, and
+`CLAUDE_FORMAT_MODELS` in the executor decides which *endpoint and auth header* it goes out
+with. A model in one list but not the other posts a Claude body to `/chat/completions` with a
+bearer token, or an OpenAI body to `/messages` with `x-api-key` — and neither failure names its
+real cause. Both are updated, and a test now asserts the two lists are identical, so the next
+model can't be added to one and forgotten in the other.
+
+This one is not verified against the live provider: there's no OpenCode Go connection on the
+build machine to probe with. The evidence is upstream's registry plus the identical treatment of
+its two siblings.
+
+**There was no way to reach a human from inside the product.**
+A user who hits a provider-side change — the kind that breaks every request at once, as OpenCode
+Go's session header did yesterday — had to go looking for an address off-site.
+
+The dashboard sidebar now has a Support control, pinned below the nav so it stays reachable from
+any page and doesn't scroll away. It's collapsed by default so it never competes with navigation;
+clicking it opens two channels, WhatsApp and email. The website gets the same thing as a
+bottom-right widget, so a reader who never installs anything can still ask a question.
+
+Both marks are inline SVG rather than the icon font the nav uses — that font has no WhatsApp
+glyph, and a recognisable brand mark is the entire point of the affordance. Destinations live in
+one constants module per repo rather than inline in the markup, because a second copy of the
+number is exactly how the link and the label a user reads drift apart; the test asserts the
+`wa.me` form actually resolves (digits only — a leading `+` gives a broken link) and that the
+displayed number matches the one it dials.
+
+Keyboard and screen-reader behaviour is part of the contract rather than an afterthought:
+`aria-expanded`/`aria-controls` on the trigger, Escape closes and returns focus to it instead of
+dropping the user at the top of the document, and the links leave the tab order while collapsed
+so Tab can't land on invisible targets. Verified in a browser at desktop and 375px.
+
+1851 tests pass.
+
 # v0.5.151 (2026-09-08) — OpenCode Go started requiring a session header
 
 A user on `ocg/glm-5.2` reported every request failing:

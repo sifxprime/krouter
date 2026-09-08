@@ -123,7 +123,7 @@ export default function SupportMenu({ className }) {
                   </span>
                   <span className="min-w-0">
                     <span className="block text-[13px] font-medium leading-tight">{channel.label}</span>
-                    <span className="block text-[11px] text-text-muted/80 truncate">{channel.detail}</span>
+                    <span className="block text-[11px] text-text-muted truncate">{channel.detail}</span>
                   </span>
                 </a>
               );
