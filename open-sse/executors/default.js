@@ -122,6 +122,19 @@ export class DefaultExecutor extends BaseExecutor {
           if (!headers["anthropic-version"]) {
             headers["anthropic-version"] = "2023-06-01";
           }
+          // A node serving a real Claude model sits in front of Anthropic itself (a
+          // rotating multi-account proxy, a corporate gateway), so it needs the same
+          // beta flags the `claude` provider sends. Without
+          // context-management-2025-06-27, Anthropic rejects the context_management
+          // block Claude Code puts in every request with "Extra inputs are not
+          // permitted" (400) and the combo silently falls through to the next model.
+          // The model id gates this: a node fronting Kimi or GLM answers on its own
+          // ids and never matches, so gateways that would choke on unknown beta flags
+          // are untouched. The strip block below still trims claude-code-20250219 for
+          // a non-official upstream.
+          if (typeof model === "string" && /^claude-/.test(model)) {
+            headers["Anthropic-Beta"] = selectAnthropicBeta(model);
+          }
         } else if (this.provider === "gitlab") {
           // GitLab Duo uses Bearer token (PAT with ai_features scope, or OAuth access token)
           headers["Authorization"] = `Bearer ${credentials.apiKey || credentials.accessToken}`;
