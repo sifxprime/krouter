@@ -1,3 +1,65 @@
+# v0.5.155 (2026-09-08) — the last of the upstream backlog, and 24KB of dead code that was shipping
+
+The end of the upstream triage. Of the 19 commits still marked worth porting, **11 are in**; the
+other 8 depend on subsystems this fork does not have and are listed below with the reason rather
+than left unexplained.
+
+**A stale backup file was shipping inside every install.**
+`chatCore.js.bak`, a copy of the chat handler taken at 0.5.40, had been tracked ever since — 24KB
+of dead code inside the npm package, 243 diff-lines behind the live file. Anyone who opened it
+looking for the real handler would have been reading code with no SSRF guards, no usage
+accounting, and no clientTool wiring. Deleted, with `*.bak` added to `.gitignore` so the next one
+cannot be committed by accident.
+
+**Claude requests poisoned by a foreign tool id.**
+Anthropic validates `server_tool_use` ids against `^srvtoolu_` and rejects the whole request with
+a 400 when one does not match. A combo that falls back to a provider with its own built-in tools
+— z.ai/glm emits OpenAI-style `call_` ids for its `analyze_image` tool — leaves those blocks in
+the history, so every later Claude turn carried a poisoned id and kept failing. Those blocks are
+dropped now, along with the result blocks that referenced them (an orphaned `tool_result` is
+rejected just as firmly) and any message left with no content at all, since an empty text block
+is its own 400. (upstream `ed1bd0c5`)
+
+**GLM credit plans showed no quota at all.**
+Quota parsing accepted only `TOKENS_LIMIT` and wrote every limit to the same `session` key. An
+account on a `CREDIT_LIMIT` plan therefore saw nothing, and an account with more than one window
+kept only whichever arrived last — a weekly figure displayed as the session one. Both types are
+accepted now, each window keyed by its own type and period. (upstream `fcfcced4`)
+
+**OpenCode Go quota was not tracked at all.** A subscriber saw nothing on the usage dashboard for
+that provider, including when a window was exhausted and their requests had already started
+failing. Rolling, weekly and monthly windows are read now, and a missing subscription is reported
+distinctly from plain forbidden — those fail identically at the transport level, and only the
+error type separates them. (upstream `0da803ee`)
+
+**Antigravity onboarding was tripping Google's anti-abuse limiter.** It retried five times in
+rapid succession; with several accounts refreshing at once those calls arrived as a burst from one
+IP and the whole set got rate-limited. Two attempts now, a twelve-second base delay, and jitter so
+concurrent refreshes do not stay in lockstep. Both knobs are env-overridable for a slow network.
+(upstream `1442cc73`, the `projectId` half)
+
+**Also in:** `GET /v1/models/{provider}/{model}` for single-model lookup, OpenAI-compatible, with
+a proper `model_not_found` 404 — this replaces the `[kind]` route rather than sitting beside it,
+since a provider-prefixed id contains a slash and only a catch-all can capture it (`5caa72f5`).
+The GPT-5.3-Codex-Spark quota window, which is metered separately and previously left users
+staring at unexplained 429s with no row to explain them (`40eed186`). Antigravity image sizes now
+resolve to the aspect-ratio model suffix that provider actually expects (`2a9213c5`). A completed
+Responses call no longer logs a disconnect — codex and droid close the socket on every one, which
+made a normal finish look like a client hanging up and buried the disconnects that are real
+(`c4af43fa`). And system-prompt injection is exact-idempotent, closing a latent way to double a
+persona and bill for it inside a feature meant to save tokens (`cadef6c4`, dedup only — ours has
+been format-aware across six formats all along).
+
+**Not ported, and why.** `7e5f5a88` re-anchors Claude cache breakpoints through a subsystem this
+fork does not have, and our passthrough deliberately preserves the client's body byte-for-byte so
+Anthropic's prompt cache is not busted — the opposite strategy. `ac98dd9d` and `1a3db1ef` need an
+`antigravityQuota` service we do not carry. `ab044e6d` and `acb5c34c` route Muse Spark through a
+`transports[]` mechanism we do not have. `2ab6a4c9`, `cec672d9`, `e014cb53` and `ed963931` are
+catalog refreshes that land in a provider registry we do not have. `c24a8542` extends an endpoint-
+presets module we never had.
+
+1957 tests pass, and the real end-to-end suite passes against live provider credentials.
+
 # v0.5.154 (2026-09-08) — three regressions from 0.5.153, and an end-to-end suite that never ran
 
 An adversarial pass over the previous release's own diff found three defects it had introduced.
