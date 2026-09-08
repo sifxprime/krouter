@@ -24,10 +24,15 @@ export function extractUsageFromResponse(responseBody) {
   if (!responseBody || typeof responseBody !== "object") return null;
 
   // Claude format
+  // An OpenAI Responses body ({input_tokens, input_tokens_details:{cached_tokens}})
+  // also lands here. Its prompt count is cache-INCLUSIVE and the cache figure rides
+  // in input_tokens_details, so surface it as cached_tokens -- otherwise every
+  // /v1/responses and codex request reports zero cache read.
   if (responseBody.usage?.input_tokens !== undefined) {
     return {
       prompt_tokens: responseBody.usage.input_tokens || 0,
       completion_tokens: responseBody.usage.output_tokens || 0,
+      cached_tokens: responseBody.usage.cached_tokens ?? responseBody.usage.input_tokens_details?.cached_tokens,
       cache_read_input_tokens: responseBody.usage.cache_read_input_tokens,
       cache_creation_input_tokens: responseBody.usage.cache_creation_input_tokens
     };
@@ -38,7 +43,7 @@ export function extractUsageFromResponse(responseBody) {
     return {
       prompt_tokens: responseBody.usage.prompt_tokens || 0,
       completion_tokens: responseBody.usage.completion_tokens || 0,
-      cached_tokens: responseBody.usage.prompt_tokens_details?.cached_tokens,
+      cached_tokens: responseBody.usage.cached_tokens ?? responseBody.usage.prompt_tokens_details?.cached_tokens,
       reasoning_tokens: responseBody.usage.completion_tokens_details?.reasoning_tokens
     };
   }

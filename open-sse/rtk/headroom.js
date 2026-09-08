@@ -273,7 +273,12 @@ export async function compressWithHeadroom(body, { enabled, url, model, format, 
         return null;
       }
       const oai = openaiResponsesToOpenAIRequest(model, body, false);
-      if (!Array.isArray(oai?.messages)) return null;
+      if (!Array.isArray(oai?.messages)) {
+        // Every other bail on this path records a reason; this one returned null
+        // silently, so the dashboard showed compression "off" with no explanation.
+        setDiagnostic(diagnostics, "openai-responses request did not translate to messages[]");
+        return null;
+      }
       const data = await callCompress(url, oai.messages, model, timeoutMs, compressUserMessages, diagnostics || {});
       if (!data) return null;
       // input: undefined so the translator rebuilds input from the compressed

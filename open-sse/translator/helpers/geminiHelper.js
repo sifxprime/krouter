@@ -18,6 +18,8 @@ export const UNSUPPORTED_SCHEMA_CONSTRAINTS = [
   // 0.5.121 (upstream 2abe8b85) — Gemini's proto schema has no field for these;
   // a single occurrence 400s the whole request ("Unknown name … Cannot find field").
   "multipleOf", "uniqueItems", "contains", "unevaluatedProperties", "unevaluatedItems", "contentSchema",
+  // Tuple-array keywords; converted to items first, leftovers stripped
+  "prefixItems", "additionalItems",
   // Other unsupported keywords
   "title", "optional", "if", "then", "else", "contentMediaType", "contentEncoding",
   // UI/Styling properties (from Cursor tools - NOT JSON Schema standard)
@@ -297,6 +299,37 @@ function ensureObjectType(obj) {
   for (const v of Object.values(obj)) if (v && typeof v === "object") ensureObjectType(v);
 }
 
+// Convert prefixItems (tuple validation) to items -- Gemini cannot express tuples,
+// and a type:"array" schema without items is rejected with "missing field"
+function convertPrefixItems(obj) {
+  if (!obj || typeof obj !== "object") return;
+
+  if (Array.isArray(obj.prefixItems) && obj.prefixItems.length > 0) {
+    const variants = obj.prefixItems.filter(sub => sub && sub.type !== "null");
+    if (!obj.items && variants.length === 1) {
+      obj.items = variants[0];
+    } else if (!obj.items && variants.length > 1) {
+      obj.items = { anyOf: variants };
+    }
+    delete obj.prefixItems;
+  }
+
+  for (const value of Object.values(obj)) {
+    if (value && typeof value === "object") {
+      convertPrefixItems(value);
+    }
+  }
+}
+
+// Gemini requires items on every type:"array" schema -- fill a permissive placeholder
+function ensureArrayItems(obj) {
+  if (!obj || typeof obj !== "object") return;
+  if (obj.type === "array" && !obj.items) {
+    obj.items = { type: "string" };
+  }
+  for (const v of Object.values(obj)) if (v && typeof v === "object") ensureArrayItems(v);
+}
+
 // Clean JSON Schema for Antigravity API compatibility - removes unsupported keywords recursively
 export function cleanJSONSchemaForAntigravity(schema) {
   if (!schema || typeof schema !== "object") return schema;
@@ -310,11 +343,13 @@ export function cleanJSONSchemaForAntigravity(schema) {
 
   // Phase 2: Flatten complex structures
   mergeAllOf(cleaned);
+  convertPrefixItems(cleaned);
   flattenAnyOfOneOf(cleaned);
   flattenTypeArrays(cleaned);
 
   // Phase 2.5: Infer missing type=object when properties exist (Gemini requirement)
   ensureObjectType(cleaned);
+  ensureArrayItems(cleaned);
 
   // Phase 3: Remove all unsupported keywords at ALL levels (including inside arrays)
   removeUnsupportedKeywords(cleaned, UNSUPPORTED_SCHEMA_CONSTRAINTS);

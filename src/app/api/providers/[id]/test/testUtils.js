@@ -317,6 +317,12 @@ async function testOAuthConnection(connection, effectiveProxy = null) {
 }
 
 async function fetchWithConnectionProxy(url, options = {}, effectiveProxy = null) {
+  // Nothing on this path had a deadline, so a provider whose endpoint blackholes
+  // traffic left the Test button spinning forever and pinned a socket per retry.
+  if (!options.signal) {
+    options.signal = AbortSignal.timeout(15000);
+  }
+
   // Vercel relay: forward via relay URL
   if (effectiveProxy?.vercelRelayUrl) {
     const { proxyAwareFetch } = await import("open-sse/utils/proxyFetch.js");
