@@ -1,3 +1,45 @@
+# v0.5.151 (2026-09-08) — OpenCode Go started requiring a session header
+
+A user on `ocg/glm-5.2` reported every request failing:
+
+    400 MissingSessionID — "Request is missing x-opencode-session and cannot be routed
+    efficiently."
+
+OpenCode Go began enforcing `x-opencode-session` on every request. This fork never sent it, so
+the whole provider stopped working the moment they turned it on — not a subset of models, not a
+degraded mode. Every `ocg/*` request, 400.
+
+Upstream added the header in `81f4f930`, through a `resolveSessionId()` helper in
+`sessionManager.js` that this fork does not have. Rather than port that whole subsystem, the
+precedence is walked by hand — the same shape `resolveGrokCliSessionId()` already uses in
+`grok-cli.js` for exactly this reason: an explicit conversation id from the client wins, since it
+is the only thing that actually tracks a thread, then the workspace, then a stable id derived
+from the connection.
+
+The value is namespaced by client tool before hashing to `ses_<32 hex>`, so two tools that both
+call their thread `1` don't collide into a single upstream session. A caller already speaking
+OpenCode's own protocol keeps its header verbatim — rewriting it would split one conversation
+across two sessions upstream.
+
+It is computed in `execute()` and carried on a copy of the per-request credentials, never on the
+executor itself: that object is a singleton, and a field on `this` would leak between concurrent
+requests. `buildHeaders()` applies it to both transports — `/chat/completions` and the
+Claude-format `/messages` branch — and falls back on its own, so no path can produce a
+header-less request.
+
+**The request path wasn't the only caller.** Connection validation and the dashboard's
+test-connection button build their own `fetch`, and were sending header-less requests too.
+Neither showed up as a failure, because both grade anything that isn't 401/403 as a healthy key —
+so they were reporting success on a 400 and validating nothing. Both now use the same exported
+helper rather than a second copy of the hashing.
+
+Verified that `prompt_cache_key` survives `openai → openai` translation, so the explicit branch
+is genuinely reachable for clients that send one; clients that send nothing get a stable
+per-connection session, which is coarser but never changes mid-conversation. Against the shipped
+0.5.150 code, 7 of the 11 new tests fail.
+
+1838 tests pass.
+
 # v0.5.150 (2026-09-07) — a token in the logs, a billing hole, and five broken client paths
 
 The second half of the upstream triage. v0.5.149 shipped the security findings; this ships the
