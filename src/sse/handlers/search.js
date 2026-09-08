@@ -151,8 +151,15 @@ async function handleSingleProviderSearch(body, providerInput, request, apiKey, 
   let lastError = null;
   let lastStatus = null;
 
+  // Scope this handler's locks. providerId here is an ordinary AI_PROVIDERS entry,
+  // so search draws on the same connections chat does; without a key,
+  // markAccountUnavailable writes modelLock___all and one failed web search takes
+  // that account offline for chat too. Passed to getProviderCredentials as well, so
+  // the lock is read back under the same key it was written with.
+  const searchLockKey = `websearch:${providerId}`;
+
   while (true) {
-    const credentials = await getProviderCredentials(providerId, excludeConnectionIds);
+    const credentials = await getProviderCredentials(providerId, excludeConnectionIds, searchLockKey);
 
     if (!credentials || credentials.allRateLimited) {
       if (credentials?.allRateLimited) {
@@ -194,7 +201,7 @@ async function handleSingleProviderSearch(body, providerInput, request, apiKey, 
 
     if (result.success) return result.response;
 
-    const { shouldFallback } = await markAccountUnavailable(credentials.connectionId, result.status, result.error, providerId);
+    const { shouldFallback } = await markAccountUnavailable(credentials.connectionId, result.status, result.error, providerId, searchLockKey);
 
     if (shouldFallback) {
       log.warn("AUTH", `Account ${credentials.connectionName} unavailable (${result.status}), trying fallback`);

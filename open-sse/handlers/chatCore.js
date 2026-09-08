@@ -8,6 +8,7 @@ import { createStreamController } from "../utils/streamHandler.js";
 import { refreshWithRetry } from "../services/tokenRefresh.js";
 import { createRequestLogger } from "../utils/requestLogger.js";
 import { getModelTargetFormat, getModelStrip, getModelUpstreamId, getModelType, PROVIDER_ID_TO_ALIAS } from "../config/providerModels.js";
+import { defaultClaudeToolType } from "../translator/helpers/toolCallHelper.js";
 import { createErrorResult, parseUpstreamError, formatProviderError } from "../utils/error.js";
 import { resolveDeprecatedModel } from "../services/modelDeprecation.js";
 import { stripUnsupportedFields } from "../services/modelStrip.js";
@@ -204,6 +205,12 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
   if (getModelType(alias, model) === "tts" && translatedBody.messages) {
     translatedBody.messages = translatedBody.messages.filter(msg => msg.role !== "tool");
     delete translatedBody.tools;
+  }
+
+  // Anthropic requires an explicit `type` on every tool; strict gateways fronting it
+  // answer 400 for a legacy payload that omits one.
+  if (finalFormat === FORMATS.CLAUDE && Array.isArray(translatedBody.tools)) {
+    translatedBody.tools = defaultClaudeToolType(translatedBody.tools);
   }
 
   // 0.5.104 (upstream c9926897) — per-request opt-out. A client can send

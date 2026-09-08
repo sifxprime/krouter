@@ -100,3 +100,46 @@ describe("no theme flash, and no bare ligature text", () => {
     expect(css).toContain("transition: opacity .12s ease-out");
   });
 });
+
+describe("Claude tools always carry an explicit type", () => {
+  it("defaults a bare tool to custom", async () => {
+    const { defaultClaudeToolType } = await import("../../open-sse/translator/helpers/toolCallHelper.js");
+    const out = defaultClaudeToolType([{ name: "get_time", input_schema: { type: "object" } }]);
+    expect(out[0].type).toBe("custom");
+    expect(out[0].name).toBe("get_time");
+  });
+
+  it("leaves a built-in tool's own type alone", async () => {
+    const { defaultClaudeToolType } = await import("../../open-sse/translator/helpers/toolCallHelper.js");
+    const out = defaultClaudeToolType([
+      { type: "web_search_20250305", name: "web_search" },
+      { type: "bash", name: "bash" },
+    ]);
+    expect(out.map((t) => t.type)).toEqual(["web_search_20250305", "bash"]);
+  });
+
+  it("overrides a falsy type rather than letting it survive", async () => {
+    const { defaultClaudeToolType } = await import("../../open-sse/translator/helpers/toolCallHelper.js");
+    // {type:"custom", ...tool} would keep null here and still 400.
+    expect(defaultClaudeToolType([{ name: "a", type: null }])[0].type).toBe("custom");
+    expect(defaultClaudeToolType([{ name: "b", type: "" }])[0].type).toBe("custom");
+  });
+
+  it("does not mutate the caller's tools", async () => {
+    const { defaultClaudeToolType } = await import("../../open-sse/translator/helpers/toolCallHelper.js");
+    const input = [{ name: "x" }];
+    defaultClaudeToolType(input);
+    expect(input[0].type).toBeUndefined();
+  });
+
+  it("passes a non-array through untouched", async () => {
+    const { defaultClaudeToolType } = await import("../../open-sse/translator/helpers/toolCallHelper.js");
+    expect(defaultClaudeToolType(undefined)).toBeUndefined();
+  });
+
+  it("is applied on the Claude path in chatCore", () => {
+    const src = noComments(read("open-sse/handlers/chatCore.js"));
+    expect(src).toContain("finalFormat === FORMATS.CLAUDE && Array.isArray(translatedBody.tools)");
+    expect(src).toContain("defaultClaudeToolType(translatedBody.tools)");
+  });
+});
