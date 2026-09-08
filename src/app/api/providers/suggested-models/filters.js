@@ -1,3 +1,8 @@
+// The endpoint still advertises this id, but upstream answers "Model is
+// unavailable" for it (2026-09-02). Suggesting it just hands the user a model that
+// fails on first use. Remove the entry when it works again.
+const DEAD_FREE_OPENCODE_MODELS = new Set(["deepseek-v4-flash-free"]);
+
 export const FILTERS = {
   // 0.5.87 — Pass-through fallback if provider doesn't return {pricing, context_length}.
   // Prevents providers like Atomesus (bare OpenAI shape) from silently returning 0.
@@ -29,10 +34,12 @@ export const FILTERS = {
   // filter was matching zero of the 50 upstream models. Show everything the
   // endpoint returns; if a model is on this endpoint at all, it's free.
   "opencode-free": (models) =>
-    (Array.isArray(models) ? models : []).map((m) => ({
-      id: m.id,
-      name: m.name || m.id,
-    })),
+    (Array.isArray(models) ? models : [])
+      .filter((m) => !DEAD_FREE_OPENCODE_MODELS.has(m.id))
+      .map((m) => ({
+        id: m.id,
+        name: m.name || m.id,
+      })),
 
   // Xiaomi's free-ai endpoint currently only accepts the "mimo-auto" alias —
   // the other mimo-* names (mimo-v2.5-pro, mimo-v2-omni, mimo-v2-flash, etc.)

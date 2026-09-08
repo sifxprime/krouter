@@ -143,3 +143,34 @@ describe("Claude tools always carry an explicit type", () => {
     expect(src).toContain("defaultClaudeToolType(translatedBody.tools)");
   });
 });
+
+describe("small guards ported from upstream", () => {
+  it("the key mask does not throw on a key shorter than the prefix", () => {
+    // "•".repeat(negative) is a RangeError, which crashed the whole card.
+    const mask = (apiKey) => `${apiKey.slice(0, 8)}${"•".repeat(Math.min(20, Math.max(0, apiKey.length - 8)))}`;
+    expect(() => mask("abc")).not.toThrow();
+    expect(mask("abc")).toBe("abc");
+    expect(mask("sk-1234567890abcdef")).toBe("sk-12345" + "•".repeat(11));
+  });
+
+  it("every mask site in the media-provider page is clamped", () => {
+    const src = read("src/app/(dashboard)/dashboard/media-providers/[kind]/[id]/page.js");
+    expect(src).not.toContain("Math.min(20, apiKey.length - 8)");
+    expect(src.match(/Math\.max\(0, apiKey\.length - 8\)/g) || []).toHaveLength(3);
+  });
+
+  it("does not suggest an OpenCode model upstream reports as unavailable", async () => {
+    const { FILTERS } = await import("../../src/app/api/providers/suggested-models/filters.js");
+    const out = FILTERS["opencode-free"]([
+      { id: "big-pickle", name: "Big Pickle" },
+      { id: "deepseek-v4-flash-free", name: "DeepSeek V4 Flash" },
+      { id: "glm-5.2-free", name: "GLM" },
+    ]);
+    expect(out.map((m) => m.id)).toEqual(["big-pickle", "glm-5.2-free"]);
+  });
+
+  it("still tolerates a non-array payload", async () => {
+    const { FILTERS } = await import("../../src/app/api/providers/suggested-models/filters.js");
+    expect(FILTERS["opencode-free"](null)).toEqual([]);
+  });
+});
