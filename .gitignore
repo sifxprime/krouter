@@ -82,3 +82,6 @@ CLAUDE_HANDOFF.md
 
 # Local preview/launch config for agent tooling — not part of the project.
 .claude/
+
+# Editor/backup copies — a stale one shipped inside the npm package for months.
+*.bak
