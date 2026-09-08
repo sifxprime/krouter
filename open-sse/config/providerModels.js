@@ -217,6 +217,7 @@ export const PROVIDER_MODELS = {
     { id: "qwen3.6-plus", name: "Qwen 3.6 Plus" },
     { id: "mimo-v2-pro", name: "MiMo V2 Pro" },
     { id: "mimo-v2-omni", name: "MiMo V2 Omni" },
+    { id: "minimax-m3", name: "MiniMax M3", targetFormat: "claude" },
     { id: "minimax-m2.7", name: "MiniMax M2.7", targetFormat: "claude" },
     { id: "minimax-m2.5", name: "MiniMax M2.5", targetFormat: "claude" },
   ],

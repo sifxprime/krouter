@@ -4,8 +4,14 @@ import { PROVIDERS } from "../config/providers.js";
 import { injectReasoningContent } from "../utils/reasoningContentInjector.js";
 import { deriveSessionId } from "../utils/sessionManager.js";
 
-// Models that use /zen/go/v1/messages (Anthropic/Claude format + x-api-key auth)
-const CLAUDE_FORMAT_MODELS = new Set(["minimax-m2.5", "minimax-m2.7"]);
+// Models that use /zen/go/v1/messages (Anthropic/Claude format + x-api-key auth).
+//
+// This has to stay in step with targetFormat:"claude" in config/providerModels.js:
+// that entry decides how the request BODY is translated, this set decides which
+// endpoint and auth header it is sent with. A model in one list but not the other
+// gets a Claude body posted to /chat/completions with a bearer token, or the reverse.
+// tests/unit/opencode-go-claude-format.test.js asserts the two agree.
+const CLAUDE_FORMAT_MODELS = new Set(["minimax-m2.5", "minimax-m2.7", "minimax-m3"]);
 
 const BASE = "https://opencode.ai/zen/go/v1";
 
