@@ -795,6 +795,27 @@ function getCodexReviewRateLimit(data) {
   }) || null;
 }
 
+// gpt-5.3-codex-spark is metered on its own window. Without this the dashboard
+// showed only the normal and review windows, so a user whose Spark quota was
+// exhausted saw unexplained 429s with no row accounting for them while ordinary
+// Codex requests kept working.
+function getCodexSparkRateLimit(data) {
+  if (data.spark_rate_limit || data.gpt_5_3_codex_spark_rate_limit) {
+    return data.spark_rate_limit || data.gpt_5_3_codex_spark_rate_limit;
+  }
+
+  const byLimitId = data.rate_limits_by_limit_id;
+  if (byLimitId && typeof byLimitId === "object" && !Array.isArray(byLimitId)) {
+    return byLimitId["gpt-5.3-codex-spark"] || byLimitId.gpt_5_3_codex_spark || byLimitId.spark || null;
+  }
+
+  const additional = Array.isArray(data.additional_rate_limits) ? data.additional_rate_limits : [];
+  return additional.find((entry) => {
+    const id = String(entry?.limit_name || entry?.metered_feature || entry?.id || "").toLowerCase();
+    return id.includes("spark") || id.includes("5.3-codex-spark");
+  }) || null;
+}
+
 export async function getCodexUsage(accessToken, proxyOptions = null) {
   try {
     const response = await proxyAwareFetch(CODEX_CONFIG.usageUrl, {
@@ -816,6 +837,7 @@ export async function getCodexUsage(accessToken, proxyOptions = null) {
 
     appendCodexQuotaWindows(quotas, "", normalRateLimit);
     appendCodexQuotaWindows(quotas, "review", reviewRateLimit);
+    appendCodexQuotaWindows(quotas, "spark", getCodexSparkRateLimit(data));
 
     return {
       plan: data.plan_type || data.summary?.plan || "unknown",

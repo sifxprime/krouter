@@ -304,11 +304,11 @@ describe("sanitizeSecrets", () => {
 });
 
 describe("video model listing (0.5.111 wiring)", () => {
-  it("the [kind] media route recognizes the 'video' slug", async () => {
+  it("the media models route recognizes the 'video' slug", async () => {
     const { readFileSync } = await import("node:fs");
     // Without this slug /v1/models/video returns "Unknown model kind" even
     // though the Sidebar links a video page and xai publishes a video model.
-    const src = readFileSync("src/app/api/v1/models/[kind]/route.js", "utf8");
+    const src = readFileSync("src/app/api/v1/models/[...model]/route.js", "utf8");
     expect(src).toMatch(/"video":\s*\["video"\]/);
   });
 
