@@ -63,7 +63,12 @@ export default function ProfilePage() {
   // The dashboard is reachable over a tunnel, Tailscale, or a plain LAN address.
   // Telling a remote viewer their data is stored on their machine is simply false,
   // and it is exactly the claim someone leans on before pasting a provider key.
-  const [isRemoteHost, setIsRemoteHost] = useState(false);
+  // Starts true, not false. The hostname is only readable after mount, and
+  // initialising to false paints "all data stored on your machine" for one frame at
+  // a viewer for whom it is untrue. Erring the other way shows a local user
+  // "Remote Mode" for that same frame -- a claim that understates safety rather
+  // than overstating it.
+  const [isRemoteHost, setIsRemoteHost] = useState(true);
   useEffect(() => {
     if (typeof window !== "undefined")
       setIsRemoteHost(!["localhost", "127.0.0.1", "::1"].includes(window.location.hostname));

@@ -174,3 +174,13 @@ describe("small guards ported from upstream", () => {
     expect(FILTERS["opencode-free"](null)).toEqual([]);
   });
 });
+
+describe("the data-location claim fails safe", () => {
+  it("does not assume local before the hostname is known", () => {
+    const src = noComments(read("src/app/(dashboard)/dashboard/profile/page.js"));
+    // useState(false) would paint "all data stored on your machine" for one frame
+    // at a remote viewer, which is the claim that must never be shown wrongly.
+    expect(src).toContain("const [isRemoteHost, setIsRemoteHost] = useState(true);");
+    expect(src).not.toContain("const [isRemoteHost, setIsRemoteHost] = useState(false);");
+  });
+});
