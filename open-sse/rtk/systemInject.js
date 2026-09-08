@@ -6,8 +6,29 @@ import { FORMATS } from "../translator/formats.js";
 
 const SEP = "\n\n";
 
+// Injection is not idempotent per-shape: each branch appends. Nothing calls this
+// twice with the same prompt today -- chatCore refuses to run Caveman and Ponytail
+// together, and the credential-refresh retry reuses the already-injected body
+// rather than re-running the savers -- but a second call would silently double the
+// persona and bill the user twice for it, in a feature whose whole purpose is
+// saving tokens. Cheap to make exact-idempotent, so it is.
+//
+// The check is on the serialised body: every shape this dispatches to ends up
+// embedding the prompt as a string somewhere in it, so one test covers them all
+// without the guard having to know each layout.
+function alreadyInjected(body, prompt) {
+  try {
+    return JSON.stringify(body).includes(JSON.stringify(prompt).slice(1, -1));
+  } catch {
+    // Circular or otherwise unserialisable: fail open and inject, since a missing
+    // persona is a smaller problem than throwing inside a token saver.
+    return false;
+  }
+}
+
 export function injectSystemPrompt(body, format, prompt) {
   if (!body || !prompt) return;
+  if (alreadyInjected(body, prompt)) return;
 
   switch (format) {
     case FORMATS.CLAUDE:

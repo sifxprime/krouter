@@ -88,6 +88,18 @@ const ADAPTIVE_THINKING_UNSUPPORTED = /haiku/i;
 // Newer Cowork/Claude Code clients emit beta-only shapes that OAuth endpoints reject:
 // 1. thinking.type "adaptive" → unsupported on Haiku
 // 2. role "system" messages (mid-conversation-system beta) → only top-level system is allowed
+// Anthropic validates server_tool_use ids against this pattern and rejects the
+// whole request with a 400 when one does not match. A combo that falls back to a
+// provider with its own built-in tools (z.ai/glm emits OpenAI-style `call_` ids for
+// its analyze_image tool) leaves such blocks in the history, so every later Claude
+// turn carries a poisoned id and keeps failing.
+const CLAUDE_SERVER_TOOL_USE_ID = /^srvtoolu_[a-zA-Z0-9_]+$/;
+
+function hasForeignServerToolUseId(block) {
+  return block?.type === "server_tool_use"
+    && !CLAUDE_SERVER_TOOL_USE_ID.test(String(block.id ?? ""));
+}
+
 export function normalizeClaudePassthrough(body, model = "") {
   if (!body || typeof body !== "object") return body;
 
@@ -122,6 +134,50 @@ export function normalizeClaudePassthrough(body, model = "") {
       body.system = [...existing, ...systemBlocks];
       body.messages = messages;
     }
+  }
+
+  // 3. Drop server_tool_use blocks carrying a foreign id, and remember those ids.
+  const droppedServerToolUseIds = new Set();
+  if (Array.isArray(body.messages)) {
+    for (const msg of body.messages) {
+      if (msg?.role !== "assistant" || !Array.isArray(msg.content)) continue;
+      const kept = [];
+      for (const block of msg.content) {
+        if (hasForeignServerToolUseId(block)) {
+          if (block.id != null) droppedServerToolUseIds.add(String(block.id));
+          continue;
+        }
+        kept.push(block);
+      }
+      if (kept.length !== msg.content.length) msg.content = kept;
+    }
+  }
+
+  // 4. A result block pointing at an id we just removed is now an orphan, and
+  // Anthropic rejects a tool_result with no matching tool_use just as firmly.
+  if (droppedServerToolUseIds.size > 0 && Array.isArray(body.messages)) {
+    for (const msg of body.messages) {
+      if (!Array.isArray(msg?.content)) continue;
+      const kept = msg.content.filter(block => !(
+        (block?.type === "tool_result" || block?.type === "web_search_tool_result")
+        && droppedServerToolUseIds.has(String(block.tool_use_id ?? ""))
+      ));
+      if (kept.length !== msg.content.length) msg.content = kept;
+    }
+  }
+
+  // 5. Drop empty text blocks and any message left with no content at all.
+  // Anthropic rejects a block with empty text (400 "text content blocks must be
+  // non-empty"); a message whose blocks were all stripped above has to be dropped,
+  // not padded with an empty placeholder.
+  if (Array.isArray(body.messages)) {
+    body.messages = body.messages.filter(msg => {
+      if (typeof msg?.content === "string") return msg.content.trim().length > 0;
+      if (!Array.isArray(msg?.content)) return true;
+      msg.content = msg.content.filter(block =>
+        !(block?.type === "text" && !String(block.text ?? "").trim()));
+      return msg.content.length > 0;
+    });
   }
 
   return body;
