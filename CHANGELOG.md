@@ -1,3 +1,94 @@
+# v0.5.153 (2026-09-08) — fifteen upstream fixes, and a claim the dashboard should never have made
+
+The remaining upstream backlog, triaged commit by commit against our own code. Of 83 candidates,
+15 were worth porting; the rest depend on subsystems this fork does not have (the provider
+registry, the usage submodule, the resolveSessionId family), add models we do not carry, or are
+changelog and dependency churn. Every port below was checked against our tree rather than applied
+on the strength of its commit message, and each is covered by a test verified against the
+*unfixed* code.
+
+**Tool schemas that Gemini and Antigravity reject outright.**
+Two shapes fail hard: `prefixItems` (2020-12 tuple validation) comes back as
+`Unknown name prefixItems`, and a `type: "array"` with no `items` is rejected for a missing
+required field. Zod's `z.tuple()` emits the first and a great many MCP server tool schemas emit
+the second, so any client with MCP tools pointed at one of those connections lost the whole turn
+rather than degrading. The sanitiser now converts `prefixItems` to `items` — one variant becomes
+`items` directly, several become an `anyOf`, a `null` variant is dropped — fills a permissive
+`items` on any bare array, and strips both keywords wherever they survive conversion.
+(upstream `f6c59d30`)
+
+**A failed web search took the account offline for chat.**
+`markAccountUnavailable` with no model key writes `modelLock___all`, an account-level lock that
+`isModelLockActive()` honours for every model. The search handler passed no key — and `providerId`
+there is an ordinary `AI_PROVIDERS` entry, so search draws on the same connections chat does. One
+failed search disabled that connection for chat until the cooldown expired. Locks are now scoped
+to `websearch:<provider>`, read back under the same key, and verified to survive persistence:
+connection rows already carry dynamic keys like `modelLock_claude-opus-4-6-thinking` in a JSON
+column, so the colon is legal. A genuine account ban still forces the account-wide lock, which is
+correct. (upstream `ec669280`, adapted — upstream scopes via a `credentialFallback` path this fork
+does not have; here the same collision arrives through the shared provider id)
+
+**The dashboard told remote viewers their data was on their machine.**
+"Local Mode - All data stored on your machine" was shown to everyone, including anyone reaching
+the dashboard over a tunnel, Tailscale, or a LAN address — all of which this fork actively
+supports. It is exactly the claim someone leans on before pasting a provider key. Upstream fixed
+the footer line; our page repeats it in a prominent card, so that is corrected too.
+
+Then a second pass on our own port: the flag can only be read after mount, so initialising it to
+`false` still painted the false claim for one frame. It now starts from `true` — a local user sees
+"Remote Mode" for that frame instead, understating safety rather than overstating it.
+(upstream `28cfd9fa`, plus a fix of our own)
+
+**Anthropic rejected proxied Claude requests.**
+An `anthropic-compatible-*` node serving a real Claude model sits in front of Anthropic itself — a
+rotating multi-account proxy, a corporate gateway — and needs the beta flags the `claude` provider
+sends. Without `context-management-2025-06-27`, Anthropic rejects the `context_management` block
+Claude Code puts in every request with "Extra inputs are not permitted" (400) and the combo falls
+through to the next model with nothing surfaced. The model id gates it, so a node fronting Kimi or
+GLM never matches and is left alone. (upstream `fb9fab02`)
+
+Also: Anthropic requires an explicit `type` on every tool, and strict gateways fronting it answer
+400 without one — Claude-format tools are now defaulted to `type: "custom"`, with the spread
+ordered so a falsy `type` is overridden rather than surviving to 400 anyway (`e08ac6da`). And a
+client already speaking the Responses API that declares a no-argument tool as `{type:"object"}`
+got a hard 400 from the Codex and Grok CLI backends; our translator fills that in, but a
+Responses-native body short-circuits past it, so both executors now fill it themselves
+(`11222eff`, that hunk only).
+
+**SQLite needed build tools it could not assume.**
+better-sqlite3 12.6.2 has no N-API build, so on Node 22+ npm runs node-gyp against it — and a user
+without build tools, the common case on Windows and on a clean macOS with no Xcode CLT, failed the
+native install and dropped silently to the much slower sql.js fallback. 13.x is N-API and ships
+per-platform prebuilds inside the package. Scripts are skipped for that build only, since npm
+injects an implicit `node-gyp rebuild` for anything carrying a `binding.gyp`; doing the same on
+12.x would leave it with no binary at all. The validity check reads both layouts and tells musl
+from glibc, so an Alpine container looks for `linuxmusl`. (upstream `90a00058`)
+
+**Smaller things that were still real.**
+Connection tests had no deadline at all, so a provider whose endpoint blackholes traffic left the
+Test button spinning forever and pinned a socket per retry — 15s now, and only when the caller set
+no signal of its own (`df85e16d`). Antigravity flags competing-client branding in a system prompt
+and answers 429 Quota Exhausted; we stripped Zed's line but sent OpenCode's naming verbatim, and
+the ZWJ obfuscation never covered it because it only rewrites `contents` (`dff64849`). An OpenAI
+Responses usage body matched the Claude branch of usage extraction, which read neither cache
+field, so every `/v1/responses` and codex request logged a zero cache read (`e7dd72a8`). Dark-mode
+users saw a white flash on every load, since the theme was only applied from an effect
+(`925cb4aa`). Icons rendered blank or as raw ligature text on a cold cache, because
+`document.fonts.ready` settles on the text faces alone while the 3.8MB icon font has not begun
+downloading (`14401c43`). `"•".repeat()` threw a RangeError on an API key shorter than the
+8-character prefix, crashing the whole card (`bb3cb43e`). A dead OpenCode model is no longer
+suggested (`44e4b80b`). And the rtk headroom path now records a reason instead of returning null
+silently (`548e32aa`).
+
+The adversarial verification pass for this release could not run — every agent hit a session
+limit — so the risky parts were checked by hand instead: the colon in the new lock key survives
+persistence, the rewrite regex is global (`replaceAll` throws on one that is not), the schema
+walker does not mistake a property named `items` or `type` for the keyword, the sqlite binary
+probe returns false rather than throwing when neither layout exists, the icon font family string
+matches what the package ships, and the theme script survives a `localStorage` that throws.
+
+1909 tests pass.
+
 # v0.5.152 (2026-09-08) — MiniMax M3 on the right endpoint, and a way to reach a human
 
 **MiniMax M3 was being sent to the wrong endpoint.**
