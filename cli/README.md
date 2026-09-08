@@ -595,6 +595,7 @@ rm -rf ~/.krouter   # optional: wipe database + certs
 - **GitHub:** [github.com/sifxprime/krouter](https://github.com/sifxprime/krouter)
 - **Issues:** [github.com/sifxprime/krouter/issues](https://github.com/sifxprime/krouter/issues)
 - **npm:** [`@sifxprime/krouter`](https://www.npmjs.com/package/@sifxprime/krouter)
+- **Support:** [krouter@kodelyth.com](mailto:krouter@kodelyth.com) · [WhatsApp](https://wa.me/8801312365939)
 
 ---
 

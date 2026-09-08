@@ -1,12 +1,15 @@
 name: Notify krouter-web on Release
 
-# krouter-web already pulls this repo's CHANGELOG on a 10-minute cron, so the site
-# updates on its own whether or not this job succeeds. All this dispatch buys is
-# immediacy — the difference between "live now" and "live within ten minutes".
+# This dispatch is how a release reaches the website. It is not a nicety.
 #
-# That is why a rejected dispatch is a warning and not a failure: a red X on every
-# release, for something that is not actually broken, teaches people to ignore CI.
-# The reason is written to the job summary instead, where it is actionable.
+# krouter-web declares a "*/10 * * * *" cron as a fallback, but GitHub does not
+# honour that on a free runner. Measured across 85 scheduled runs on that
+# repository: the median gap between them is 212 minutes and the largest was 751.
+# Only 2 of 84 gaps came in under an hour. So when this dispatch fails, a release
+# does not reach the site "in ten minutes" — it waits hours.
+#
+# That is why a rejected dispatch fails the job. It is the difference between the
+# website matching the release and silently lagging half a day behind it.
 
 on:
   push:
@@ -27,13 +30,14 @@ jobs:
 
           if [ -z "${TOKEN:-}" ]; then
             {
-              echo "### krouter-web dispatch skipped"
+              echo "### krouter-web dispatch skipped — no token"
               echo
-              echo "\`KDL_ROUTER_WEB_TOKEN\` is not set on this repository."
-              echo "The site will still update within ten minutes via krouter-web's cron."
+              echo "\`KDL_ROUTER_WEB_TOKEN\` is not set on this repository, so the website"
+              echo "will not pick this release up until krouter-web's cron happens to run."
+              echo "That cron is declared every 10 minutes but measures at a ~3.5 hour median."
             } >> "$GITHUB_STEP_SUMMARY"
-            echo "::warning::KDL_ROUTER_WEB_TOKEN is not set; relying on the krouter-web cron."
-            exit 0
+            echo "::error::KDL_ROUTER_WEB_TOKEN is not set; the website will lag this release by hours."
+            exit 1
           fi
 
           STATUS=$(curl -sS -o /tmp/dispatch-body.txt -w "%{http_code}" \
@@ -47,7 +51,7 @@ jobs:
           echo "Response status: $STATUS"
 
           if [ "$STATUS" = "204" ]; then
-            echo "Dispatch accepted (204) — krouter-web is deploying now."
+            echo "Dispatch accepted (204) - krouter-web is deploying now."
             echo "### krouter-web dispatch accepted" >> "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
@@ -57,29 +61,32 @@ jobs:
           case "$STATUS" in
             401) CAUSE="The token is invalid or has expired." ;;
             403) CAUSE="The token is valid but lacks permission to dispatch to krouter-web." ;;
-            404) CAUSE="The token cannot see sifxprime/krouter-web at all — it has no access to the repository, or the name is wrong." ;;
+            404) CAUSE="The token cannot see sifxprime/krouter-web at all - it has no access to the repository, or the name is wrong." ;;
             *)   CAUSE="Unexpected status $STATUS." ;;
           esac
 
           {
-            echo "### krouter-web dispatch rejected — HTTP $STATUS"
+            echo "### krouter-web dispatch rejected - HTTP $STATUS"
             echo
             echo "$CAUSE"
             echo
-            echo "**The site is not broken.** krouter-web syncs this repository's CHANGELOG"
-            echo "on a ten-minute cron, so the release reaches the site either way. Fixing this"
-            echo "only removes that delay."
+            echo "**The website will lag this release.** krouter-web does sync this repository's"
+            echo "CHANGELOG on a cron, but that cron is declared every 10 minutes and does not"
+            echo "run anywhere near that often - measured across 85 scheduled runs, the median"
+            echo "gap is 212 minutes and the largest was 751. This dispatch is what makes a"
+            echo "release appear on the site promptly."
             echo
             echo "To fix, rotate \`KDL_ROUTER_WEB_TOKEN\` with a token that can dispatch:"
             echo
-            echo "- **Classic PAT** — tick the \`repo\` scope. Nothing else is needed."
-            echo "- **Fine-grained PAT** — grant it access to \`sifxprime/krouter-web\` and set"
-            echo "  *Repository permissions → Contents: Read and write*. Contents is the"
+            echo "- **Classic PAT** - tick the \`repo\` scope. Nothing else is needed."
+            echo "- **Fine-grained PAT** - grant it access to \`sifxprime/krouter-web\` and set"
+            echo "  *Repository permissions -> Contents: Read and write*. Contents is the"
             echo "  permission the dispatch endpoint checks; Actions alone is not enough."
             echo
-            echo "Then: \`gh secret set KDL_ROUTER_WEB_TOKEN -R sifxprime/krouter\`"
-            echo
-            echo "Re-run this workflow from the Actions tab to confirm, without cutting a release."
+            echo "Set it at <https://github.com/sifxprime/krouter/settings/secrets/actions>,"
+            echo "or with \`gh secret set KDL_ROUTER_WEB_TOKEN -R sifxprime/krouter\`."
+            echo "Confirm the write landed - \`gh secret list -R sifxprime/krouter\` must show"
+            echo "today's date against it, then re-run this workflow from the Actions tab."
             echo
             echo "<details><summary>Response body</summary>"
             echo
@@ -90,5 +97,5 @@ jobs:
             echo "</details>"
           } >> "$GITHUB_STEP_SUMMARY"
 
-          echo "::warning::krouter-web dispatch rejected with HTTP $STATUS. $CAUSE See the job summary for the fix. The site still updates via cron."
-          exit 0
+          echo "::error::krouter-web dispatch rejected with HTTP $STATUS. $CAUSE Until it is fixed the website lags each release by hours, not minutes. See the job summary."
+          exit 1
