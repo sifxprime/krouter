@@ -1,3 +1,47 @@
+# v0.5.158 (2026-09-09) — DATA_DIR is honoured everywhere, including where it was silently failing
+
+**Upgrade if you set `DATA_DIR`.** `cli.js` ignored it and resolved `~/.krouter` unconditionally, so a
+single process disagreed with itself: auth and machine-id came from `DATA_DIR`, while `db.json`, the
+tunnel directory and the mitm pidfile came from the home directory.
+
+`DATA_DIR` is documented — the README lists it as *"Data directory (SQLite, certs, cache)"* and
+`docs/ARCHITECTURE.md` states `db.json` lives at `${DATA_DIR}/db.json` — so this was a broken promise,
+not an undocumented edge.
+
+The consequence worth the release was silent. When the server crash-loops past `MAX_RESTARTS`, the CLI
+clears `settings.mitmEnabled` in `db.json` to break the loop. Looking in the wrong directory made
+`existsSync` return false, the surrounding `catch { /* best effort */ }` swallowed it, and the server
+kept crash-looping with the safety valve doing nothing at all. Worse, a stale `~/.krouter/db.json` left
+from before `DATA_DIR` was set would be written to instead of the real one.
+
+Mostly this hit Docker and multi-instance users — the people most likely to set `DATA_DIR`, and the
+least likely to be watching a terminal when the loop began.
+
+## The cause was duplication
+
+Three hand-synced copies of the same resolver, each carrying a *"kept in sync with…"* comment, and one
+had drifted. They are now one module, `cli/src/lib/dataDir.js`, shipped inside the package. It cannot
+import the app's own `src/lib/dataDir.js` — that is ESM and lives outside the CLI package — so it
+mirrors it, which is the relationship the old comments described, minus the drift.
+
+Two smaller bugs came out with it:
+
+- `cli.js` fell back to `process.env.APPDATA || ""` on Windows, so an unset `APPDATA` produced a
+  **relative** path and wrote into the current working directory. It now falls back to the home
+  directory, as the app already did.
+- `api/client.js` honoured `DATA_DIR` but without the Windows-path and writability guards, so one
+  setting could resolve three different ways inside one process.
+
+The `mkdir` fires only for an explicitly configured `DATA_DIR`; the default path stays a pure lookup,
+with a test pinning that so it cannot become a surprise side effect of importing a module.
+
+Seven new tests cover both behaviour and shape — two of them assert the deleted copies stay deleted,
+since a drifted duplicate is what caused this in the first place.
+
+## Also
+
+- Removed two dead `gitbook` rules from `.gitignore`, finishing the removal started in v0.5.157.
+
 # v0.5.157 (2026-09-09) — an unauthenticated RCE on Windows hosts, and a docs app that never deployed
 
 **Upgrade if you run kRouter on Windows.** Next.js published two critical advisories against the

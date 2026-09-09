@@ -73,8 +73,6 @@ deploy*.sh
 ecosystem.config.*
 
 scripts/agSniffer/*
-gitbooks/*
-gitbook/README.md
 
 # npm credentials — never commit (use ~/.npmrc instead)
 .npmrc
