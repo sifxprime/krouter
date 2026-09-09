@@ -3,7 +3,6 @@ const https = require("https");
 const crypto = require("crypto");
 const fs = require("node:fs");
 const path = require("node:path");
-const os = require("node:os");
 const { machineIdSync } = require("node-machine-id");
 
 // Default configuration
@@ -15,14 +14,10 @@ const DEFAULT_CONFIG = {
 
 const CLI_TOKEN_HEADER = "x-9r-cli-token";
 const CLI_TOKEN_SALT = "9r-cli-auth";
-// Kept in sync with src/mitm/paths.js / src/lib/dataDir.js
-function getDataDir() {
-  if (process.env.DATA_DIR) return process.env.DATA_DIR;
-  if (process.platform === "win32") {
-    return path.join(process.env.APPDATA || path.join(os.homedir(), "AppData", "Roaming"), "krouter");
-  }
-  return path.join(os.homedir(), ".krouter");
-}
+// Was a third hand-synced copy of this resolver. It honoured DATA_DIR but
+// without the Windows-path and writability guards the others have, so the same
+// setting could resolve three different ways in one process.
+const { getDataDir } = require("../../lib/dataDir");
 
 const MACHINE_ID_FILE = path.join(getDataDir(), "machine-id");
 const AUTH_DIR = path.join(getDataDir(), "auth");

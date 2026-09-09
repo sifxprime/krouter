@@ -45,6 +45,7 @@ function createSpinner(text) {
 const pkg = require("./package.json");
 const { ensureSqliteRuntime, buildEnvWithRuntime } = require("./hooks/sqliteRuntime");
 const { ensureTrayRuntime } = require("./hooks/trayRuntime");
+const { getDataDir: getAppDataDir } = require("./src/lib/dataDir");
 const args = process.argv.slice(2);
 
 // Self-heal SQLite runtime deps (sql.js + better-sqlite3) into ~/.krouter/runtime
@@ -202,13 +203,11 @@ function compareVersions(a, b) {
   return 0;
 }
 
-// Get app data dir — kept in sync with src/mitm/paths.js
-const DATA_DIR_NAME = "krouter";
-function getAppDataDir() {
-  return process.platform === "win32"
-    ? path.join(process.env.APPDATA || "", DATA_DIR_NAME)
-    : path.join(os.homedir(), `.${DATA_DIR_NAME}`);
-}
+// getAppDataDir comes from ./src/lib/dataDir (required at the top). It used to be
+// a local copy that resolved ~/.krouter unconditionally and ignored DATA_DIR, so
+// the three call sites below -- the tunnel directory, the mitm pidfile, and the
+// db.json write in the crash-loop handler -- all looked in the wrong place
+// whenever DATA_DIR was set. The db.json one failed silently.
 
 // Kill PID from file (best-effort, removes file after)
 function killByPidFile(pidFile) {
