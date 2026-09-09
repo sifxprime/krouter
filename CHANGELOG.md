@@ -1,3 +1,58 @@
+# v0.5.157 (2026-09-09) — an unauthenticated RCE on Windows hosts, and a docs app that never deployed
+
+**Upgrade if you run kRouter on Windows.** Next.js published two critical advisories against the
+16.3.1 this release was built on, and one of them reaches the dashboard:
+
+- **[GHSA-p293-qw3h-jr36](https://github.com/advisories/GHSA-p293-qw3h-jr36)** — unauthenticated
+  remote code execution on Windows-hosted servers, fixed in 16.3.3. `server.js` binds `0.0.0.0` by
+  default, so on Windows the dashboard is reachable from the local network by anyone who can route
+  to the machine. This one is real and it is why the release exists.
+- **[GHSA-2xp9-vwfh-vxw4](https://github.com/advisories/GHSA-2xp9-vwfh-vxw4)** — unauthenticated RCE
+  in the Image Optimization API when AVIF files are used. **Not reachable here.**
+  `next.config.mjs` has set `images.unoptimized` since long before the advisory, so there is no
+  `/_next/image` endpoint to attack. Recorded rather than omitted, because "we ship a vulnerable
+  version" deserves a reason and not silence.
+
+Both are now closed by Next.js 16.3.4, which also brings `sharp` to 0.35.4 and clears
+[GHSA-rgj7-g3m4-5g8c](https://github.com/advisories/GHSA-rgj7-g3m4-5g8c). `npm audit --omit=dev`
+goes from 2 findings, one critical, to zero.
+
+Neither advisory was reported by Dependabot. It reads manifests, and the vulnerable version was a
+lockfile resolution of a `^16.2.9` range — so nine alerts sat open against a different directory
+while the two that mattered went unmentioned.
+
+## The nine alerts were noise, and the directory is gone
+
+Every one of those nine was the same package, `next`, pinned at 16.1.1 in `gitbook/` — a second
+Next.js app inherited from the fork. All nine require a running Next server. `gitbook` had none: it
+was `output: "export"` with no middleware, no route handlers and no server actions.
+
+It was also dead. Its workflow ran exactly once, on 2026-06-14, and failed. It deployed to
+`9router.github.io`, a domain this project does not own. Nothing had touched it since the initial
+fork commit. It has been removed along with `gitbook-pages.yml` and the two `next.config.mjs`
+entries that existed only to keep it out of the bundle — 121 files, and the entire source of the
+alert noise that was hiding the real problem.
+
+## The support cards line up now
+
+The two contact cards sized themselves to their own text, so `krouter@kodelyth.com` made the email
+card 28.79px wider than the WhatsApp one, with left edges 28.79px apart. Only their right edges
+agreed, because `align-items: flex-end` was the only thing aligning them. The container now carries
+one definite width and both cards fill it, so neither can size to its label: measured live, width,
+height, left and right all agree to 0.0000px.
+
+The marks inside them are matched too. The official WhatsApp path is drawn edge-to-edge in its
+24-unit box while the envelope stops at 94%, so at an identical box size WhatsApp rendered 0.86px
+wider and 4px taller and read as the heavier of the pair. Its viewBox is padded to inset it to the
+envelope's exact fraction; the two ink widths now land 0.009px apart, with the official path data
+untouched.
+
+## Also
+
+- A rejected `krouter-web` dispatch fails the job again. The website's own cron is declared every
+  10 minutes but measures at a 212-minute median across 85 runs, with a 751-minute worst case, so a
+  silent dispatch failure means the site lags a release by hours rather than minutes.
+
 # v0.5.156 (2026-09-09) — the two support marks now read at equal weight
 
 The envelope in the support widget looked bigger than the WhatsApp mark. Measured on the live

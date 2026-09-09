@@ -25,9 +25,6 @@ const nextConfig = {
     root: tracingRoot
   },
   outputFileTracingRoot: tracingRoot,
-  outputFileTracingExcludes: {
-    "*": ["./gitbook/**/*"]
-  },
   images: {
     unoptimized: true
   },
@@ -49,8 +46,8 @@ const nextConfig = {
         path: false,
       };
     }
-    // Exclude logs, .next, gitbook subapp from watcher
-    config.watchOptions = { ...config.watchOptions, ignored: /[\\/](logs|\.next|gitbook|cli)[\\/]/ };
+    // Exclude logs, .next, cli from watcher
+    config.watchOptions = { ...config.watchOptions, ignored: /[\\/](logs|\.next|cli)[\\/]/ };
     return config;
   },
   async rewrites() {
