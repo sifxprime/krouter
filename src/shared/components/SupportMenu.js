@@ -115,7 +115,9 @@ export default function SupportMenu({ className }) {
                   tabIndex={open ? 0 : -1}
                   aria-hidden={!open}
                   className={cn(
-                    "flex items-center gap-3 px-3 py-2 rounded-lg group",
+                    // w-full + box-border: both cards size from the rail, never
+                    // from their own text, so the longer address cannot widen one.
+                    "flex w-full box-border items-center gap-3 px-3 py-2 rounded-lg group",
                     "text-text-muted hover:bg-surface-2 hover:text-text-main",
                     "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60",
                     "transition-colors"
@@ -134,7 +136,7 @@ export default function SupportMenu({ className }) {
                     {Icon ? <Icon className="size-4" /> : null}
                   </span>
                   <span className="min-w-0">
-                    <span className="block text-[13px] font-medium leading-tight">{channel.label}</span>
+                    <span className="block text-[13px] font-medium leading-tight truncate">{channel.label}</span>
                     <span className="block text-[11px] text-text-muted truncate">{channel.detail}</span>
                   </span>
                 </a>
