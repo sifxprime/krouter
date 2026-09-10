@@ -725,6 +725,9 @@ async function showInterfaceMenu(latestVersion) {
 }
 
 const MAX_RESTARTS = 2;
+// Must match MITM_RECOVERY_MARKER in src/shared/services/initializeApp.js.
+// tests/unit/mitm-recovery-marker.test.js pins the two together.
+const MITM_RECOVERY_MARKER = ".mitm-recovery";
 const RESTART_RESET_MS = 30000; // Reset counter if alive > 30s
 
 // First non-internal IPv4 — the address remote peers actually reach when bound to 0.0.0.0.
@@ -1032,14 +1035,27 @@ function startServer(latestVersion) {
 
     if (restartCount >= MAX_RESTARTS) {
       console.error(`\n⚠️  Server crashed ${MAX_RESTARTS} times. Disabling MIT and restarting...`);
+      // Ask the app to disable MITM; do not write the setting here. This used to
+      // patch mitmEnabled in DATA_DIR/db.json, which the app migrated into SQLite
+      // and now keeps only as a rollback artifact -- so the write landed in a file
+      // nothing reads, and this recovery path had quietly done nothing for a long
+      // time. A supervisor has no business knowing how the app stores settings.
+      // MITM_RECOVERY_MARKER must match the constant of the same name in
+      // src/shared/services/initializeApp.js.
       try {
-        const dbPath = path.join(getAppDataDir(), "db.json");
-        if (fs.existsSync(dbPath)) {
-          const db = JSON.parse(fs.readFileSync(dbPath, "utf-8"));
-          if (db.settings) db.settings.mitmEnabled = false;
-          fs.writeFileSync(dbPath, JSON.stringify(db, null, 2));
-        }
-      } catch { /* best effort */ }
+        const marker = path.join(getAppDataDir(), MITM_RECOVERY_MARKER);
+        fs.mkdirSync(path.dirname(marker), { recursive: true });
+        fs.writeFileSync(
+          marker,
+          JSON.stringify({ reason: "crash-loop", restarts: MAX_RESTARTS, at: new Date().toISOString() }, null, 2)
+        );
+      } catch (e) {
+        // Not swallowed: if the request cannot be recorded, the restart below is
+        // very likely to crash again for the same reason, and the user should be
+        // told why rather than watching it loop.
+        console.error(`   Could not record the MITM recovery request: ${e.message}`);
+        console.error("   If this keeps crashing, disable MITM from the dashboard.");
+      }
       restartCount = 0;
       server = spawnServer();
       attachServerEvents();

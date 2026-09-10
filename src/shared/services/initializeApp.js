@@ -1,7 +1,8 @@
 import os from "os";
 import { fileURLToPath } from "url";
 import { dirname, join } from "path";
-import { existsSync } from "fs";
+import { existsSync, readFileSync, unlinkSync } from "fs";
+import { DATA_DIR } from "@/lib/dataDir";
 import { cleanupProviderConnections, getSettings, updateSettings, getApiKeys, getProviderConnections } from "@/lib/localDb";
 import {
   enableTunnel, enableTailscale,
@@ -165,10 +166,73 @@ async function autoBackfillTokensIfNeeded() {
   if (updated > 0) console.log(`[InitApp] Token backfill: lifted real Gemini token counts into ${updated} historical rows`);
 }
 
+// Written by the CLI supervisor when the server crash-loops. MUST match
+// MITM_RECOVERY_MARKER in cli/cli.js -- tests/unit/mitm-recovery-marker.test.js
+// pins the two together, because a drifted copy of exactly this kind of shared
+// knowledge is what made the previous version of this recovery path a no-op.
+const MITM_RECOVERY_MARKER = ".mitm-recovery";
+
+/**
+ * Honour a crash-loop recovery request from the CLI supervisor.
+ *
+ * The supervisor cannot turn MITM off by itself. It used to try, by patching
+ * `mitmEnabled` in DATA_DIR/db.json -- a file this app migrated into SQLite and
+ * now only keeps as a rollback artifact, so the write landed somewhere nothing
+ * reads and the server kept crash-looping with the safety valve doing nothing.
+ *
+ * So the supervisor drops a marker and we do the write, through the same
+ * updateSettings() every other caller uses. Storage can change again; this
+ * cannot silently rot with it.
+ *
+ * The marker is removed only after the write succeeds, so a failed write is
+ * retried on the next boot instead of being lost.
+ */
+async function consumeMitmRecoveryMarker() {
+  const marker = join(DATA_DIR, MITM_RECOVERY_MARKER);
+  if (!existsSync(marker)) return;
+
+  let detail = "";
+  try {
+    const info = JSON.parse(readFileSync(marker, "utf8"));
+    if (info && info.restarts) detail = ` after ${info.restarts} consecutive crashes`;
+  } catch {
+    // An unreadable or truncated marker still means "disable MITM" -- the
+    // supervisor only writes one when it has already given up.
+  }
+
+  try {
+    await updateSettings({ mitmEnabled: false });
+  } catch (e) {
+    // Deliberately not swallowed. Leaving the marker in place means the next
+    // boot retries rather than silently dropping the request.
+    console.error(
+      `[InitApp] ✗ Could not disable MITM for crash-loop recovery: ${e.message}. ` +
+      "Leaving the marker in place to retry on the next start."
+    );
+    return;
+  }
+
+  console.warn(
+    `[InitApp] ⚠️  MITM has been disabled automatically${detail}. The CLI supervisor asked for this ` +
+    "because the server kept crashing on start. Re-enable it from the dashboard once the cause is fixed."
+  );
+
+  try {
+    unlinkSync(marker);
+  } catch (e) {
+    // Harmless but worth knowing: a marker that cannot be removed will disable
+    // MITM again on the next boot.
+    console.warn(`[InitApp] Could not remove the MITM recovery marker at ${marker}: ${e.message}`);
+  }
+}
+
 async function autoStartMitm() {
   if (g.mitmStartInProgress) return;
   g.mitmStartInProgress = true;
   try {
+    // Before reading settings, so a pending recovery request is reflected in
+    // what we read one line below rather than taking effect a boot late.
+    await consumeMitmRecoveryMarker();
     const settings = await getSettings();
     const mitmStatus = await getMitmStatus();
 
