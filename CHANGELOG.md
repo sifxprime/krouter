@@ -1,3 +1,48 @@
+# v0.5.159 (2026-09-11) — the crash-loop safety valve now actually closes
+
+v0.5.158 fixed the directory the MITM crash-loop recovery looked in. It did not fix the larger
+problem, which only surfaced when the router was finally run end to end against a real, isolated
+data directory: **the recovery was writing to a file the app abandoned.**
+
+When the server crashes `MAX_RESTARTS` times in a row, the CLI supervisor assumes MITM is the cause,
+disables it, and restarts. It did that by patching `settings.mitmEnabled` in `DATA_DIR/db.json`. But
+`src/lib/db/migrate.js` imports that JSON into SQLite once, writes a `.migrated-from-json` marker,
+and keeps the JSON only as a rollback artifact:
+
+- on a **fresh install**, `db.json` never exists — `existsSync` is false and the write is skipped
+- on a **migrated install**, it exists but nothing reads it — the write lands in a dead file
+
+Either way the safety valve did nothing and the server kept crash-looping. The `catch { /* best
+effort */ }` wrapped around it is why this stayed invisible through many releases.
+
+## The supervisor no longer knows how settings are stored
+
+That assumption is what rotted here, twice — first the directory, then the file itself. So it is
+gone. The supervisor writes a marker, `DATA_DIR/.mitm-recovery`, and the app disables MITM itself
+through `updateSettings()` — the same path every other caller uses. Storage can change again; this
+cannot silently rot with it.
+
+Three details matter, and each is pinned by a test:
+
+- The marker is consumed at the top of `autoStartMitm()`, **before** settings are read, so the change
+  takes effect on the boot that handles it rather than one boot later.
+- The marker is removed **only after** the write succeeds. A failed write leaves it in place so the
+  next start retries, instead of dropping the request silently.
+- A failed write is **logged, not swallowed**.
+
+`updateSettings()` was verified rather than assumed: it is an upsert (`ON CONFLICT(id) DO UPDATE`)
+performing an atomic `{...current, ...updates}` merge inside a transaction. Both properties were
+load-bearing — a fresh install has no settings row at all, so a plain `UPDATE` would have matched
+zero rows and reproduced the same class of bug a third time.
+
+## Honest limit
+
+This is verified by contract tests and by reading the write path, **not** by observing a live
+recovery. `initializeApp()` only runs when a page renders through the root layout, and in a fresh
+unauthenticated install every route either redirects or is prerendered, so the boot path could not be
+driven in a sandbox. The corollary is worth knowing: this recovery — in its old design and its new
+one — only fires once a page has rendered. An API-only deployment would never reach it.
+
 # v0.5.158 (2026-09-09) — DATA_DIR is honoured everywhere, including where it was silently failing
 
 **Upgrade if you set `DATA_DIR`.** `cli.js` ignored it and resolved `~/.krouter` unconditionally, so a
