@@ -191,7 +191,10 @@ const PROVIDER_MODELS_CONFIG = {
     url: "https://generativelanguage.googleapis.com/v1beta/models",
     method: "GET",
     headers: { "Content-Type": "application/json" },
-    authQuery: "key", // Use query param for API key
+    // Match Gemini's documented API-key authentication. Header auth avoids
+    // leaking the key into URLs/logs and works consistently with generateContent.
+    authHeader: "x-goog-api-key",
+    authPrefix: "",
     parseResponse: (data) => data.models || []
   },
   qwen: {

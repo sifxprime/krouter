@@ -445,7 +445,12 @@ async function testApiKeyConnection(connection, effectiveProxy = null) {
         return { valid, error: valid ? null : "Invalid API key" };
       }
       case "gemini": {
-        const res = await fetchWithConnectionProxy(`https://generativelanguage.googleapis.com/v1/models?key=${connection.apiKey}`, {}, effectiveProxy);
+        // Use the same API surface and authentication header as Gemini
+        // generateContent requests. Some API keys are accepted by v1beta but
+        // rejected by the legacy v1 catalog endpoint.
+        const res = await fetchWithConnectionProxy("https://generativelanguage.googleapis.com/v1beta/models", {
+          headers: { "x-goog-api-key": connection.apiKey },
+        }, effectiveProxy);
         return { valid: res.ok, error: res.ok ? null : "Invalid API key" };
       }
       case "openrouter": {
