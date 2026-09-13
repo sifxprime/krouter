@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getComboById, updateCombo, deleteCombo, getComboByName } from "@/lib/localDb";
 import { resetComboRotation } from "open-sse/services/combo.js";
+import { normalizeComboEntries } from "open-sse/services/comboEntry.js";
 
 // Validate combo name: only a-z, A-Z, 0-9, -, _
 const VALID_NAME_REGEX = /^[a-zA-Z0-9_.\-]+$/;
@@ -43,6 +44,16 @@ export async function PUT(request, { params }) {
     
     // Capture previous name to invalidate rotation state on rename
     const prev = await getComboById(id);
+    if (body.models !== undefined) {
+      if (!Array.isArray(body.models)) {
+        return NextResponse.json({ error: "Models must be an array" }, { status: 400 });
+      }
+      const normalized = normalizeComboEntries(body.models);
+      if (normalized.length !== body.models.length) {
+        return NextResponse.json({ error: "Each combo entry must be a \"provider/model\" string or { model, reasoning } with a valid effort" }, { status: 400 });
+      }
+      body = { ...body, models: normalized };
+    }
     const combo = await updateCombo(id, body);
     
     if (!combo) {

@@ -7,13 +7,50 @@ const { showMenuWithBack } = require("../utils/menuHelper");
 
 /**
  * Format model to string (handle both string and object)
+ * Entry may be a legacy "provider/model" string or { model, reasoning }.
  */
-function formatModel(model) {
+const COMBO_REASONING_LEVELS = ["auto", "none", "minimal", "low", "medium", "high", "xhigh", "max"];
+
+function entryModelString(model) {
   if (typeof model === "string") return model;
   if (model && typeof model === "object") {
-    return model.id || model.name || `${model.provider}/${model.model}` || JSON.stringify(model);
+    if (typeof model.model === "string" && model.model.trim()) {
+      const m = model.model.trim();
+      if (typeof model.provider === "string" && model.provider.trim() && !m.includes("/")) {
+        return `${model.provider.trim()}/${m}`;
+      }
+      return m;
+    }
+    return model.id || model.name || "";
   }
-  return String(model);
+  return "";
+}
+
+function entryReasoningString(model) {
+  if (!model || typeof model !== "object") return "";
+  return model.reasoning || model.reasoning_effort || "";
+}
+
+function formatModel(model) {
+  const base = entryModelString(model) || String(model);
+  const reasoning = entryReasoningString(model);
+  return reasoning ? `${base} (${reasoning})` : base;
+}
+
+function toComboEntry(modelValue, reasoning) {
+  const base = entryModelString(modelValue) || String(modelValue || "");
+  if (!reasoning || reasoning === "auto") return base;
+  return { model: base, reasoning };
+}
+
+async function promptReasoningLevel(current = "auto") {
+  while (true) {
+    const input = await prompt(`Reasoning effort [${COMBO_REASONING_LEVELS.join("/")}] (Enter for "${current}"): `);
+    if (!input) return current;
+    const value = String(input).trim().toLowerCase();
+    if (COMBO_REASONING_LEVELS.includes(value)) return value;
+    showStatus(`Invalid effort "${input}" — use one of: ${COMBO_REASONING_LEVELS.join(", ")}`, "error");
+  }
 }
 
 /**
@@ -62,19 +99,21 @@ async function handleEditSingleCombo(combo) {
   
   console.log("\nCurrent models: " + (Array.isArray(combo.models) ? combo.models.map(formatModel).join(" → ") : ""));
   console.log("\nSelect models for this combo (add one by one):");
-  
+
   const models = [];
   let addMore = true;
-  
+
   while (addMore) {
-    const currentChain = models.length > 0 ? models.join(" → ") : "None";
+    const currentChain = models.length > 0 ? models.map(formatModel).join(" → ") : "None";
     const model = await selectModelFromList(`Add Model #${models.length + 1}`, `Chain: ${currentChain}`);
-    
+
     if (model) {
-      models.push(model);
-      console.log(`\n✓ Added: ${model}`);
-      console.log(`Current chain: ${models.join(" → ")}\n`);
-      
+      const reasoning = await promptReasoningLevel("auto");
+      const entry = toComboEntry(model, reasoning);
+      models.push(entry);
+      console.log(`\n✓ Added: ${formatModel(entry)}`);
+      console.log(`Current chain: ${models.map(formatModel).join(" → ")}\n`);
+
       const continueAdding = await confirm("Add another model?");
       addMore = continueAdding;
     } else {
@@ -178,11 +217,11 @@ async function showComboDetail(comboId) {
   console.log("│                                                          │");
   console.log("│  Model Chain:                                           │");
   
-  // Models is array of strings like ["ag/claude-sonnet-4-5", "kr/claude-sonnet-4.5"]
+  // Models may be legacy strings or { model, reasoning } entries
   const models = Array.isArray(combo.models) ? combo.models : [];
-  models.forEach((modelStr, index) => {
+  models.forEach((entry, index) => {
     const arrow = index < models.length - 1 ? " →" : "  ";
-    const displayText = `${index + 1}. ${modelStr}${arrow}`;
+    const displayText = `${index + 1}. ${formatModel(entry)}${arrow}`;
     const padding = Math.max(0, 54 - displayText.length);
     console.log(`│    ${displayText}${" ".repeat(padding)} │`);
   });
@@ -250,35 +289,35 @@ async function handleCreateCombo() {
     clearScreen();
     console.log(`Creating combo: ${name}`);
     console.log(`Selected models (${selectedModels.length}):`);
-    
+
     if (selectedModels.length > 0) {
       selectedModels.forEach((m, i) => {
-        console.log(`  ${i + 1}. ${m.provider}/${m.model}`);
+        console.log(`  ${i + 1}. ${formatModel(m)}`);
       });
     } else {
       console.log("  (none)");
     }
-    
+
     console.log();
     console.log("Available models:");
     availableModels.forEach((m, i) => {
-      console.log(`  ${i + 1}. ${m.provider}/${m.model}`);
+      console.log(`  ${i + 1}. ${entryModelString(m) || formatModel(m)}`);
     });
-    
+
     console.log();
     console.log("Actions:");
     console.log("  - Enter number to add model");
     console.log("  - Type 'done' to finish (min 2 models)");
     console.log("  - Type 'cancel' to abort");
-    
+
     const input = await prompt("\nAction: ");
-    
+
     if (input.toLowerCase() === "cancel") {
       showStatus("Cancelled", "warning");
       await pause();
       return;
     }
-    
+
     if (input.toLowerCase() === "done") {
       if (selectedModels.length < 2) {
         showStatus("Please select at least 2 models", "error");
@@ -287,15 +326,20 @@ async function handleCreateCombo() {
       }
       break;
     }
-    
+
     const num = parseInt(input, 10);
     if (isNaN(num) || num < 1 || num > availableModels.length) {
       showStatus("Invalid model number", "error");
       await pause();
       continue;
     }
-    
-    selectedModels.push(availableModels[num - 1]);
+
+    const picked = availableModels[num - 1];
+    const reasoning = await promptReasoningLevel("auto");
+    const entry = toComboEntry(picked, reasoning);
+    selectedModels.push(entry);
+    showStatus(`Added: ${formatModel(entry)}`, "success");
+    await pause();
   }
   
   // Create combo
@@ -365,7 +409,7 @@ async function editSingleCombo(combo) {
       console.log(`Selected models (${newModels.length}):`);
       
       if (newModels.length > 0) {
-        newModels.forEach((m, i) => console.log(`  ${i + 1}. ${m}`));
+        newModels.forEach((m, i) => console.log(`  ${i + 1}. ${formatModel(m)}`));
       } else {
         console.log("  (none)");
       }
@@ -389,8 +433,10 @@ async function editSingleCombo(combo) {
         break;
       }
       
-      newModels.push(model);
-      showStatus(`Added: ${model}`, "success");
+      const reasoning = await promptReasoningLevel("auto");
+      const entry = toComboEntry(model, reasoning);
+      newModels.push(entry);
+      showStatus(`Added: ${formatModel(entry)}`, "success");
       await pause();
     }
   }

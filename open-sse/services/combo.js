@@ -13,23 +13,19 @@ import { getCapabilitiesForModel } from "../providers/capabilities.js";
 import { bestScoreForProviderModel } from "./quotaPreflight.js";
 import { parseModel } from "./model.js";
 import { getNextFamilyFallback, isModelUnavailableError } from "./modelFamilyFallback.js";
+import { getComboEntryModel, applyComboEntryReasoning } from "./comboEntry.js";
+export { normalizeComboEntry, normalizeComboEntries, getComboEntryModel, getComboEntryReasoning, applyComboEntryReasoning } from "./comboEntry.js";
 
-// Quota-aware combo ordering (0.5.27).
-// Sort combo entries so the model with the highest remaining quota across
-// any of its provider's accounts tries first. Entries with no quota info
-// keep their declared position relative to each other (stable sort).
-// Returns a new array; never mutates input.
 function reorderByQuota(models) {
   if (!Array.isArray(models) || models.length < 2) return models;
-  const scored = models.map((modelStr, originalIndex) => {
+  const scored = models.map((entry, originalIndex) => {
+    const modelStr = getComboEntryModel(entry);
     const { provider, model } = parseModel(modelStr);
-    if (!provider || !model) return { modelStr, score: null, originalIndex };
-    return { modelStr, score: bestScoreForProviderModel(provider, model), originalIndex };
+    if (!provider || !model) return { entry, score: null, originalIndex };
+    return { entry, score: bestScoreForProviderModel(provider, model), originalIndex };
   });
   const hasAnyScore = scored.some(s => s.score !== null);
   if (!hasAnyScore) return models;
-  // Items with a score sort by score DESC; null-scored items keep relative order
-  // and sit AFTER scored items so we prefer known-good over unknown.
   scored.sort((a, b) => {
     if (a.score === null && b.score === null) return a.originalIndex - b.originalIndex;
     if (a.score === null) return 1;
@@ -37,7 +33,7 @@ function reorderByQuota(models) {
     if (b.score !== a.score) return b.score - a.score;
     return a.originalIndex - b.originalIndex;
   });
-  return scored.map(s => s.modelStr);
+  return scored.map(s => s.entry);
 }
 
 // Hard capabilities = input modalities. Missing one drops request data
@@ -273,9 +269,10 @@ export function reorderByCapabilities(models, required) {
   if (hard.length === 0) return models;
 
   const tierOf = (m) => {
-    const slash = typeof m === "string" ? m.indexOf("/") : -1;
-    const provider = slash > 0 ? m.slice(0, slash) : "";
-    const model = slash > 0 ? m.slice(slash + 1) : m;
+    const modelStr = getComboEntryModel(m);
+    const slash = typeof modelStr === "string" ? modelStr.indexOf("/") : -1;
+    const provider = slash > 0 ? modelStr.slice(0, slash) : "";
+    const model = slash > 0 ? modelStr.slice(slash + 1) : modelStr;
     const caps = getCapabilitiesForModel(provider, model);
     return hard.every((c) => caps[c] === true) ? 0 : 1;
   };
@@ -288,57 +285,45 @@ export function reorderByCapabilities(models, required) {
 }
 
 export async function handleComboChat({ body, models, handleSingleModel, log, comboName, comboStrategy, comboStickyLimit = 1, autoSwitch = true }) {
-  // Apply rotation strategy if enabled
   let rotatedModels = getRotatedModels(models, comboName, comboStrategy, comboStickyLimit);
 
-  // Capacity auto-switch: float models that satisfy required input modalities
-  // (vision/pdf) to the front so an image request doesn't get silently
-  // stripped at a text-only model.
   if (autoSwitch) {
     const required = detectRequiredCapabilities(body);
     if (required.size > 0) {
       const reordered = reorderByCapabilities(rotatedModels, required);
       if (reordered[0] !== rotatedModels[0]) {
-        log?.info?.("COMBO", `Capacity auto-switch: ${[...required].join(",")} → reordered to ${reordered[0]} first`);
+        log?.info?.("COMBO", `Capacity auto-switch: ${[...required].join(",")} → reordered to ${getComboEntryModel(reordered[0])} first`);
       }
       rotatedModels = reordered;
     }
   }
 
-  // Quota-aware ordering (0.5.27): float entries whose provider has the most
-  // remaining quota for that model to the front. Capability sort still wins
-  // when both apply because we run AFTER it — quota reorder only swaps within
-  // the capability-compatible group.
   if (autoSwitch) {
     const reorderedByQuota = reorderByQuota(rotatedModels);
     if (reorderedByQuota[0] !== rotatedModels[0]) {
-      log?.info?.("COMBO", `Quota auto-switch: ${reorderedByQuota[0]} has most remaining quota → tried first`);
+      log?.info?.("COMBO", `Quota auto-switch: ${getComboEntryModel(reorderedByQuota[0])} has most remaining quota → tried first`);
     }
     rotatedModels = reorderedByQuota;
   }
-  
+
   let lastError = null;
   let earliestRetryAfter = null;
   let lastStatus = null;
-  // Track every model we've tried (combo entries + family-fallback expansions)
-  // so the family lookup doesn't suggest something we already burned.
   const triedModels = new Set();
 
   for (let i = 0; i < rotatedModels.length; i++) {
-    let modelStr = rotatedModels[i];
+    const entry = rotatedModels[i];
+    let modelStr = getComboEntryModel(entry);
     let familyFallbackAttempts = 0;
-    const MAX_FAMILY_FALLBACK = 3; // bounded per combo entry
+    const MAX_FAMILY_FALLBACK = 3;
 
-    // Inner loop: same combo entry may swap to a sibling model if upstream
-    // says the model itself is unavailable (deleted, not enabled, etc.).
-    // We stay on this combo "slot" until either (a) we get a non-model-unavailable
-    // result, or (b) we've exhausted MAX_FAMILY_FALLBACK siblings.
     while (true) {
       log.info("COMBO", `Trying model ${i + 1}/${rotatedModels.length}: ${modelStr}${familyFallbackAttempts > 0 ? ` (family-fallback ${familyFallbackAttempts})` : ""}`);
       triedModels.add(modelStr);
 
     try {
-      const result = await handleSingleModel(body, modelStr);
+      const attemptBody = applyComboEntryReasoning(body, entry);
+      const result = await handleSingleModel(attemptBody, modelStr);
       
       // Success (2xx) - return response
       if (result.ok) {
@@ -586,7 +571,7 @@ function collectPanel(calls, { minPanel, stragglerGraceMs, panelHardTimeoutMs })
  * Degrades gracefully: 0 panel answers -> 503, exactly 1 -> return it directly.
  */
 export async function handleFusionChat({ body, models, handleSingleModel, log, comboName, judgeModel, tuning }) {
-  const panel = Array.isArray(models) ? models.filter(Boolean) : [];
+  const panel = Array.isArray(models) ? models.filter((e) => getComboEntryModel(e)) : [];
   if (panel.length === 0) {
     return new Response(
       JSON.stringify({ error: { message: "Fusion combo has no models" } }),
@@ -595,30 +580,27 @@ export async function handleFusionChat({ body, models, handleSingleModel, log, c
   }
 
   if (panel.length === 1) {
-    return handleSingleModel(body, panel[0]);
+    return handleSingleModel(applyComboEntryReasoning(body, panel[0]), getComboEntryModel(panel[0]));
   }
 
   const cfg = { ...FUSION_DEFAULTS, ...(tuning || {}) };
   const minPanel = Math.min(Math.max(2, cfg.minPanel), panel.length);
-  const judge = judgeModel && judgeModel.trim() ? judgeModel.trim() : panel[0];
-  log.info("FUSION", `Combo "${comboName}" | panel=${panel.length} [${panel.join(", ")}] | judge=${judge} | quorum=${minPanel}`);
+  const judgeEntry = judgeModel && judgeModel.trim() ? null : panel[0];
+  const judge = judgeModel && judgeModel.trim() ? judgeModel.trim() : getComboEntryModel(panel[0]);
+  log.info("FUSION", `Combo "${comboName}" | panel=${panel.length} [${panel.map((e) => getComboEntryModel(e)).join(", ")}] | judge=${judge} | quorum=${minPanel}`);
 
-  // 1. Fan out to the panel in parallel: non-streaming, tools stripped.
-  // upstream 6d30ce6d — the panel runs non-streaming, so stream_options must go too
-  // or providers like DeepSeek reject it ("stream_options should be set along with
-  // stream = true").
   const { tools, tool_choice, stream_options, ...rest } = body;
   const panelBody = { ...rest, stream: false };
   const t0 = Date.now();
-  const calls = panel.map((m) => withTimeout(handleSingleModel(panelBody, m), cfg.panelHardTimeoutMs));
+  const calls = panel.map((entry) => withTimeout(handleSingleModel(applyComboEntryReasoning(panelBody, entry), getComboEntryModel(entry)), cfg.panelHardTimeoutMs));
   const settled = await collectPanel(calls, { ...cfg, minPanel });
   log.info("FUSION", `fan-out collected in ${Date.now() - t0}ms`);
 
-  // 2. Collect successful answers.
   const answers = [];
   for (let i = 0; i < settled.length; i++) {
     const res = settled[i];
-    const model = panel[i];
+    const entry = panel[i];
+    const model = getComboEntryModel(entry);
     if (!res) { log.warn("FUSION", `Panel ${model} dropped (straggler/timeout)`); continue; }
     if (res.__timeout) { log.warn("FUSION", `Panel ${model} timed out`); continue; }
     if (res.__error) { log.warn("FUSION", `Panel ${model} threw`, { error: res.__error?.message || String(res.__error) }); continue; }
@@ -627,7 +609,7 @@ export async function handleFusionChat({ body, models, handleSingleModel, log, c
       const json = await res.clone().json();
       const text = extractPanelText(json);
       if (text) {
-        answers.push({ model, text });
+        answers.push({ model, entry, text });
         log.info("FUSION", `Panel ${model} ok (${text.length} chars)`);
       } else {
         log.warn("FUSION", `Panel ${model} returned empty content`);
@@ -647,11 +629,11 @@ export async function handleFusionChat({ body, models, handleSingleModel, log, c
   }
   if (answers.length === 1) {
     log.info("FUSION", `Only ${answers[0].model} succeeded — answering directly (no fusion)`);
-    return handleSingleModel(body, answers[0].model);
+    return handleSingleModel(applyComboEntryReasoning(body, answers[0].entry), answers[0].model);
   }
 
   // 4. Judge analyzes + writes one final answer (streams to client if requested).
   const judgeBody = appendUserTurn(body, buildJudgePrompt(answers));
   log.info("FUSION", `Judging ${answers.length} answers with ${judge}`);
-  return handleSingleModel(judgeBody, judge);
+  return handleSingleModel(judgeEntry ? applyComboEntryReasoning(judgeBody, judgeEntry) : judgeBody, judge);
 }

@@ -14,7 +14,7 @@ import { stripModelContextMarker } from "open-sse/utils/modelMarkers.js";
 import { errorResponse, unavailableResponse } from "open-sse/utils/error.js";
 import { getRetiredModelError } from "open-sse/config/retiredModels.js";
 import { getEffectiveFallbackStrategy } from "open-sse/config/providerStrategy.js";
-import { handleComboChat, handleFusionChat, detectRequiredCapabilities } from "open-sse/services/combo.js";
+import { handleComboChat, handleFusionChat, detectRequiredCapabilities, getComboEntryModel } from "open-sse/services/combo.js";
 import { augmentModelsWithCapacityAdapter, withCapacityAdapterStripping, getActiveAdapterStrategy } from "open-sse/services/capacityAdapter.js";
 import { handleBypassRequest } from "open-sse/utils/bypassHandler.js";
 import { getTransform as getPxpipeTransform, configureModelBases as configurePxpipeModels } from "@/lib/pxpipe/loader.js";
@@ -176,7 +176,8 @@ export async function handleChat(request, clientRawRequest = null) {
     const comboStrategy = comboSpecificStrategy || settings.comboStrategy || "fallback";
     // Append capacity-adapter models only when NO combo member can satisfy the request.
     const augmentedModels = augmentModelsWithCapacityAdapter(comboModels, requiredCapabilities, settings);
-    const adapterAdded = augmentedModels.filter((m) => !comboModels.includes(m));
+    const comboModelSet = new Set(comboModels.map((m) => getComboEntryModel(m)));
+    const adapterAdded = augmentedModels.filter((m) => !comboModelSet.has(getComboEntryModel(m)));
 
     if (comboStrategy === "fusion") {
       log.info("CHAT", `Combo "${modelStr}" with ${comboModels.length} models (strategy: fusion)`);

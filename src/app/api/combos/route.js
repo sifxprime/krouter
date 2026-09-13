@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getCombos, createCombo, getComboByName } from "@/lib/localDb";
+import { normalizeComboEntries } from "open-sse/services/comboEntry.js";
 
 export const dynamic = "force-dynamic";
 
@@ -22,7 +23,6 @@ export async function POST(request) {
   try {
     const body = await request.json();
     const { name, models, kind } = body;
-
     if (!name) {
       return NextResponse.json({ error: "Name is required" }, { status: 400 });
     }
@@ -38,7 +38,13 @@ export async function POST(request) {
       return NextResponse.json({ error: "Combo name already exists" }, { status: 400 });
     }
 
-    const combo = await createCombo({ name, models: models || [], kind: kind || null });
+    const rawModels = Array.isArray(models) ? models : [];
+    const normalized = normalizeComboEntries(rawModels);
+    if (rawModels.length > 0 && normalized.length !== rawModels.length) {
+      return NextResponse.json({ error: "Each combo entry must be a \"provider/model\" string or { model, reasoning } with a valid effort" }, { status: 400 });
+    }
+
+    const combo = await createCombo({ name, models: normalized, kind: kind || null });
 
     return NextResponse.json(combo, { status: 201 });
   } catch (error) {

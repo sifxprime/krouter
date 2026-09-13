@@ -12,6 +12,31 @@ import { isOpenAICompatibleProvider, isAnthropicCompatibleProvider } from "@/sha
 // Validate combo name: only a-z, A-Z, 0-9, -, _
 const VALID_NAME_REGEX = /^[a-zA-Z0-9_.\-]+$/;
 
+const COMBO_REASONING_OPTIONS = ["auto", "none", "minimal", "low", "medium", "high", "xhigh", "max"];
+
+function entryModel(entry) {
+  if (typeof entry === "string") return entry;
+  if (!entry || typeof entry !== "object") return "";
+  return entry.model || entry.id || entry.name || "";
+}
+
+function entryReasoning(entry) {
+  if (!entry || typeof entry !== "object") return "auto";
+  return entry.reasoning || entry.reasoning_effort || "auto";
+}
+
+function withEntryReasoning(entry, reasoning) {
+  const model = entryModel(entry);
+  if (!reasoning || reasoning === "auto") return model;
+  return { model, reasoning };
+}
+
+function entryLabel(entry) {
+  const model = entryModel(entry);
+  const reasoning = entryReasoning(entry);
+  return reasoning && reasoning !== "auto" ? `${model} (${reasoning})` : model;
+}
+
 // 0.5.126 (upstream 8e59093d, adapted) — Capacity adapter: global fallback pools of
 // models per input-modality capability. A request needing a capability the target
 // model/combo lacks switches to the first enabled model here instead of dropping the
@@ -303,9 +328,9 @@ function ComboCard({ combo, activeProviders = [], copied, onCopy, onEdit, onDele
               {combo.models.length === 0 ? (
                 <span className="text-xs text-text-muted italic">No models</span>
               ) : (
-                combo.models.slice(0, 3).map((model, index) => (
+                combo.models.slice(0, 3).map((entry, index) => (
                   <code key={index} className="max-w-full truncate rounded bg-black/5 px-1.5 py-0.5 font-mono text-[10px] text-text-muted dark:bg-white/5 sm:max-w-[220px]">
-                    {model}
+                    {entryLabel(entry)}
                   </code>
                 ))
               )}
@@ -323,7 +348,7 @@ function ComboCard({ combo, activeProviders = [], copied, onCopy, onEdit, onDele
                   title="Pick the model that fuses panel answers"
                 >
                   <span className="material-symbols-outlined text-[13px]">gavel</span>
-                  <span className="truncate">{judge || `Auto — ${combo.models[0] || "first model"}`}</span>
+                  <span className="truncate">{judge || `Auto — ${entryLabel(combo.models[0]) || "first model"}`}</span>
                 </button>
                 {judge && (
                   <button
@@ -538,7 +563,7 @@ function CapacityAdapterCap({ cap, entry, onChange, activeProviders }) {
   );
 }
 
-function ModelItem({ id, index, model, isFirst, isLast, onEdit, onMoveUp, onMoveDown, onRemove }) {
+function ModelItem({ id, index, model, reasoning, isFirst, isLast, onEdit, onReasoning, onMoveUp, onMoveDown, onRemove }) {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useSortable({ id });
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -604,6 +629,14 @@ function ModelItem({ id, index, model, isFirst, isLast, onEdit, onMoveUp, onMove
         </div>
       )}
 
+      {/* Per-entry reasoning effort (auto = client value) */}
+      <select value={reasoning} onChange={(e) => onReasoning(e.target.value)} title="Reasoning effort for this entry (auto = client value)"
+        className="shrink-0 rounded border border-black/10 bg-white px-1 py-0.5 font-mono text-[11px] text-text-main outline-none dark:border-white/10 dark:bg-black/20">
+        {COMBO_REASONING_OPTIONS.map((level) => (
+          <option key={level} value={level}>{level}</option>
+        ))}
+      </select>
+
       {/* Priority arrows */}
       <div className="flex shrink-0 items-center gap-0.5">
         <button
@@ -651,7 +684,7 @@ function ComboFormModal({ isOpen, combo, onClose, onSave, activeProviders, kindF
   );
 
   // Use stable index-based IDs so duplicates and similar names are handled correctly
-  const modelItems = models.map((model, i) => ({ uid: `item-${i}`, model }));
+  const modelItems = models.map((entry, i) => ({ uid: `item-${i}`, model: entryModel(entry), reasoning: entryReasoning(entry) }));
 
   const handleDragEnd = (event) => {
     const { active, over } = event;
@@ -700,13 +733,30 @@ function ComboFormModal({ isOpen, combo, onClose, onSave, activeProviders, kindF
   };
 
   const handleAddModel = (model) => {
-    if (!models.includes(model.value)) {
-      setModels([...models, model.value]);
-    }
+    const value = model?.value || model;
+    if (!value) return;
+    if (models.some((m) => entryModel(m) === value)) return;
+    setModels([...models, value]);
   };
 
   const handleDeselectModel = (model) => {
-    setModels(models.filter((m) => m !== model.value));
+    const value = model?.value || model;
+    setModels(models.filter((m) => entryModel(m) !== value));
+  };
+
+  const handleSetReasoning = (index, reasoning) => {
+    const updated = [...models];
+    updated[index] = withEntryReasoning(updated[index], reasoning);
+    setModels(updated);
+  };
+
+  const handleEditModel = (index, newVal) => {
+    const trimmed = String(newVal || "").trim();
+    if (!trimmed) return;
+    const updated = [...models];
+    const reasoning = entryReasoning(updated[index]);
+    updated[index] = reasoning && reasoning !== "auto" ? { model: trimmed, reasoning } : trimmed;
+    setModels(updated);
   };
 
   const handleRemoveModel = (index) => {
@@ -771,19 +821,17 @@ function ComboFormModal({ isOpen, combo, onClose, onSave, activeProviders, kindF
             <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd} modifiers={[restrictToVerticalAxis, restrictToParentElement]}>
               <SortableContext items={modelItems.map((m) => m.uid)} strategy={verticalListSortingStrategy}>
                 <div className="flex max-h-[55vh] min-w-0 flex-col gap-1 overflow-y-auto sm:max-h-[350px]">
-                  {modelItems.map(({ uid, model }, index) => (
+                  {modelItems.map(({ uid, model, reasoning }, index) => (
                     <ModelItem
                       key={uid}
                       id={uid}
                       index={index}
                       model={model}
+                      reasoning={reasoning}
                       isFirst={index === 0}
                       isLast={index === modelItems.length - 1}
-                      onEdit={(newVal) => {
-                        const updated = [...models];
-                        updated[index] = newVal;
-                        setModels(updated);
-                      }}
+                      onEdit={(newVal) => handleEditModel(index, newVal)}
+                      onReasoning={(r) => handleSetReasoning(index, r)}
                       onMoveUp={() => handleMoveUp(index)}
                       onMoveDown={() => handleMoveDown(index)}
                       onRemove={() => handleRemoveModel(index)}
@@ -831,7 +879,7 @@ function ComboFormModal({ isOpen, combo, onClose, onSave, activeProviders, kindF
         modelAliases={modelAliases}
         title="Add Model to Combo"
         kindFilter={kindFilter}
-        addedModelValues={models}
+        addedModelValues={models.map((m) => entryModel(m))}
         closeOnSelect={false}
       />
     </>

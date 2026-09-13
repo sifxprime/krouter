@@ -8,11 +8,20 @@ import ProviderIcon from "@/shared/components/ProviderIcon";
 import { AI_PROVIDERS, MEDIA_PROVIDER_KINDS } from "@/shared/constants/providers";
 
 // Parse "providerId/model" or just "providerId" → { providerId, model }
+// Entry may be a legacy string or { model, reasoning } object.
+function entryModelString(entry) {
+  if (typeof entry === "string") return entry;
+  if (!entry || typeof entry !== "object") return "";
+  return entry.model || entry.id || entry.name || "";
+}
+
 function parseModelEntry(entry) {
-  if (typeof entry !== "string") return { providerId: "", model: "" };
-  const idx = entry.indexOf("/");
-  if (idx < 0) return { providerId: entry, model: "" };
-  return { providerId: entry.slice(0, idx), model: entry.slice(idx + 1) };
+  const str = entryModelString(entry);
+  const reasoning = (!entry || typeof entry !== "object") ? "" : (entry.reasoning || entry.reasoning_effort || "");
+  if (typeof str !== "string" || !str) return { providerId: "", model: "", reasoning: "" };
+  const idx = str.indexOf("/");
+  if (idx < 0) return { providerId: str, model: "", reasoning };
+  return { providerId: str.slice(0, idx), model: str.slice(idx + 1), reasoning };
 }
 
 const VALID_NAME_REGEX = /^[a-zA-Z0-9_.\-]+$/;
@@ -120,7 +129,8 @@ export default function ComboDetailPage() {
 
   const handleAddModel = async (model) => {
     const value = model?.value || model;
-    if (!value || providers.includes(value)) return;
+    if (!value) return;
+    if (providers.some((p) => entryModelString(p) === value)) return;
     const next = [...providers, value];
     setProviders(next);
     await saveCombo({ models: next });
@@ -128,8 +138,9 @@ export default function ComboDetailPage() {
 
   const handleDeselectModel = async (model) => {
     const value = model?.value || model;
-    if (!value || !providers.includes(value)) return;
-    const next = providers.filter((p) => p !== value);
+    if (!value) return;
+    if (!providers.some((p) => entryModelString(p) === value)) return;
+    const next = providers.filter((p) => entryModelString(p) !== value);
     setProviders(next);
     await saveCombo({ models: next });
   };
@@ -294,10 +305,11 @@ export default function ComboDetailPage() {
         ) : (
           <div className="flex flex-col gap-2">
             {providers.map((entry, idx) => {
-              const { providerId, model } = parseModelEntry(entry);
+              const { providerId, model, reasoning } = parseModelEntry(entry);
+              const modelStr = entryModelString(entry);
               const p = AI_PROVIDERS[providerId];
               return (
-                <div key={`${entry}-${idx}`} className="flex items-center gap-3 p-2 rounded-lg bg-black/[0.02] dark:bg-white/[0.02]">
+                <div key={`${modelStr}-${idx}`} className="flex items-center gap-3 p-2 rounded-lg bg-black/[0.02] dark:bg-white/[0.02]">
                   <span className="text-xs text-text-muted w-5 text-center">{idx + 1}</span>
                   <ProviderIcon
                     src={`/providers/${providerId}.png`}
@@ -309,7 +321,7 @@ export default function ComboDetailPage() {
                   />
                   <div className="min-w-0 flex-1">
                     <div className="text-sm font-medium truncate">{p?.name || providerId}</div>
-                    {model && <code className="text-[10px] text-text-muted font-mono truncate block">{model}</code>}
+                    {model && <code className="text-[10px] text-text-muted font-mono truncate block">{model}{reasoning ? ` (${reasoning})` : ""}</code>}
                   </div>
                   <div className="flex items-center gap-0.5">
                     <button onClick={() => handleMove(idx, -1)} disabled={idx === 0} className={`p-1 rounded ${idx === 0 ? "text-text-muted/20" : "text-text-muted hover:text-primary hover:bg-black/5"}`} title="Move up">
@@ -402,7 +414,7 @@ export default function ComboDetailPage() {
         modelAliases={modelAliases}
         title={`Add ${kindLabel} Model`}
         kindFilter={combo.kind}
-        addedModelValues={providers}
+        addedModelValues={providers.map((p) => entryModelString(p))}
         closeOnSelect={false}
       />
     </div>
