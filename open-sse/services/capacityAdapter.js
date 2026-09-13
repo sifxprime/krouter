@@ -16,6 +16,7 @@
  * can actually satisfy it.
  */
 import { getCapabilitiesForModel } from "../providers/capabilities.js";
+import { getComboEntryModel } from "./comboEntry.js";
 
 const CAPABILITY_KEYS = ["vision", "pdf", "audioInput", "videoInput"];
 const HARD_CAPS = new Set(CAPABILITY_KEYS);
@@ -82,7 +83,8 @@ export function getActiveAdapterStrategy(requiredCapabilities, settings) {
   return "fallback";
 }
 
-function modelSatisfies(modelStr, requiredHard) {
+function modelSatisfies(entry, requiredHard) {
+  const modelStr = getComboEntryModel(entry) || "";
   const slash = modelStr.indexOf("/");
   const provider = slash > 0 ? modelStr.slice(0, slash) : "";
   const model = slash > 0 ? modelStr.slice(slash + 1) : modelStr;
@@ -101,7 +103,8 @@ export function augmentModelsWithCapacityAdapter(models, requiredCapabilities, s
   if (hard.length === 0 || !Array.isArray(models) || models.length === 0) return models;
   if (models.some((m) => modelSatisfies(m, hard))) return models;
 
-  const pool = getCapacityAdapterModels(settings).filter((m) => !models.includes(m) && modelSatisfies(m, hard));
+  const seen = new Set(models.map((m) => getComboEntryModel(m)));
+  const pool = getCapacityAdapterModels(settings).filter((m) => !seen.has(m) && modelSatisfies(m, hard));
   if (pool.length === 0) return models;
   return [...pool, ...models];
 }

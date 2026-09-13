@@ -8,8 +8,27 @@ import ModelSelectModal from "./ModelSelectModal";
 
 const VALID_NAME_REGEX = /^[a-zA-Z0-9_.\-]+$/;
 
+const COMBO_REASONING_OPTIONS = ["auto", "none", "minimal", "low", "medium", "high", "xhigh", "max"];
+
+function entryModel(entry) {
+  if (typeof entry === "string") return entry;
+  if (!entry || typeof entry !== "object") return "";
+  return entry.model || entry.id || entry.name || "";
+}
+
+function entryReasoning(entry) {
+  if (!entry || typeof entry !== "object") return "auto";
+  return entry.reasoning || entry.reasoning_effort || "auto";
+}
+
+function withEntryReasoning(entry, reasoning) {
+  const model = entryModel(entry);
+  if (!reasoning || reasoning === "auto") return model;
+  return { model, reasoning };
+}
+
 // Inline editable model item
-function ModelItem({ index, model, isFirst, isLast, onEdit, onMoveUp, onMoveDown, onRemove }) {
+function ModelItem({ index, model, reasoning, isFirst, isLast, onEdit, onReasoning, onMoveUp, onMoveDown, onRemove }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(model);
   const commit = () => {
@@ -32,6 +51,12 @@ function ModelItem({ index, model, isFirst, isLast, onEdit, onMoveUp, onMoveDown
         <div className="min-w-0 flex-1 cursor-text truncate rounded px-1.5 py-0.5 font-mono text-xs text-text-main hover:bg-black/5 dark:hover:bg-white/5"
           onClick={() => setEditing(true)} title="Click to edit">{model}</div>
       )}
+      <select value={reasoning} onChange={(e) => onReasoning(e.target.value)} title="Reasoning effort for this entry (auto = client value)"
+        className="shrink-0 rounded border border-black/10 bg-white px-1 py-0.5 font-mono text-[11px] text-text-main outline-none dark:border-white/10 dark:bg-black/20">
+        {COMBO_REASONING_OPTIONS.map((level) => (
+          <option key={level} value={level}>{level}</option>
+        ))}
+      </select>
       <div className="flex shrink-0 items-center gap-0.5">
         <button onClick={onMoveUp} disabled={isFirst}
           className={`p-0.5 rounded ${isFirst ? "text-text-muted/20 cursor-not-allowed" : "text-text-muted hover:text-primary hover:bg-black/5 dark:hover:bg-white/5"}`} title="Move up">
@@ -84,12 +109,29 @@ export default function ComboFormModal({ isOpen, combo, onClose, onSave, activeP
   };
 
   const handleAddModel = (model) => {
-    if (!models.includes(model.value)) setModels([...models, model.value]);
+    const value = model?.value || model;
+    if (!value) return;
+    if (models.some((m) => entryModel(m) === value)) return;
+    setModels([...models, value]);
   };
   const handleDeselectModel = (model) => {
-    setModels(models.filter((m) => m !== model.value));
+    const value = model?.value || model;
+    setModels(models.filter((m) => entryModel(m) !== value));
   };
   const handleRemoveModel = (i) => setModels(models.filter((_, idx) => idx !== i));
+  const handleSetReasoning = (i, reasoning) => {
+    const a = [...models];
+    a[i] = withEntryReasoning(a[i], reasoning);
+    setModels(a);
+  };
+  const handleEditModel = (i, v) => {
+    const trimmed = String(v || "").trim();
+    if (!trimmed) return;
+    const a = [...models];
+    const reasoning = entryReasoning(a[i]);
+    a[i] = reasoning && reasoning !== "auto" ? { model: trimmed, reasoning } : trimmed;
+    setModels(a);
+  };
   const handleMoveUp = (i) => {
     if (i === 0) return;
     const a = [...models]; [a[i - 1], a[i]] = [a[i], a[i - 1]]; setModels(a);
@@ -140,10 +182,11 @@ export default function ComboFormModal({ isOpen, combo, onClose, onSave, activeP
               </div>
             ) : (
               <div className="flex max-h-[55vh] min-w-0 flex-col gap-1 overflow-y-auto sm:max-h-[350px]">
-                {models.map((model, index) => (
-                  <ModelItem key={index} index={index} model={model}
+                {models.map((entry, index) => (
+                  <ModelItem key={index} index={index} model={entryModel(entry)} reasoning={entryReasoning(entry)}
                     isFirst={index === 0} isLast={index === models.length - 1}
-                    onEdit={(v) => { const a = [...models]; a[index] = v; setModels(a); }}
+                    onEdit={(v) => handleEditModel(index, v)}
+                    onReasoning={(r) => handleSetReasoning(index, r)}
                     onMoveUp={() => handleMoveUp(index)}
                     onMoveDown={() => handleMoveDown(index)}
                     onRemove={() => handleRemoveModel(index)} />
@@ -170,7 +213,7 @@ export default function ComboFormModal({ isOpen, combo, onClose, onSave, activeP
         onSelect={handleAddModel} onDeselect={handleDeselectModel}
         activeProviders={activeProviders} modelAliases={modelAliases}
         title="Add Model to Combo" kindFilter={kindFilter}
-        addedModelValues={models} closeOnSelect={false} />
+        addedModelValues={models.map((m) => entryModel(m))} closeOnSelect={false} />
     </>
   );
 }
