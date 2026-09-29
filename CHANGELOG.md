@@ -1,3 +1,34 @@
+# v0.5.160 (2026-09-30) — the crash-loop recovery is now proven, not just argued
+
+No behaviour change. v0.5.159 fixed the MITM crash-loop recovery but shipped verified only by
+contract tests and by reading the write path, and said so. This closes that gap.
+
+That distinction mattered more here than it usually would. The two previous versions of this path
+both passed every check that looked at *shape* and still did nothing at runtime — one wrote to the
+wrong directory, the next wrote to `db.json`, a file the app had migrated into SQLite and no longer
+reads. Shape was never what was broken, so a test that only inspects shape could never have caught
+either one.
+
+`consumeMitmRecoveryMarker` moved into `src/shared/services/mitmRecovery.js` so it can be driven
+directly. Reaching it through `initializeApp` would have pulled in the tunnel stack, cloudflared and
+the MITM bootstrap side effects — none of which it needs. It now returns
+`"no-marker" | "disabled" | "write-failed"` so callers and tests can tell those apart instead of
+inferring from side effects.
+
+Eight tests run it against a real temporary `DATA_DIR` and the real SQLite layer:
+
+- no marker is a no-op, and a second run after a successful one is too
+- a marker disables MITM and is removed
+- it works when **no settings row exists at all**, which is the fresh-install case — a plain `UPDATE`
+  would match zero rows here and silently do nothing
+- the value is read back through a **second SQLite connection**, so it cannot pass on a cached
+  in-memory object. This is the assertion neither broken version could have survived
+- unrelated settings survive the merge
+- a truncated marker still disables MITM
+- a failing write keeps the marker so the next boot retries, and logs rather than swallowing
+
+Suite: 1999 passing, 0 failing.
+
 # v0.5.159 (2026-09-11) — the crash-loop safety valve now actually closes
 
 v0.5.158 fixed the directory the MITM crash-loop recovery looked in. It did not fix the larger
