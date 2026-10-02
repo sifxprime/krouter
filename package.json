@@ -44,7 +44,7 @@
     "selfsigned": "^5.5.0",
     "socks-proxy-agent": "^8.0.5",
     "sql.js": "^1.14.1",
-    "undici": "^7.19.2",
+    "undici": "^7.29.1",
     "uuid": "^13.0.0",
     "zustand": "^5.0.10"
   },
