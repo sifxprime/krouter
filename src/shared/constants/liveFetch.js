@@ -98,7 +98,7 @@ export const LIVE_FETCH = {
   "xiaomi-mimo": openaiShape("https://api.xiaomimimo.com/v1/models"),
   blackbox:      openaiShape("https://api.blackbox.ai/v1/models"),
   commandcode:   openaiShape("https://api.commandcode.ai/v1/models"),
-  "opencode-go": openaiShape("https://opencode.ai/zen/v1/models"),
+  "opencode-go": openaiShape("https://opencode.ai/zen/go/v1/models"),
 
   // Embeddings-only providers — same shape, /v1/models works.
   "voyage-ai":   openaiShape("https://api.voyageai.com/v1/models"),
