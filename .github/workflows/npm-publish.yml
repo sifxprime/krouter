@@ -100,8 +100,18 @@ jobs:
           [ "$v" = "${{ steps.v.outputs.version }}" ] || { echo "::error::tarball version $v"; fail=1; }
           [ -f "$P/app/node_modules/next/package.json" ] || { echo "::error::bundled Next.js runtime missing"; fail=1; }
           [ -f "$P/src/lib/dataDir.js" ] || { echo "::error::src/lib/dataDir.js missing"; fail=1; }
-          n=$(grep -rl "/Users/" "$P" 2>/dev/null | wc -l)
-          [ "$n" -eq 0 ] || { echo "::error::$n files contain a /Users/ home path"; fail=1; }
+          # A package built on a developer's machine embeds that machine's home path
+          # (e.g. /Users/<name>/...) in hundreds of compiled files. CI builds under
+          # /home/runner, so that is the only home path allowed. node_modules is
+          # third-party code installed from npm, not our build output; matching
+          # /Users/ there and in our own help text (/Users/<user>/) gave false alarms.
+          leaks=$(grep -rhoIE --exclude-dir=node_modules '/(Users|home)/[A-Za-z0-9._-]+/' "$P" \
+            | grep -vxF '/home/runner/' | sort -u || true)
+          if [ -n "$leaks" ]; then
+            echo "::error::tarball contains a build machine's home path: $(echo $leaks)"
+            grep -rlIE --exclude-dir=node_modules "$(echo "$leaks" | head -1)" "$P" | head -5 || true
+            fail=1
+          fi
           echo "files: $(find "$P" -type f | wc -l)   next: $(node -p "require('$P/app/node_modules/next/package.json').version")"
           exit $fail
 
