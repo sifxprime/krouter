@@ -1,17 +1,17 @@
 {
-  "name": "9router-tests",
+  "name": "krouter-tests",
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "description": "Unit tests for 9router embeddings endpoint",
+  "description": "kRouter test suite (unit, api, translator). Run from the repo root: the tests resolve paths like cli/cli.js relative to it.",
   "scripts": {
-    "test": "NODE_PATH=/tmp/node_modules /tmp/node_modules/.bin/vitest run --reporter=verbose",
-    "test:watch": "NODE_PATH=/tmp/node_modules /tmp/node_modules/.bin/vitest --reporter=verbose"
+    "test": "cd .. && npx vitest run",
+    "test:watch": "cd .. && npx vitest"
   },
   "devDependencies": {
     "vitest": "^4.0.0"
   },
   "engines": {
-    "node": ">=18"
+    "node": ">=20.9.0"
   }
 }

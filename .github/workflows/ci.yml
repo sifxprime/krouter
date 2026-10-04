@@ -1,0 +1,49 @@
+name: CI
+
+# Before this workflow existed, nothing ran on a push or a pull request. The only
+# automated check was the Docker image build, which runs on tag push -- so when the
+# lockfile drifted out of sync with package.json, `npm ci` failed inside that build
+# for v0.5.158, v0.5.159 and v0.5.160 in a row, and nobody noticed for weeks.
+# `npm ci` below is the same command; it fails here, on the commit that breaks it.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Test (Node ${{ matrix.node }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        # 20.9 is the floor declared in cli/package.json engines (Next.js 16 needs it),
+        # so the minimum is tested, not just whatever is current.
+        node: ["20.9", "22"]
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+
+      - name: Install (fails if package-lock.json is out of sync)
+        run: npm ci
+
+      - name: Test
+        run: npm test
+
+      - name: CLI package lockfile is in sync
+        working-directory: cli
+        run: npm ci --ignore-scripts
