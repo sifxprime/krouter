@@ -116,7 +116,15 @@ function runNpmInstall({ cwd, pkgs, extraArgs = [], timeout = 180000 }) {
 
 function npmInstall(pkgs, opts = {}) {
   const cwd = ensureRuntimeDir();
-  const extra = opts.optional ? ["--no-save"] : [];
+  // No --no-save. better-sqlite3 and systray2 share this runtime dir, and its
+  // package.json declares no dependencies -- so an install with --no-save leaves
+  // the other package "extraneous" and npm prunes it. Each launch ran the sqlite
+  // heal then the tray heal, so the tray install deleted better-sqlite3 every time
+  // and the next launch reinstalled it, forever, with silent:true hiding all of it.
+  // Saving records each package in the manifest, so neither prunes the other.
+  // (Seeding both up front instead would install systray2 on Windows, which the
+  // tray runtime deliberately avoids; recording on install keeps it per-platform.)
+  const extra = [];
   if (opts.ignoreScripts) extra.push("--ignore-scripts");
   if (!opts.silent) console.log("⏳ Installing SQLite engine (first run)...");
   const res = runNpmInstall({ cwd, pkgs, extraArgs: extra, timeout: opts.timeout || 180000 });

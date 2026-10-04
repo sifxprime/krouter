@@ -809,6 +809,14 @@ function startServer(latestVersion) {
   }
 
   let server = spawnServer();
+  // Attach crash handling HERE, immediately after the first spawn -- not at the end
+  // of startServer. It used to be the last statement, which tray mode (`krouter -t`,
+  // the mode the README recommends) never reaches: that branch returns early. So in
+  // tray mode a crashed server was never restarted, EADDRINUSE never recovered, the
+  // MITM crash-loop recovery inside tryRestart could not run, and the tray icon
+  // kept claiming the router was up. Registering listeners only touches `server`;
+  // their bodies run later, asynchronously, after every variable they read exists.
+  attachServerEvents();
 
   // Cleanup function - force kill server process
   let isCleaningUp = false;
@@ -1096,6 +1104,4 @@ function startServer(latestVersion) {
       attachServerEvents();
     }, delay);
   }
-
-  attachServerEvents();
 }

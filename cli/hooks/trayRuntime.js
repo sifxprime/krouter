@@ -74,7 +74,9 @@ function ensureRuntimeDir() {
 function npmInstall(pkgs, { silent = false } = {}) {
   const cwd = ensureRuntimeDir();
   if (!silent) console.log("⏳ Installing system tray (first run)...");
-  const res = runNpmInstall({ cwd, pkgs, extraArgs: ["--no-save"], timeout: 120000 });
+  // Saved, not --no-save: see the note in sqliteRuntime.npmInstall. With --no-save
+  // this install pruned better-sqlite3 out of the shared runtime dir on every launch.
+  const res = runNpmInstall({ cwd, pkgs, extraArgs: [], timeout: 120000 });
   if (!res.ok && !silent) {
     const reason = summarizeNpmError(res.stderr);
     console.warn("⚠️  System tray install failed — tray disabled");
