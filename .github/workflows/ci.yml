@@ -27,11 +27,14 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # 20.12, not 20.9: vitest 4 declares "^20.0.0" but calls util.styleText, which
-        # arrived in Node 20.12, so the TEST RUNNER cannot start below it. That is a
-        # tooling limit, not kRouter's -- the declared runtime floor is checked by the
-        # separate `floor` job below, which does not use vitest.
-        node: ["20.12", "22"]
+        # 20.19, not 20.9: the TEST TOOLCHAIN cannot start below it. vitest 4 declares
+        # "^20.0.0", but its vite 8 / rolldown dependencies declare
+        # "^20.19.0 || >=22.12.0"; below that npm skips rolldown's native binding as an
+        # engine mismatch and vitest dies at startup. (A first attempt at 20.12 cleared
+        # one wall -- util.styleText -- and hit this one.) This is a tooling limit, not
+        # kRouter's: the declared runtime floor is proven by the `floor` job below,
+        # which does not use vitest and passes on exactly 20.9.
+        node: ["20.19", "22"]
     steps:
       - uses: actions/checkout@v5
 

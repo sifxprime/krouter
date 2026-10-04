@@ -13,8 +13,8 @@ Security problems go through **[private reporting](SECURITY.md)**, not a public 
 
 ## Running it from source
 
-Needs **Node.js 20.12 or newer** for development (the test runner needs 20.12; the
-published package itself runs on 20.9+).
+Needs **Node.js 20.19 or newer** for development — the test toolchain (vite and
+rolldown, under vitest) requires it. The published package itself runs on **20.9+**.
 
 ```bash
 git clone https://github.com/sifxprime/krouter.git
@@ -55,7 +55,7 @@ npm test
 ```
 
 Run it from the **repo root** — the tests resolve paths like `cli/cli.js` relative to
-it. CI runs the same command on every pull request, on Node 20.12 and 22, and separately
+it. CI runs the same command on every pull request, on Node 20.19 and 22, and separately
 checks that the app installs and builds on Node 20.9, the floor the package promises.
 
 Please add a test with a fix where you can. If a bug was silent — no error, just wrong
