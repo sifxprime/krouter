@@ -15,6 +15,13 @@ export class DefaultExecutor extends BaseExecutor {
     const transformed = this.applyJsonSchemaFallback(body);
 
     if (transformed && typeof transformed === "object") {
+      // Gemini's REST generateContent schema gets the model from the URL and
+      // does not accept OpenAI's top-level `model` or `stream` fields. The
+      // router adds both fields for other providers before dispatching.
+      if (this.provider === "gemini") {
+        delete transformed.model;
+        delete transformed.stream;
+      }
       if (this.provider === "cerebras" || this.provider === "mistral") {
         delete transformed.client_metadata;
       }

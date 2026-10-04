@@ -350,6 +350,8 @@ export const PROVIDER_MODELS = {
     { id: "claude-3-5-sonnet-20241022", name: "Claude 3.5 Sonnet" },
   ],
   gemini: [
+    // Stable API alias supported by Gemini generateContent.
+    { id: "gemini-flash-latest", name: "Gemini Flash (Latest)" },
     // Gemini 3.1 series
     { id: "gemini-3.1-pro-preview", name: "Gemini 3.1 Pro Preview" },
     { id: "gemini-3.1-flash-lite-preview", name: "Gemini 3.1 Flash Lite Preview" },
