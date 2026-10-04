@@ -1,8 +1,8 @@
 {
   "name": "@sifxprime/krouter",
   "version": "0.5.160",
-  "description": "kRouter (Kodelyth Router) CLI — Kodelyth AI Infrastructure",
-  "homepage": "https://github.com/sifxprime/krouter",
+  "description": "Local AI gateway for Claude Code, Cursor, Codex, Copilot, Cline and any OpenAI-compatible client. Route 40+ LLM providers and 100+ models through one endpoint with automatic fallback, OAuth key management and 20-40% token savings.",
+  "homepage": "https://krouter.kodelyth.com",
   "repository": {
     "type": "git",
     "url": "https://github.com/sifxprime/krouter.git"
@@ -38,17 +38,32 @@
   "comment_sqlite": "sql.js + better-sqlite3 are NOT bundled here. They are installed into ~/.krouter/runtime/node_modules by hooks/postinstall.js (and re-checked at runtime by cli.js). This avoids Windows EBUSY errors when updating the global CLI, since native .node files no longer live under the locked install dir.",
   "comment_systray": "systray2 is NOT bundled here. It is lazy-installed into ~/.krouter/runtime/node_modules by hooks/postinstall.js on macOS/Linux only. Windows uses PowerShell NotifyIcon (zero binary). This avoids shipping unsigned Go binaries that trigger antivirus false positives (Kaspersky). We use the systray2 fork because the legacy systray@1.0.5 ships a 2017 x86_64 binary that fails on modern macOS dyld.",
   "engines": {
-    "node": ">=18.0.0"
+    "node": ">=20.9.0"
   },
   "keywords": [
+    "llm-gateway",
+    "ai-gateway",
+    "llm-router",
+    "llm-proxy",
+    "ai-proxy",
+    "openai-compatible",
+    "openai-proxy",
+    "anthropic-proxy",
+    "claude-code",
+    "cursor",
+    "copilot",
+    "codex",
+    "cline",
+    "anthropic",
+    "openai",
+    "gemini",
+    "token-optimization",
+    "failover",
+    "self-hosted",
+    "cli",
     "krouter",
     "9router",
-    "kodelyth",
-    "cli",
-    "proxy",
-    "ai",
-    "llm",
-    "api"
+    "kodelyth"
   ],
   "license": "MIT",
   "devDependencies": {

@@ -64,6 +64,21 @@ const RUNTIME_FREE_ARGS = new Set(["--version", "-v", "--help", "-h"]);
 const skipRuntimeHeal =
   process.env.KROUTER_SKIP_RUNTIME_HEAL === "1" ||
   process.env.KROUTER_SKIP_RUNTIME_HEAL === "true";
+// Next.js 16, which the bundled dashboard runs on, requires Node 20.9 or newer.
+// engines.node says so, but npm only WARNS on an engines mismatch unless the user
+// has engine-strict set -- so on Node 18 the install succeeded and the server then
+// failed to start with an error that never mentioned the Node version at all.
+// --version and --help stay available so the mismatch can still be diagnosed.
+const MIN_NODE = [20, 9];
+if (!args.some((a) => RUNTIME_FREE_ARGS.has(a))) {
+  const [major, minor] = process.versions.node.split(".").map(Number);
+  if (major < MIN_NODE[0] || (major === MIN_NODE[0] && minor < MIN_NODE[1])) {
+    console.error(`\n✗ kRouter needs Node.js ${MIN_NODE.join(".")} or newer — this is ${process.versions.node}.`);
+    console.error("  Upgrade Node from https://nodejs.org and run kRouter again.\n");
+    process.exit(1);
+  }
+}
+
 if (!skipRuntimeHeal && !args.some((a) => RUNTIME_FREE_ARGS.has(a))) {
   try { ensureSqliteRuntime({ silent: true }); } catch {}
   // Self-heal tray runtime (systray for macOS/Linux only). Windows skipped.
@@ -80,6 +95,11 @@ try {
 
 // Configuration constants
 const APP_NAME = pkg.name; // Use from package.json
+// What a user actually types. APP_NAME is the npm package name, which is right
+// for install commands and registry URLs but is not a runnable command -- --help
+// used to print `Usage: @sifxprime/krouter`, telling people to run something that
+// does not exist. cli/package.json "bin" is the source of truth for this.
+const BIN_NAME = Object.keys(pkg.bin || {})[0] || "krouter";
 const INSTALL_CMD_LATEST = `npm i -g ${APP_NAME}@latest --prefer-online`;
 
 const DEFAULT_PORT = 20128;
@@ -157,7 +177,7 @@ for (let i = 0; i < args.length; i++) {
     process.env.TRAY_MODE = "1";
   } else if (arg === "--help" || arg === "-h") {
     console.log(`
-Usage: ${APP_NAME} [options]
+Usage: ${BIN_NAME} [options]
 
 Options:
   -p, --port <port>   Port to run the server (default: ${DEFAULT_PORT})
@@ -178,7 +198,7 @@ Options:
     // word: `krouter --prot 3000` or `krouter start` ran on the default port and
     // looked like it had worked.
     console.error(`Unknown option: ${args[i]}`);
-    console.error(`Run \`${APP_NAME} --help\` to see the available options.`);
+    console.error(`Run \`${BIN_NAME} --help\` to see the available options.`);
     process.exit(2);
   }
 }

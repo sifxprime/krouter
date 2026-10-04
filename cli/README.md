@@ -24,6 +24,8 @@
 
 ## 🚀 Quick Start
 
+Requires **Node.js 20.9 or newer**.
+
 ```bash
 # Install globally from npm
 npm install -g @sifxprime/krouter
@@ -33,6 +35,10 @@ krouter -t
 ```
 
 Dashboard opens at **[http://localhost:20128/dashboard](http://localhost:20128/dashboard)**.
+
+**First login:** the default dashboard password is `123456`. Change it under **Profile** once you're in.
+For safety, the default only works from the machine kRouter is running on — sign-ins from other devices
+on your network are refused until you set your own.
 
 Prefer running in the foreground with live logs? Just use `krouter` (no flag).
 
