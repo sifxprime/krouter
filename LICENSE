@@ -19,15 +19,3 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
-
----
-
-ATTRIBUTION
-
-kRouter is a hardened fork of 9router (https://github.com/decolua/9router).
-All original architecture, providers, dashboard, and core feature work were
-authored by decolua and the upstream contributors. This fork, maintained by
-Kodelyth AI Infrastructure, adds production-hardening fixes (security, MITM
-stream reliability, Antigravity ban handling, real-time quota tracking) and
-ports compatible improvements from related projects (OmniRoute v3.8+) on top
-of the upstream baseline.
