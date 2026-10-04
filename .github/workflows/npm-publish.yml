@@ -1,0 +1,117 @@
+name: Publish to npm
+
+# Publishes @sifxprime/krouter from CI on a version tag, using npm trusted publishing.
+#
+# Why from CI rather than a laptop:
+# - No token and no OTP. GitHub proves its identity to npm over OIDC, so there is no
+#   publish credential to store, paste, leak or rotate -- and the account's
+#   "auth-and-writes" 2FA no longer blocks every release on a 30-second code.
+# - Provenance. The package page shows which commit and workflow built it.
+# - The build runs on a clean runner. Builds from the maintainer's machine embedded
+#   their home directory (/Users/<name>/...) in 378 files of the published tarball.
+#
+# One-time setup on npmjs.com, which only the package owner can do:
+#   @sifxprime/krouter -> Settings -> Trusted Publisher -> GitHub Actions
+#   owner: sifxprime   repository: krouter   workflow: npm-publish.yml
+# Until that is configured, the Publish step fails with an auth error; publish
+# manually as before and the next tag picks this up.
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Build and pack only -- do not publish"
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+  id-token: write # OIDC for trusted publishing and provenance
+
+concurrency:
+  group: npm-publish
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+          registry-url: "https://registry.npmjs.org"
+
+      - name: npm with trusted-publishing support (>= 11.5.1)
+        run: |
+          npm install -g npm@latest
+          npm --version
+
+      - name: Check version
+        id: v
+        run: |
+          V=$(node -p "require('./cli/package.json').version")
+          echo "version=$V" >> "$GITHUB_OUTPUT"
+          if [ "$GITHUB_REF_TYPE" = "tag" ] && [ "v$V" != "$GITHUB_REF_NAME" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME does not match cli/package.json version $V"
+            exit 1
+          fi
+          if npm view "@sifxprime/krouter@$V" version >/dev/null 2>&1; then
+            echo "already=true" >> "$GITHUB_OUTPUT"
+            echo "::notice::@sifxprime/krouter@$V is already on npm -- nothing to publish."
+          fi
+
+      - name: Install app dependencies
+        if: steps.v.outputs.already != 'true'
+        run: npm ci
+
+      # Dev dependencies are needed: the build bundles the MITM server with esbuild.
+      # Scripts are skipped so the CLI's postinstall does not warm a runtime cache
+      # on a throwaway runner.
+      - name: Install CLI dependencies
+        if: steps.v.outputs.already != 'true'
+        working-directory: cli
+        run: npm ci --ignore-scripts
+
+      # `npm pack` does not run the build -- only `prepublishOnly` does -- and cli/app
+      # is not committed, so build it explicitly. Publishing the resulting tarball
+      # skips lifecycle scripts, so nothing is built twice.
+      - name: Build and pack
+        if: steps.v.outputs.already != 'true'
+        working-directory: cli
+        run: |
+          npm run sync-readme
+          npm run build
+          npm pack --pack-destination "$RUNNER_TEMP"
+          ls -lh "$RUNNER_TEMP"/*.tgz
+
+      - name: Verify the tarball
+        if: steps.v.outputs.already != 'true'
+        run: |
+          TGZ=$(ls "$RUNNER_TEMP"/sifxprime-krouter-*.tgz)
+          mkdir -p "$RUNNER_TEMP/inspect" && tar -xzf "$TGZ" -C "$RUNNER_TEMP/inspect"
+          P="$RUNNER_TEMP/inspect/package"
+          fail=0
+          v=$(node -p "require('$P/package.json').version")
+          [ "$v" = "${{ steps.v.outputs.version }}" ] || { echo "::error::tarball version $v"; fail=1; }
+          [ -f "$P/app/node_modules/next/package.json" ] || { echo "::error::bundled Next.js runtime missing"; fail=1; }
+          [ -f "$P/src/lib/dataDir.js" ] || { echo "::error::src/lib/dataDir.js missing"; fail=1; }
+          n=$(grep -rl "/Users/" "$P" 2>/dev/null | wc -l)
+          [ "$n" -eq 0 ] || { echo "::error::$n files contain a /Users/ home path"; fail=1; }
+          echo "files: $(find "$P" -type f | wc -l)   next: $(node -p "require('$P/app/node_modules/next/package.json').version")"
+          exit $fail
+
+      - name: Publish
+        if: >-
+          steps.v.outputs.already != 'true' &&
+          (github.event_name == 'push' || inputs.dry_run == false)
+        run: |
+          TGZ=$(ls "$RUNNER_TEMP"/sifxprime-krouter-*.tgz)
+          if ! npm publish "$TGZ" --provenance --access public; then
+            echo "::error::npm publish failed. If this is an auth error, configure the trusted publisher on npmjs.com (see the comment at the top of this workflow), or publish this version manually."
+            exit 1
+          fi
