@@ -1,3 +1,72 @@
+# v0.5.161 (2026-10-04) — tray mode can recover from a crash again, and Docker images are back
+
+**Upgrade if you run `krouter -t`.** Tray mode — the way the README tells you to run kRouter —
+never attached crash handling. A server crash went unnoticed, nothing restarted it, a port
+conflict never recovered, and the tray icon kept saying the router was up. It also meant the
+MITM crash-loop recovery fixed across 0.5.158–0.5.160 could not run in tray mode at all.
+
+**Docker users: this is the first working image since 0.5.157.** The image builds for 0.5.158,
+0.5.159 and 0.5.160 all failed on a lockfile that had drifted out of sync, so Docker Hub and
+GHCR have been serving 0.5.157. That image does include the remote-code-execution fixes, which
+landed in 0.5.157 itself — but it misses everything since, including the `DATA_DIR` fix and the
+MITM crash-loop recovery.
+
+## Fixed
+
+- **Tray mode had no crash recovery.** Crash handling was attached at the very end of start-up,
+  and tray mode returns before reaching it. It is now attached as soon as the server spawns.
+- **The SQLite engine was being uninstalled on every launch.** `better-sqlite3` and the tray
+  library share one runtime directory, and both were installed with `--no-save`, so each install
+  pruned the other. Every start reinstalled `better-sqlite3` and then deleted it again, silently,
+  leaving kRouter on its slower SQLite fallback. Both now persist. The first launch after
+  upgrading tidies up once and then settles.
+- **Node 18 installs succeeded and then failed to start.** The bundled Next.js 16 needs Node
+  **20.9**, but the package said 18. It now says 20.9, and refuses to start below it with a
+  message naming both versions. CI proves the 20.9 floor on a clean machine: install, start, build.
+- **`krouter --help` printed `Usage: @sifxprime/krouter`**, which is not a command you can run.
+  It now says `krouter`.
+- **"Hide to Tray" quietly added a login item.** The menu said nothing about starting on login and
+  printed nothing. It is now labelled *Hide to Tray + Start on Login*, confirms what it did, and
+  says how to undo it — including the exact file on Windows, which has no tray toggle for it.
+- **`--no-browser` was listed in `--help` but has never done anything** — nothing opens a browser
+  automatically. It is no longer listed, and still accepted so existing scripts keep working.
+- **OpenCode Go model list** came from the general Zen catalogue (86 models, including free-tier
+  variants) instead of the Go roster (43). Every other OpenCode Go path already used the Go
+  endpoint. — thanks @AincradBot (#22)
+- **Gemini with an API key** now sends the key in the `x-goog-api-key` header instead of a `?key=`
+  URL parameter, where it ended up in logs, and stops sending fields Gemini rejects. Streaming is
+  unaffected. — thanks @manindersarao (#4)
+
+## Security
+
+- **Next.js 16.3.8** closes `GHSA-vcvr-r3jv-pc5j`, a critical RCE in `next/og`'s `ImageResponse`.
+  kRouter does not use `next/og`, so it was not reachable — closed anyway.
+- `undici` (DoS, and a TLS certificate check bypassed in `BalancedPool`) and `ip-address` (an SSRF
+  classifier gap) are updated.
+- **Left open on purpose:** `node-forge` `GHSA-86w9-cpqp-85rv` has no fixed version published. It
+  is about signature *verification*; kRouter only uses node-forge to *generate* its local MITM
+  certificate and never verifies a signature with it.
+- Private vulnerability reporting is enabled, with a [SECURITY.md](SECURITY.md).
+
+## Docs and project
+
+- The README is 619 → 428 lines. A 200-line section on optional PII redaction sat above the
+  features and providers lists; it is now a short summary, with the detail moved — not deleted —
+  into [docs/REDACTION_SETUP.md](docs/REDACTION_SETUP.md).
+- Removed five translated READMEs (6,446 lines) that described the upstream project and never
+  mentioned kRouter.
+- The default dashboard password (`123456`) is now documented. It only works from the machine
+  kRouter runs on; change it under **Profile**.
+- GitHub now detects the licence as **MIT**. Attribution moved from `LICENSE` to `NOTICE`; extra
+  prose in `LICENSE` was stopping GitHub from recognising it.
+- Issues are open, with bug and feature templates, and there is a [CONTRIBUTING.md](CONTRIBUTING.md).
+
+## Releases
+
+A version tag now publishes everything from CI: npm (with provenance), Docker Hub and GHCR, and
+a GitHub Release built from this changelog. A failed image build opens an issue instead of
+failing silently. CI runs the test suite on every push and pull request.
+
 # v0.5.160 (2026-09-30) — the crash-loop recovery is now proven, not just argued
 
 No behaviour change. v0.5.159 fixed the MITM crash-loop recovery but shipped verified only by
