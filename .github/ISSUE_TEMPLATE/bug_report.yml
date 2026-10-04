@@ -1,0 +1,72 @@
+name: Bug report
+description: Something in kRouter is broken or behaving unexpectedly.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting. **Remove API keys and tokens** from anything you paste below.
+        Security problems belong in [private reporting](https://github.com/sifxprime/krouter/security/advisories/new), not here.
+
+  - type: input
+    id: version
+    attributes:
+      label: kRouter version
+      description: Output of `krouter --version`
+      placeholder: "0.5.161"
+    validations:
+      required: true
+
+  - type: input
+    id: client
+    attributes:
+      label: Client / tool
+      description: What was sending requests through kRouter?
+      placeholder: "Claude Code, Cursor, Codex, Cline, curl…"
+    validations:
+      required: true
+
+  - type: input
+    id: provider
+    attributes:
+      label: Provider and model
+      placeholder: "anthropic / claude-sonnet-4-6"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      options: [macOS, Linux, Windows, Docker]
+    validations:
+      required: true
+
+  - type: input
+    id: node
+    attributes:
+      label: Node.js version
+      description: Output of `node --version` (skip for Docker)
+      placeholder: "v22.11.0"
+
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened, and what did you expect?
+    validations:
+      required: true
+
+  - type: textarea
+    id: error
+    attributes:
+      label: Exact error text
+      description: The error message or response body, copied exactly. Keys and tokens removed.
+      render: text
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. krouter -t
+        2. ...

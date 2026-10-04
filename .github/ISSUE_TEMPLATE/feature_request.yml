@@ -1,0 +1,19 @@
+name: Feature request
+description: Suggest a provider, client, or improvement.
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What are you trying to do?
+      description: The problem or goal, rather than the solution — it helps us find the best fit.
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: What would you like kRouter to do?
+  - type: input
+    id: provider
+    attributes:
+      label: Provider or client involved (if any)
