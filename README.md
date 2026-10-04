@@ -31,7 +31,7 @@ npm install -g @sifxprime/krouter
 krouter -t
 ```
 
-Dashboard opens at **[http://localhost:20128/dashboard](http://localhost:20128/dashboard)**.
+The dashboard is at **[http://localhost:20128/dashboard](http://localhost:20128/dashboard)** — open it in your browser, or from the tray icon.
 
 **First login:** the default dashboard password is `123456`. Change it under **Profile** once you're in.
 For safety, the default only works from the machine kRouter is running on — sign-ins from other devices

@@ -167,6 +167,10 @@ for (let i = 0; i < args.length; i++) {
     }
     host = raw;
   } else if (arg === "--no-browser" || arg === "-n") {
+    // Accepted so existing scripts and autostart entries do not break, but it has
+    // never done anything: nothing opens a browser automatically (upstream 9router
+    // parses it and never reads it either). Dropped from --help so it stops
+    // promising behaviour that does not exist.
     noBrowser = true;
   } else if (arg === "--log" || arg === "-l") {
     showLog = true;
@@ -182,7 +186,6 @@ Usage: ${BIN_NAME} [options]
 Options:
   -p, --port <port>   Port to run the server (default: ${DEFAULT_PORT})
   -H, --host <host>   Host to bind (default: ${DEFAULT_HOST})
-  -n, --no-browser    Don't open browser automatically
   -l, --log           Show server logs (default: hidden)
   -t, --tray          Run in system tray mode (background)
   --skip-update       Skip auto-update check
@@ -729,7 +732,7 @@ async function showInterfaceMenu(latestVersion) {
   menuItems.push(
     { label: "Web UI (Open in Browser)", icon: "🌐" },
     { label: "Terminal UI (Interactive CLI)", icon: "💻" },
-    { label: "Hide to Tray (Background)", icon: "🔔" },
+    { label: "Hide to Tray + Start on Login", icon: "🔔" },
     { label: "Exit", icon: "🚪" }
   );
 
@@ -942,11 +945,27 @@ function startServer(latestVersion) {
           const { clearScreen } = require("./src/cli/utils/display");
           clearScreen();
 
-          // Enable auto startup on OS boot
+          // Also start kRouter on login. This used to happen silently: the menu said only
+          // "Hide to Tray (Background)", the call sat in an empty catch, and nothing was
+          // printed -- so choosing it quietly installed a persistent login item. It now
+          // says so, and how to undo it. Windows has no tray toggle for this, so the file
+          // to delete is printed there.
+          let startsOnLogin = false;
           try {
             const { enableAutoStart } = require("./src/cli/tray/autostart");
-            enableAutoStart(__filename);
-          } catch (e) { }
+            startsOnLogin = enableAutoStart(__filename) === true;
+          } catch (e) {
+            console.warn(`Could not set kRouter to start on login: ${e.message}`);
+          }
+          if (startsOnLogin) {
+            console.log("\n✓ kRouter will also start when you log in.");
+            if (process.platform === "win32") {
+              const vbs = path.join(process.env.APPDATA || "", "Microsoft", "Windows", "Start Menu", "Programs", "Startup", "krouter.vbs");
+              console.log(`  To stop that, delete: ${vbs}`);
+            } else {
+              console.log('  To stop that: tray icon -> "Auto-start Enabled".');
+            }
+          }
 
           if (process.platform === "darwin") {
             // macOS: keep current process alive — spawning a detached child puts
