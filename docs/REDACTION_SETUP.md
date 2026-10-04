@@ -212,3 +212,121 @@ This reduces accidental exposure. It is not a compliance control and should not
 be treated as one. Detection is probabilistic: Presidio will miss things,
 particularly unusual formats and non-English text. If data must never reach a
 third party, do not send it — route to a local model instead.
+
+---
+
+## Reference
+
+These sections previously lived in the main README. They moved here when the README
+was trimmed so that an optional, Docker/Python-only feature no longer sat above the
+Features and Providers sections on the GitHub and npm pages.
+
+### Security: Fail-Closed by Default
+
+**When redaction fails, requests are REJECTED** — not sent unredacted:
+
+| Scenario | Behavior | Status Code |
+|----------|----------|-------------|
+| Sidecar timeout | Request rejected | 503 Service Unavailable |
+| Sidecar down | Request rejected | 503 Service Unavailable |
+| Sidecar error | Request rejected | 502 Bad Gateway |
+| Invalid response | Request rejected | 502 Bad Gateway |
+
+This ensures PII is never accidentally sent to AI providers when the redaction service is unavailable.
+
+> ⚠️ **Important:** For production use, monitor redaction failures and set up alerts. See [Troubleshooting](#troubleshooting-presidio).
+
+### Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `REDACTION_ENABLED` | `true` | Enable/disable redaction middleware |
+| `REDACTION_FAIL_OPEN` | `false` | **⚠️ SECURITY:** If true, allow requests on redaction failure (not recommended) |
+| `SIDECAR_URL` | `http://presidio-sidecar:5001/redact` | Presidio sidecar endpoint |
+| `PRESIDIO_CONFIG_PATH` | `/app/redaction_config.yaml` | Path to custom regex YAML config |
+
+> 🔒 **Security Note:** Never set `REDACTION_FAIL_OPEN=true` in production unless you have a specific reason and understand the security implications.
+
+### Testing Redaction
+
+```bash
+# Test the sidecar directly
+curl -X POST http://localhost:5001/redact \
+  -H "Content-Type: application/json" \
+  -d '{
+    "texts": [
+      "Contact John Doe at john.doe@example.com or 555-123-4567",
+      "OpenAI key: sk-proj-abc123def456ghi789jkl"
+    ]
+  }'
+
+# Response:
+# {
+#   "redacted_texts": [
+#     "Contact <PERSON> at <EMAIL_ADDRESS> or <PHONE_NUMBER>",
+#     "OpenAI key: <OPENAI_KEY>"
+#   ]
+# }
+```
+
+### Performance
+
+- **Latency:** < 2ms per request (within Docker network)
+- **Overhead:** Minimal, typically < 10ms end-to-end
+- **Scalability:** Concurrent processing with Uvicorn workers
+
+### Troubleshooting Presidio
+
+**Redaction failures appear as 503 errors:**
+
+```bash
+# Check sidecar status
+docker-compose ps presidio-sidecar
+
+# Check sidecar logs
+docker-compose logs presidio-sidecar
+
+# Check kRouter redaction logs
+docker-compose logs krouter | grep redaction
+```
+
+**Sidecar won't start:**
+
+```bash
+# Check if port 5001 is in use
+lsof -i :5001
+
+# Rebuild the sidecar container
+docker-compose build presidio-sidecar
+docker-compose up -d presidio-sidecar
+```
+
+**Redaction not working:**
+
+1. Verify Presidio toggles are enabled in Dashboard → Settings → Presidio
+2. Check that `REDACTION_ENABLED=true` in docker-compose.yml
+3. Ensure sidecar is healthy: `curl http://localhost:5001/health`
+4. Check kRouter logs for errors
+
+**High false positive rate:**
+
+- Add custom patterns to YAML config in Dashboard → Settings → Presidio
+- Review and refine regex patterns
+- Test patterns using the sidecar API directly
+
+### Security Best Practices
+
+1. **Never disable fail-closed in production** — Keep `REDACTION_FAIL_OPEN=false`
+2. **Monitor redaction failures** — Set up alerts on 503/502 errors
+3. **Review custom regex patterns** — Ensure they're specific and don't match valid content
+4. **Keep sidecar updated** — Pull latest image for security patches
+5. **Use dedicated network** — Isolate redaction traffic when possible
+
+### Customization
+
+For advanced customization, see:
+- **Full configuration guide:** [docs/REDACTION_SETUP.md](docs/REDACTION_SETUP.md)
+- **Pattern examples:** [docs/REDACTION_SETUP.md#custom-patterns](docs/REDACTION_SETUP.md#custom-patterns)
+- **Fail-closed behaviour and limits:** [docs/REDACTION_SETUP.md#a-note-on-trust](docs/REDACTION_SETUP.md#a-note-on-trust)
+
+---

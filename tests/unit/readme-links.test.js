@@ -27,6 +27,10 @@ function localTargets(file) {
     .map((m) => m[1].trim())
     .filter((t) => !isExternal(t))
     .map((t) => t.split("#")[0].split("?")[0])
+    // `./docs/x.md` and `docs/x.md` name the same file, but `git ls-files` prints
+    // the bare form -- without this, a perfectly valid ./-prefixed link is reported
+    // as untracked.
+    .map((t) => t.replace(/^\.\//, ""))
     .filter(Boolean);
 }
 

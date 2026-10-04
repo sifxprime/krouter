@@ -27,9 +27,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # 20.9 is the floor declared in cli/package.json engines (Next.js 16 needs it),
-        # so the minimum is tested, not just whatever is current.
-        node: ["20.9", "22"]
+        # 20.12, not 20.9: vitest 4 declares "^20.0.0" but calls util.styleText, which
+        # arrived in Node 20.12, so the TEST RUNNER cannot start below it. That is a
+        # tooling limit, not kRouter's -- the declared runtime floor is checked by the
+        # separate `floor` job below, which does not use vitest.
+        node: ["20.12", "22"]
     steps:
       - uses: actions/checkout@v5
 
@@ -47,3 +49,33 @@ jobs:
       - name: CLI package lockfile is in sync
         working-directory: cli
         run: npm ci --ignore-scripts
+
+  floor:
+    # cli/package.json declares engines.node >=20.9.0 because the bundled Next.js 16
+    # requires it. This proves that promise on exactly 20.9: the lockfile installs,
+    # the CLI starts, and the dashboard builds. The first CI run tested the full suite
+    # on 20.9 and failed inside vitest, which said nothing about kRouter itself --
+    # hence a separate job that exercises the product rather than the test runner.
+    name: Runtime floor (Node 20.9)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "20.9"
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: CLI starts (version guard must allow 20.9)
+        env:
+          KROUTER_SKIP_RUNTIME_HEAL: "1"
+        run: |
+          node cli/cli.js --version
+          node cli/cli.js --help
+
+      - name: Dashboard builds
+        run: npm run build
