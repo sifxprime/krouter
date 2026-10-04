@@ -46,6 +46,10 @@ MITM crash-loop recovery.
 - **Left open on purpose:** `node-forge` `GHSA-86w9-cpqp-85rv` has no fixed version published. It
   is about signature *verification*; kRouter only uses node-forge to *generate* its local MITM
   certificate and never verifies a signature with it.
+- Removed `http-proxy-middleware`, an unused dependency carried over from upstream. It was the
+  only thing putting `braces` (`GHSA-vfj7-8cjw-p6xm`, a stack-exhaustion DoS with no fixed version
+  yet) among production dependencies. `braces` remains only in lint tooling, which never sees
+  untrusted input, and was never in the npm package's bundled runtime or the Docker image.
 - Private vulnerability reporting is enabled, with a [SECURITY.md](SECURITY.md).
 
 ## Docs and project
@@ -66,6 +70,10 @@ MITM crash-loop recovery.
 A version tag now publishes everything from CI: npm (with provenance), Docker Hub and GHCR, and
 a GitHub Release built from this changelog. A failed image build opens an issue instead of
 failing silently. CI runs the test suite on every push and pull request.
+
+Versions published by hand carried the maintainer's local build path
+(`/Users/<name>/...`) in about 380 compiled files — not a secret, but not something a package
+should ship. CI builds don't, and the publish job now refuses a tarball that does.
 
 # v0.5.160 (2026-09-30) — the crash-loop recovery is now proven, not just argued
 
