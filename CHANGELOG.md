@@ -2077,7 +2077,7 @@ All 1020 tests pass.
 
 # v0.5.82 (2026-07-01) — Fix OpenCode Free-Tier Model Discovery
 
-OpenCode changed how their free-tier endpoint (`opencode.ai/zen/v1/models`) labels models — they no longer append `-free` to IDs. The old k‍router filter in `src/app/api/providers/suggested-models/filters.js` was matching 0 out of 50 upstream models, so users saw an empty OpenCode Free model list even though OpenCode has 50 fresh models available (Claude Fable 5, Claude Opus 4.8, Claude Sonnet 5, GPT-5.5 Pro, Gemini 3.5 Flash, and more).
+OpenCode changed how their free-tier endpoint (`opencode.ai/zen/v1/models`) labels models — they no longer append `-free` to IDs. The old krouter filter in `src/app/api/providers/suggested-models/filters.js` was matching 0 out of 50 upstream models, so users saw an empty OpenCode Free model list even though OpenCode has 50 fresh models available (Claude Fable 5, Claude Opus 4.8, Claude Sonnet 5, GPT-5.5 Pro, Gemini 3.5 Flash, and more).
 
 Fix: The filter now surfaces every model returned by the endpoint. If OpenCode publishes a model on the free-tier endpoint at all, it's free by definition. New models (like Claude Fable 5) will now appear in the dashboard automatically the moment OpenCode adds them upstream.
 
@@ -2087,7 +2087,7 @@ Hotfix for a compilation error introduced in 0.5.80 where stripping the hardcode
 
 # v0.5.80 (2026-06-29) — Dynamic Model Fetching for Cloudflare Workers AI
 
-- **Cloudflare Models**: Removed the hardcoded list of Cloudflare models from k‍Router. It now automatically fetches the live catalog directly from your Cloudflare account, meaning newly added models (like Llama 3.1) are instantly available in the dashboard without requiring a k‍Router update.
+- **Cloudflare Models**: Removed the hardcoded list of Cloudflare models from kRouter. It now automatically fetches the live catalog directly from your Cloudflare account, meaning newly added models (like Llama 3.1) are instantly available in the dashboard without requiring a kRouter update.
 - **Branding**: Added the official Cloudflare logo to the dashboard.
 
 # v0.5.79 (2026-06-29) — Test Suite Alias Fix
@@ -2096,7 +2096,7 @@ Added `vitest.config.js` to correctly map Next.js (`@/`) and custom (`open-sse/`
 
 # v0.5.78 (2026-06-29) — Image URL Obfuscation Fix + Kiro Image Merging Fix
 
-Two fixes related to how k‍Router handles images:
+Two fixes related to how kRouter handles images:
 
 1. **Kiro IDE Multiple User Messages Bug:** In `openai-to-kiro.js`, when consecutive user messages were merged into a single AWS CodeWhisperer format message, the text and tool results were merged correctly, but attached images (`images` array) from the second message were dropped. This is now fixed so images properly survive the merge.
 2. **Obfuscation URL Corruption:** Added `"url"` to the `BINARY_DATA_FIELDS` blacklist in `antigravityObfuscation.js`. Previously, if a user provided an image via a URL (e.g. `https://example.com/claude-image.png`), the obfuscator would inject a zero-width joiner into the word "claude", breaking the URL entirely and causing a 404 image fetch error on Google's end. URLs are now passed through cleanly.
@@ -2113,28 +2113,28 @@ Hotfix: The 0.5.75 release contained an incorrect import path for the logger ins
 
 # v0.5.75 (2026-06-29) — Zenith Score Engine: Intelligent Failover Routing
 
-Architectural milestone: k‍Router now uses the `Zenith` scoring engine to intelligently rank and pick accounts.
+Architectural milestone: kRouter now uses the `Zenith` scoring engine to intelligently rank and pick accounts.
 
-- **Before:** k‍Router used a 'dumb' fill-first or random loop. It would hammer an account until it hit a 429, then fall back to the next one, wasting precious milliseconds.
+- **Before:** kRouter used a 'dumb' fill-first or random loop. It would hammer an account until it hit a 429, then fall back to the next one, wasting precious milliseconds.
 - **After:** The new `Zenith` strategy evaluates every account based on live health data (TTFB latency, success rate) and quota headroom (remaining percentage). It mathematically pre-ranks accounts, heavily penalizing those under 30% quota, and selects the absolute best account to fulfill the request. This eliminates wasted rate-limited requests entirely.
 - Zenith is now the default routing strategy.
 
 # v0.5.69 (2026-06-29) — Zenith RAM Layer: Sub-5ms Failover Routing
 
-Architectural milestone: k‍Router now uses an in-memory `HealthCache` for provider connections, completely eliminating SQLite reads/writes from the hot path during chat routing.
+Architectural milestone: kRouter now uses an in-memory `HealthCache` for provider connections, completely eliminating SQLite reads/writes from the hot path during chat routing.
 
-- **Before:** When an account hit a 429, k‍Router did a synchronous SQLite write to lock it, then the `while (true)` loop did another synchronous SQLite read to find the next account. If 5 accounts were dead, the loop hit the disk 10 times, adding ~50ms of overhead per failure and visibly stalling the IDE.
+- **Before:** When an account hit a 429, kRouter did a synchronous SQLite write to lock it, then the `while (true)` loop did another synchronous SQLite read to find the next account. If 5 accounts were dead, the loop hit the disk 10 times, adding ~50ms of overhead per failure and visibly stalling the IDE.
 - **After:** All active connections and their locks are cached in RAM. When a 429 hits, the router instantly locks the account in memory and grabs the next one in < 1ms. The SQLite write is fired asynchronously in the background.
 
-This brings the core speed benefit of Zenith's pure-function routing engine into k‍Router without losing our provider coverage or MITM features.
+This brings the core speed benefit of Zenith's pure-function routing engine into kRouter without losing our provider coverage or MITM features.
 
 # v0.5.74 (2026-06-29) — Fix Kiro MITM passthrough + tool ID sanitization + global MITM anti-loop
 
 Three fixes bundled from a full Kiro IDE debug pass.
 
-1. **REQUEST_BODY_INVALID from Kiro IDE via MITM:** Removed Kiro from `NATIVE_PAIRS`. When MITM is active, Kiro IDE traffic flows: IDE → MITM (converts AWS → OpenAI) → k‍Router → openai-to-kiro translator → Kiro API. Passthrough was skipping the translator and sending OpenAI-format bodies directly to Kiro's AWS API, which rejected them.
+1. **REQUEST_BODY_INVALID from Kiro IDE via MITM:** Removed Kiro from `NATIVE_PAIRS`. When MITM is active, Kiro IDE traffic flows: IDE → MITM (converts AWS → OpenAI) → kRouter → openai-to-kiro translator → Kiro API. Passthrough was skipping the translator and sending OpenAI-format bodies directly to Kiro's AWS API, which rejected them.
 
-2. **codeWhispererToMessages produced 0 messages:** k‍Router's own outbound Kiro requests were being intercepted by its own MITM proxy because child executors (Kiro, GitHub, C‍ursor) overrode `buildHeaders()` without including `x-request-source: local`. Now forced on ALL executors in `BaseExecutor.execute()` after `buildHeaders()` returns.
+2. **codeWhispererToMessages produced 0 messages:** kRouter's own outbound Kiro requests were being intercepted by its own MITM proxy because child executors (Kiro, GitHub, Cursor) overrode `buildHeaders()` without including `x-request-source: local`. Now forced on ALL executors in `BaseExecutor.execute()` after `buildHeaders()` returns.
 
 3. **String should match pattern '^[a-zA-Z0-9_-]+$':** Tool IDs from other providers (Gemini dots/colons, OpenAI slashes) passed through `openai-to-kiro.js` unsanitized into `toolUseId` fields. Kiro routes through Claude backends which enforce Anthropic's regex. Added `sanitizeToolId()` to all 4 places where `toolUseId` is set in the Kiro translator.
 
@@ -2143,7 +2143,7 @@ Fixes an issue where intermittent NGHTTP2_INTERNAL_ERROR drops (Google Cloud Loa
 
 # v0.5.72 (2026-06-28) — Fix Atomesus tool crashing backend
 
-Fixed a bug where Atomesus API would return a 400 error (`"auto" tool choice requires --enable-auto-tool-choice and --tool-call-parser to be set`) when clients sent tools in the request. Atomesus's inference server does not support tools by default. k‍Router now proactively strips `tools` and `tool_choice` from all requests bound for Atomesus, gracefully degrading them to plain text chat completions.
+Fixed a bug where Atomesus API would return a 400 error (`"auto" tool choice requires --enable-auto-tool-choice and --tool-call-parser to be set`) when clients sent tools in the request. Atomesus's inference server does not support tools by default. kRouter now proactively strips `tools` and `tool_choice` from all requests bound for Atomesus, gracefully degrading them to plain text chat completions.
 
 # v0.5.71 (2026-06-28) — Fix Atomesus alias resolution
 
@@ -2180,8 +2180,8 @@ Raised `process.setMaxListeners` from 20 to 50 to accommodate the HTTP/2 connect
 
 Two bug fixes based on user problem reports:
 
-1. **Claude CLI Bash Safety Classifier Fix (OpenAI/Codex `gpt-5.5`):** Claude CLI makes a safety pre-check before running Bash commands, requesting `max_tokens: 1` to get a single YES/NO token. Recent OpenAI/Codex backend updates strictly reject `max_tokens < 16` with an HTTP 400 error. Claude CLI misinterpreted this 400 as `cx/gpt-5.5 is temporarily unavailable, so auto mode cannot determine the safety of Bash right now.`. k‍Router now enforces a hard floor of `max_tokens: 16` for all OpenAI formats to pass upstream validation.
-2. **CLI Tools Connection Status UI Fix:** Fixed a bug where the CLI Tools index cards on the dashboard always showed `Not configured` even when the tool was fully connected. The settings API routes (`claude`, `cowork`, `jcode`) were computing `hasK‍Router` correctly but omitting it from the JSON response.
+1. **Claude CLI Bash Safety Classifier Fix (OpenAI/Codex `gpt-5.5`):** Claude CLI makes a safety pre-check before running Bash commands, requesting `max_tokens: 1` to get a single YES/NO token. Recent OpenAI/Codex backend updates strictly reject `max_tokens < 16` with an HTTP 400 error. Claude CLI misinterpreted this 400 as `cx/gpt-5.5 is temporarily unavailable, so auto mode cannot determine the safety of Bash right now.`. kRouter now enforces a hard floor of `max_tokens: 16` for all OpenAI formats to pass upstream validation.
+2. **CLI Tools Connection Status UI Fix:** Fixed a bug where the CLI Tools index cards on the dashboard always showed `Not configured` even when the tool was fully connected. The settings API routes (`claude`, `cowork`, `jcode`) were computing `hasKRouter` correctly but omitting it from the JSON response.
 
 # v0.5.65 (2026-06-28) — Kiro IDE first-class support + Caveman/Ponytail mutex
 
@@ -2211,15 +2211,15 @@ Now: before sending to any Claude-shape upstream, we scan the body with a lightw
 
 Documentation-only release. No code changes.
 - README: Removed upstream credit badge from the very first line (moved to attribution section below).
-- LICENSE: Changed copyright header to strictly "K‍odelyth AI Infrastructure" (with full attribution details at the bottom).
+- LICENSE: Changed copyright header to strictly "Kodelyth AI Infrastructure" (with full attribution details at the bottom).
 
-# v0.5.61 (2026-06-26) — Docker deployment parity: sifxprime/k‍router
+# v0.5.61 (2026-06-26) — Docker deployment parity: sifxprime/krouter
 
-Configured GitHub Actions workflow to publish Docker container images to `sifxprime/k‍router` on Docker Hub (and `ghcr.io/sifxprime/k‍router` on GitHub Container Registry) instead of the old upstream decolua image. Updated README and DOCKER.md with official container execution commands using `sifxprime/k‍router:latest` and `~/.k‍router` data binding.
+Configured GitHub Actions workflow to publish Docker container images to `sifxprime/krouter` on Docker Hub (and `ghcr.io/sifxprime/krouter` on GitHub Container Registry) instead of the old upstream decolua image. Updated README and DOCKER.md with official container execution commands using `sifxprime/krouter:latest` and `~/.krouter` data binding.
 
 # v0.5.59 (2026-06-26) — Documentation update: NPM Install & Uninstall
 
-Documentation-only release. No code changes. README `Quick Start` section rewritten to prioritize NPM installation (`npm i -g @sifxprime/k‍router`) as the primary method for users, moving the Git clone instructions to an "Option 2 (For Development)" section. Added explicit upgrade and uninstallation commands, including how to clean up the `~/.k‍router/` directory.
+Documentation-only release. No code changes. README `Quick Start` section rewritten to prioritize NPM installation (`npm i -g @sifxprime/krouter`) as the primary method for users, moving the Git clone instructions to an "Option 2 (For Development)" section. Added explicit upgrade and uninstallation commands, including how to clean up the `~/.krouter/` directory.
 
 # v0.5.58 (2026-06-25) — Documentation + LICENSE attribution refresh
 
@@ -2311,9 +2311,9 @@ Adds an amber/cyan one-click toggle next to the existing Cache Control dropdown 
 
 # v0.5.34 (2026-06-23) — Hotfix: Claude direct cache preservation
 
-Fixes an issue where C‍laude Code (the CLI) would receive `429 Rate Limit` errors on Anthropic Tier 1 accounts despite having sufficient credits.
+Fixes an issue where Claude Code (the CLI) would receive `429 Rate Limit` errors on Anthropic Tier 1 accounts despite having sufficient credits.
 
-- **Bug:** `normalizeClaudePassthrough` was hoisting C‍laude Code's mid-conversation `role: "system"` messages to the top level. While semantically identical, this changed the JSON byte sequence, busting Anthropic's prompt cache. A 50k token prompt missing the cache immediately hits the 40k TPM limit on Tier 1.
+- **Bug:** `normalizeClaudePassthrough` was hoisting Claude Code's mid-conversation `role: "system"` messages to the top level. While semantically identical, this changed the JSON byte sequence, busting Anthropic's prompt cache. A 50k token prompt missing the cache immediately hits the 40k TPM limit on Tier 1.
 - **Fix:** `cacheControlMode="auto"` (and `"always"`) now strictly skips the normalizer and tool deduper. The outbound JSON body is now 100% byte-identical to the CLI's payload, allowing Anthropic's cache to hit and bypassing TPM rate limits on continuation turns.
 
 # v0.5.33 (2026-06-23) — cacheControlMode toggle + quota freshness tracking

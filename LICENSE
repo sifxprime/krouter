@@ -1,6 +1,6 @@
 MIT License
 
-Copyright (c) 2026 K‍odelyth AI Infrastructure
+Copyright (c) 2026 Kodelyth AI Infrastructure
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -24,10 +24,10 @@ SOFTWARE.
 
 ATTRIBUTION
 
-k‍Router is a hardened fork of 9router (https://github.com/decolua/9router).
+kRouter is a hardened fork of 9router (https://github.com/decolua/9router).
 All original architecture, providers, dashboard, and core feature work were
 authored by decolua and the upstream contributors. This fork, maintained by
-K‍odelyth AI Infrastructure, adds production-hardening fixes (security, MITM
+Kodelyth AI Infrastructure, adds production-hardening fixes (security, MITM
 stream reliability, Antigravity ban handling, real-time quota tracking) and
-ports compatible improvements from related projects (O‍mniRoute v3.8+) on top
+ports compatible improvements from related projects (OmniRoute v3.8+) on top
 of the upstream baseline.
