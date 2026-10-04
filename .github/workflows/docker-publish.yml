@@ -120,10 +120,11 @@ jobs:
           if gh release view "$TAG" >/dev/null 2>&1; then
             echo "Release $TAG already exists"; exit 0
           fi
-          awk -v tag="# $TAG " 'index($0, tag) == 1 { f = 1; next } f && /^# v[0-9]/ { exit } f' CHANGELOG.md > notes.md
-          TITLE=$(grep -m1 "^# $TAG " CHANGELOG.md | sed 's/^# //')
-          if [ -s notes.md ]; then
-            gh release create "$TAG" --title "${TITLE:-$TAG}" --notes-file notes.md --latest
+          # The script unwraps CHANGELOG.md's hard-wrapped prose: release bodies render
+          # a single newline as <br>, which made v0.5.161's notes ragged.
+          if node scripts/release-notes.js "$TAG" > notes.md; then
+            gh release create "$TAG" --title "$(node scripts/release-notes.js "$TAG" --title)" \
+              --notes-file notes.md --latest
           else
             gh release create "$TAG" --title "$TAG" --generate-notes --latest
           fi
