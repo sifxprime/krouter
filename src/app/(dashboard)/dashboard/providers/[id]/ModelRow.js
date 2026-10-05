@@ -1,6 +1,8 @@
 import PropTypes from "prop-types";
 
-export default function ModelRow({ model, fullModel, alias, copied, onCopy, testStatus, isCustom, isFree, onDeleteAlias, onTest, isTesting, onDisable }) {
+const PROTOCOL_LABELS = { chat: "Chat Completions", messages: "Messages", responses: "Responses" };
+
+export default function ModelRow({ model, fullModel, alias, copied, onCopy, testStatus, isCustom, isFree, onDeleteAlias, onTest, isTesting, onDisable, protocol, defaultProtocol, onProtocolChange, isSavingProtocol }) {
   const borderColor = testStatus === "ok"
     ? "border-green-500/40"
     : testStatus === "error"
@@ -25,6 +27,24 @@ export default function ModelRow({ model, fullModel, alias, copied, onCopy, test
         <div className="flex min-w-0 flex-1 flex-col gap-1">
           <code className="max-w-[72vw] truncate rounded bg-sidebar px-1.5 py-0.5 font-mono text-xs text-text-muted sm:max-w-[360px]">{fullModel}</code>
           {model.name && <span className="truncate pl-1 text-[9px] italic text-text-muted">{model.name}</span>}
+          {onProtocolChange && (
+            <label className="flex items-center gap-1.5 pl-1 text-[10px] text-text-muted">
+              <span>Protocol{isSavingProtocol ? " (saving…)" : ""}</span>
+              <select
+                value={protocol || "auto"}
+                onChange={(e) => onProtocolChange(e.target.value)}
+                aria-busy={isSavingProtocol || undefined}
+                aria-label={`Protocol for ${fullModel}`}
+                title="Which OpenCode endpoint this model is sent to. Auto follows kRouter's model table."
+                className="rounded border border-border bg-surface px-1.5 py-0.5 text-[10px] text-text-main focus:outline-none focus:ring-1 focus:ring-primary/50 disabled:opacity-60"
+              >
+                <option value="auto">Auto ({PROTOCOL_LABELS[defaultProtocol] || PROTOCOL_LABELS.chat})</option>
+                <option value="chat">{PROTOCOL_LABELS.chat}</option>
+                <option value="messages">{PROTOCOL_LABELS.messages}</option>
+                <option value="responses">{PROTOCOL_LABELS.responses}</option>
+              </select>
+            </label>
+          )}
         </div>
         {onTest && (
           <div className="relative shrink-0 group/btn">
@@ -92,4 +112,8 @@ ModelRow.propTypes = {
   onTest: PropTypes.func,
   isTesting: PropTypes.bool,
   onDisable: PropTypes.func,
+  protocol: PropTypes.oneOf(["chat", "messages", "responses"]),
+  defaultProtocol: PropTypes.oneOf(["chat", "messages", "responses"]),
+  onProtocolChange: PropTypes.func,
+  isSavingProtocol: PropTypes.bool,
 };

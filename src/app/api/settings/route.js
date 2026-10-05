@@ -3,6 +3,7 @@ import { getSettings, updateSettings } from "@/lib/localDb";
 import { applyOutboundProxyEnv } from "@/lib/network/outboundProxy";
 import { resetComboRotation } from "open-sse/services/combo.js";
 import bcrypt from "bcryptjs";
+import { sanitizeModelTransports } from "open-sse/config/providerModels.js";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -39,6 +40,19 @@ export async function PATCH(request) {
     // The stored hash is only ever written by the newPassword branch below, after
     // the current-password check. A raw `password` from the client would skip it.
     delete body.password;
+
+    // Per-provider, per-model protocol overrides (OpenCode Go's dashboard toggle).
+    // Only known protocols for plausible ids are stored, so a bad value can never
+    // reach an executor's endpoint choice.
+    if (body.providerModelTransports !== undefined) {
+      const raw = body.providerModelTransports;
+      body.providerModelTransports = raw && typeof raw === "object" && !Array.isArray(raw)
+        ? Object.fromEntries(Object.entries(raw)
+          .filter(([providerId]) => typeof providerId === "string" && providerId.length > 0 && providerId.length <= 64)
+          .map(([providerId, map]) => [providerId, sanitizeModelTransports(map)])
+          .filter(([, map]) => Object.keys(map).length > 0))
+        : {};
+    }
 
     // If updating password, hash it
     if (body.newPassword) {

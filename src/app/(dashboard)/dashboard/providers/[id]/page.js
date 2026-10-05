@@ -7,6 +7,7 @@ import Image from "next/image";
 import { Card, Button, Badge, Input, Modal, CardSkeleton, OAuthModal, KiroOAuthWrapper, CursorAuthModal, IFlowCookieModal, GitLabAuthModal, Toggle, Select, EditConnectionModal, NoAuthProxyCard, ConfirmModal } from "@/shared/components";
 import { OAUTH_PROVIDERS, APIKEY_PROVIDERS, FREE_PROVIDERS, FREE_TIER_PROVIDERS, WEB_COOKIE_PROVIDERS, getProviderAlias, isOpenAICompatibleProvider, isAnthropicCompatibleProvider, AI_PROVIDERS, THINKING_CONFIG } from "@/shared/constants/providers";
 import { getModelsByProviderId } from "@/shared/constants/models";
+import { getDefaultTransport } from "open-sse/config/providerModels.js";
 import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
 import { translate } from "@/i18n/runtime";
 import { fetchSuggestedModels } from "@/shared/utils/providerModelsFetcher";
@@ -195,6 +196,56 @@ export default function ProviderDetailPage() {
     }
   };
 
+  // OpenCode Go serves models on three protocols; a model can be pinned to one
+  // when OpenCode moves it before kRouter's table catches up (#23). A protocol is a
+  // property of the model, not the account, so it is one provider-level setting
+  // (settings.providerModelTransports) that every connection -- including ones
+  // added later -- follows. chat.js attaches it to each request.
+  const supportsProtocolToggle = providerId === "opencode-go";
+  const [modelTransports, setModelTransports] = useState({});
+  const [savingProtocolIds, setSavingProtocolIds] = useState(new Set());
+
+  const handleSetModelTransport = async (modelId, value) => {
+    const apply = (map) => Object.fromEntries(Object.entries({ ...map, [modelId]: value })
+      .filter(([, v]) => v && v !== "auto"));
+    const previous = modelTransports;
+    setModelTransports((current) => apply(current)); // the select follows the choice at once
+    setSavingProtocolIds((prev) => new Set([...prev, modelId]));
+    try {
+      // Re-read so a change made elsewhere (or a second quick change here) is kept.
+      const currentRes = await fetch("/api/settings", { cache: "no-store" });
+      if (!currentRes.ok) throw new Error(`HTTP ${currentRes.status}`);
+      const current = (await currentRes.json()).providerModelTransports || {};
+      const next = { ...current, [providerId]: apply(current[providerId] || {}) };
+      const res = await fetch("/api/settings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ providerModelTransports: next }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || `HTTP ${res.status}`);
+      }
+      const saved = await res.json().catch(() => null);
+      setModelTransports(saved?.providerModelTransports?.[providerId] || next[providerId]);
+    } catch (error) {
+      setModelTransports(previous);
+      alert(translate("Failed to save protocol") + ": " + error.message);
+    } finally {
+      setSavingProtocolIds((prev) => new Set([...prev].filter((id) => id !== modelId)));
+    }
+  };
+
+  const protocolProps = (modelId) => (supportsProtocolToggle && connections.length > 0
+    ? {
+      protocol: modelTransports[modelId],
+      // The model table is keyed "opencode-go" (the UI alias is "ocg").
+      defaultProtocol: getDefaultTransport(providerId, modelId),
+      onProtocolChange: (value) => handleSetModelTransport(modelId, value),
+      isSavingProtocol: savingProtocolIds.has(modelId),
+    }
+    : {});
+
   const handleDisableAll = async (ids) => {
     if (!ids.length) return;
     setConfirmState({
@@ -270,6 +321,7 @@ export default function ProviderDetailPage() {
       const override = (settingsData.providerStrategies || {})[providerId] || {};
       setProviderStrategy(override.fallbackStrategy || null);
       setProviderStickyLimit(override.stickyRoundRobinLimit != null ? String(override.stickyRoundRobinLimit) : "1");
+      setModelTransports((settingsData.providerModelTransports || {})[providerId] || {});
       // Load per-provider thinking config
       const thinkingCfg = (settingsData.providerThinking || {})[providerId] || {};
       setThinkingMode(thinkingCfg.mode || "auto");
@@ -1131,6 +1183,7 @@ export default function ProviderDetailPage() {
             isTesting={testingModelIds.has(model.id)}
             isCustom
             isFree={false}
+            {...protocolProps(model.id)}
           />
         ))}
 
@@ -1155,6 +1208,7 @@ export default function ProviderDetailPage() {
               isTesting={testingModelIds.has(model.id)}
               isFree={model.isFree}
               onDisable={() => handleDisableModel(model.id)}
+              {...protocolProps(model.id)}
             />
           );
         })}

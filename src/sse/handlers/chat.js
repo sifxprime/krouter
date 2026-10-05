@@ -372,11 +372,14 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
 
     // Use shared chatCore — settings was passed in from handleChat (read once per request)
     const providerThinking = (settings.providerThinking || {})[provider] || null;
+    const modelTransports = (settings.providerModelTransports || {})[provider] || null;
     const requestStartedAtMs = Date.now();
     const result = await handleChatCore({
       body: { ...body, model: `${provider}/${model}` },
       modelInfo: { provider, model },
-      credentials: refreshedCredentials,
+      // Per-model protocol overrides (OpenCode Go) ride on a request-scoped copy;
+      // the stored connection is never touched.
+      credentials: modelTransports ? { ...refreshedCredentials, modelTransports } : refreshedCredentials,
       log,
       clientRawRequest,
       connectionId: credentials.connectionId,
@@ -473,7 +476,9 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
           const fbResult = await handleChatCore({
             body: fbBody,
             modelInfo: { provider: fb.provider, model: fb.model },
-            credentials: fbCreds,
+            credentials: (settings.providerModelTransports || {})[fb.provider]
+              ? { ...fbCreds, modelTransports: settings.providerModelTransports[fb.provider] }
+              : fbCreds,
             log, clientRawRequest, userAgent, apiKey,
             connectionId: fbCreds.connectionId,
             ccFilterNaming: !!settings.ccFilterNaming,
