@@ -1,3 +1,70 @@
+# v0.5.162 (2026-10-05) — Docker users can log in, and example secrets from the docs no longer open the dashboard
+
+**Upgrade if you run kRouter where anyone else can reach it.** kRouter's docs — and upstream
+9router's, which many users migrated from — showed example values for `JWT_SECRET` and
+`INITIAL_PASSWORD`. kRouter used them verbatim. Anyone who pasted the website's
+`-e JWT_SECRET="..."` had a signing key the internet knows, so a stranger could forge a dashboard
+session; anyone who kept `INITIAL_PASSWORD=change-me` or `your-password` had a password the
+internet knows. Both were reproduced against the 0.5.161 image (HTTP 200) and are refused now.
+
+**Docker users: the README's `docker run` could not log you in.** With no stored password and no
+`INITIAL_PASSWORD`, kRouter refuses the default `123456` for anything but the machine it runs on —
+and under Docker your browser is never that machine. The documented command now generates a
+password, prints it, and passes it in. This dates back to 0.5.136.
+
+**npm users:** 0.5.161 never reached npm, so this is also your first release with everything in
+0.5.161 below.
+
+## Security
+
+- **Example `JWT_SECRET` values are ignored.** A `JWT_SECRET` under 32 characters, or one of the
+  placeholders the docs showed (`...`, `generate-a-long-random-string`, `9router-default-secret-change-me`
+  and others, matched without regard to case or spacing), is ignored in favour of the random secret
+  kRouter generates in its data directory, with one warning in the log. Session forged with `...`:
+  200 on 0.5.161, 401 now.
+- **Example `INITIAL_PASSWORD` values get the default's rule.** `your-password`, `change-me`,
+  `your-first-login-password` and others now allow logins only from the machine kRouter runs on,
+  like `123456`. Remote login with `change-me`: 200 on 0.5.161, 403 now.
+- **The database export needs your password again.** Exporting or importing the database (which
+  holds your provider credentials) asks for the password even inside a session; only the kRouter
+  CLI may skip that. Any value in the CLI-token header used to count as the CLI: 200 on 0.5.161,
+  401 now. It still needed a logged-in session.
+- **The settings API no longer accepts a stored password from the client.** The password changes
+  only through the change-password flow, which checks the current one.
+
+## Fixed
+
+- **Docker login**, as above. README, `DOCKER.md` and the website now generate and print the
+  password; pasting only the `docker run` line fails with a clear message instead of starting a
+  container you cannot log in to.
+- **Forgot your password in Docker?** The image now includes a reset:
+  `docker exec krouter node scripts/reset-password.js`. The kRouter CLI is not in the image, so
+  there was no way back in before.
+- **The first password change rejected `INITIAL_PASSWORD`** as the current password, while still
+  accepting the public `123456`. It now follows the same rule as login.
+- **Every command in `DOCKER.md` failed** with "invalid reference format": 22 invisible characters
+  inside "krouter" since 0.5.61.
+- **Compose instructions** were missing the clone they need and set a random password nobody ever
+  saw; the compose file's own comment put a command in `.env`, where it is never run.
+- **The login page and docs said "Profile"**; the dashboard calls it **Settings → Security**. The
+  login page shows the `123456` hint only when no password is set, and mentions `INITIAL_PASSWORD`.
+- `start-redaction.sh` health-checked kRouter at an address that does not exist, so it always
+  reported failure.
+
+## Upgrade notes
+
+- If your `JWT_SECRET` was short or an example, you log in once more. Several instances sharing
+  sessions need the same long random value on each: `openssl rand -hex 32`.
+- If `INITIAL_PASSWORD` is an example value and you never set a password, remote logins now get a
+  403. Log in on the machine itself, or restart kRouter with a real `INITIAL_PASSWORD`.
+
+## Releases
+
+- npm can publish with an `NPM_TOKEN` secret when trusted publishing is refused, and the workflow
+  now prints npm's actual reason for a refusal instead of a bare `E404`.
+- GitHub Release notes are no longer broken into ragged half-width lines.
+- The GHCR package page no longer suggests pulling a build-cache tag that is not an image.
+
 # v0.5.161 (2026-10-04) — tray mode can recover from a crash again, and Docker images are back
 
 **Upgrade if you run `krouter -t`.** Tray mode — the way the README tells you to run kRouter —
