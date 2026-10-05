@@ -1,40 +1,12 @@
 import { NextResponse } from "next/server";
-import { timingSafeEqual } from "node:crypto";
 import { getSettings, validateApiKey } from "@/lib/localDb";
-import { getConsistentMachineId } from "@/shared/utils/machineId";
+import { CLI_TOKEN_HEADER, hasValidCliToken } from "@/lib/auth/cliToken";
 import { verifyDashboardAuthToken } from "@/lib/auth/dashboardSession";
 import { checkApiAuthLock, recordApiAuthFail, recordApiAuthSuccess } from "@/lib/auth/apiAuthLimiter";
 import { getClientIp } from "@/lib/auth/loginLimiter";
 
 import { getTrustedPeerIp, isLoopbackIp } from "@/lib/auth/trustedPeer";
 
-const CLI_TOKEN_HEADER = "x-9r-cli-token";
-const CLI_TOKEN_SALT = "9r-cli-auth";
-
-// Constant-time string compare. Length mismatch returns false without leaking
-// per-byte info — we still run a same-length comparison against a dummy to
-// keep the wall-clock timing identical to the equal-length path.
-function safeEqString(a, b) {
-  const ab = Buffer.from(typeof a === "string" ? a : "", "utf8");
-  const bb = Buffer.from(typeof b === "string" ? b : "", "utf8");
-  if (ab.length !== bb.length) {
-    try { timingSafeEqual(ab, Buffer.alloc(ab.length)); } catch { /* ignore */ }
-    return false;
-  }
-  return timingSafeEqual(ab, bb);
-}
-
-let cachedCliToken = null;
-async function getCliToken() {
-  if (!cachedCliToken) cachedCliToken = await getConsistentMachineId(CLI_TOKEN_SALT);
-  return cachedCliToken;
-}
-
-async function hasValidCliToken(request) {
-  const token = request.headers.get(CLI_TOKEN_HEADER);
-  if (!token) return false;
-  return safeEqString(token, await getCliToken());
-}
 
 // Public API paths — no auth required (LLM API has its own key auth inside handler).
 const PUBLIC_API_PATHS = [
