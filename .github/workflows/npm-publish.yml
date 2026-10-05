@@ -13,8 +13,11 @@ name: Publish to npm
 # One-time setup on npmjs.com, which only the package owner can do:
 #   @sifxprime/krouter -> Settings -> Trusted Publisher -> GitHub Actions
 #   owner: sifxprime   repository: krouter   workflow: npm-publish.yml
-# Until that is configured, the Publish step fails with an auth error; publish
-# manually as before and the next tag picks this up.
+# Fallback: an NPM_TOKEN repository secret (an npm granular token with publish
+# rights on @sifxprime/krouter). npm tries trusted publishing first and uses the
+# token only if that is refused, so setting both is safe; the token is never
+# echoed. Set it without pasting it anywhere else:
+#   gh secret set NPM_TOKEN -R sifxprime/krouter
 
 on:
   push:
@@ -72,6 +75,8 @@ jobs:
       # Trusted Publisher settings. Tokens are masked and never printed.
       - name: Check npm trusted publishing
         if: steps.v.outputs.already != 'true'
+        env:
+          HAS_NPM_TOKEN: ${{ secrets.NPM_TOKEN != '' }}
         run: |
           if [ -z "${ACTIONS_ID_TOKEN_REQUEST_URL:-}" ]; then
             echo "::error::No GitHub OIDC token available (id-token: write missing)"; exit 1
@@ -96,8 +101,12 @@ jobs:
           if [ "$code" = "200" ] || [ "$code" = "201" ]; then
             echo "npm accepted this workflow as a trusted publisher of $PKG (HTTP $code)"
           else
-            echo "::error::npm refused the trusted-publishing exchange for $PKG: HTTP $code ${msg:-<no message>}"
-            exit 1
+            if [ "$HAS_NPM_TOKEN" = "true" ]; then
+              echo "::warning::npm refused trusted publishing for $PKG (HTTP $code ${msg:-<no message>}); publishing with the NPM_TOKEN secret instead"
+            else
+              echo "::error::npm refused the trusted-publishing exchange for $PKG: HTTP $code ${msg:-<no message>}, and no NPM_TOKEN secret is set"
+              exit 1
+            fi
           fi
 
       - name: Install app dependencies
@@ -154,10 +163,13 @@ jobs:
         if: >-
           steps.v.outputs.already != 'true' &&
           (github.event_name == 'push' || inputs.dry_run == false)
+        env:
+          # Empty when the secret is unset, which leaves trusted publishing alone.
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
           TGZ=$(ls "$RUNNER_TEMP"/sifxprime-krouter-*.tgz)
           if ! npm publish "$TGZ" --provenance --access public; then
-            echo "::error::npm publish failed. If this is an auth error, configure the trusted publisher on npmjs.com (see the comment at the top of this workflow), or publish this version manually."
+            echo "::error::npm publish failed. See 'Check npm trusted publishing' above for why npm refused, and the comment at the top of this workflow for the fix (Trusted Publisher, or an NPM_TOKEN secret)."
             exit 1
           fi
 
