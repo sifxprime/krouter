@@ -65,7 +65,7 @@ Only add a dedicated test when a provider has a special format that does not rou
 ## 7. Special formats to watch
 
 - `kiro` (binary AWS EventStream), `cursor` (protobuf ConnectRPC), `commandcode` (NDJSON) → responses do NOT round-trip cleanly through openai; test via their executors, not just the translator.
-- Single-provider-two-formats (most fragile): `opencode-go` (minimax models → claude, others openai), `github` (escalates `/chat/completions` → `/responses` at runtime), `xiaomi-tokenplan` (claude alias).
+- Single-provider-several-formats (most fragile): `opencode-go` (three transports chosen per model by `openCodeGoTransport()`: minimax → `/messages` with a claude body; grok, gpt-luna, Muse Spark → `/responses`, converted inside the executor so chatCore still sees openai; others `/chat/completions`; a connection can override any model from the dashboard), `github` (escalates `/chat/completions` → `/responses` at runtime), `xiaomi-tokenplan` (claude alias).
 - `gemini`/`gemini-cli`: only the LAST system message is kept → earlier system messages are lost.
 
 ## 8. Current known bugs (currently `it.fails`)

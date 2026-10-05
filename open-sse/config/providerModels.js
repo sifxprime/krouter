@@ -208,18 +208,55 @@ export const PROVIDER_MODELS = {
     { id: "deepseek/deepseek-chat", name: "DeepSeek Chat" },
     { id: "deepseek/deepseek-reasoner", name: "DeepSeek Reasoner" },
   ],
-  "opencode-go": [  // OpenCode Go subscription (API key)
+  "opencode-go": [  // OpenCode Go subscription (API key) -- roster: https://opencode.ai/zen/go/v1/models
+    // The first entry is the default that provider validation and the dashboard's
+    // test ping send to /chat/completions, so it must stay a chat-completions model.
     { id: "kimi-k2.6", name: "Kimi K2.6" },
+    { id: "kimi-k3", name: "Kimi K3" },
+    { id: "kimi-k2.7-code", name: "Kimi K2.7 Code" },
     { id: "kimi-k2.5", name: "Kimi K2.5" },
+    { id: "glm-5.3", name: "GLM 5.3" },
+    { id: "glm-5.3-flash", name: "GLM 5.3 Flash (Vision)" },
+    { id: "glm-5.2", name: "GLM 5.2" },
     { id: "glm-5.1", name: "GLM 5.1" },
     { id: "glm-5", name: "GLM 5" },
-    { id: "qwen3.5-plus", name: "Qwen 3.5 Plus" },
+    { id: "deepseek-v4-pro", name: "DeepSeek V4 Pro" },
+    { id: "deepseek-v4-flash", name: "DeepSeek V4 Flash" },
+    { id: "deepseek-v4.1-flash", name: "DeepSeek V4.1 Flash" },
+    { id: "deepseek-v4-flash-vision-exp", name: "DeepSeek V4 Flash Vision (Exp)" },
+    { id: "deepseek-flash", name: "DeepSeek Flash" },
+    { id: "qwen3.8-max", name: "Qwen 3.8 Max" },
+    { id: "qwen3.8-flash", name: "Qwen 3.8 Flash" },
+    { id: "qwen3.7-max", name: "Qwen 3.7 Max" },
+    { id: "qwen3.7-plus", name: "Qwen 3.7 Plus" },
     { id: "qwen3.6-plus", name: "Qwen 3.6 Plus" },
+    { id: "qwen3.5-plus", name: "Qwen 3.5 Plus" },
+    { id: "mimo-v2.6-pro", name: "MiMo V2.6 Pro" },
+    { id: "mimo-v2.6-flash", name: "MiMo V2.6 Flash" },
+    { id: "mimo-v2.5-pro", name: "MiMo V2.5 Pro" },
+    { id: "mimo-v2.5", name: "MiMo V2.5" },
     { id: "mimo-v2-pro", name: "MiMo V2 Pro" },
     { id: "mimo-v2-omni", name: "MiMo V2 Omni" },
+    { id: "longcat-2.0", name: "LongCat 2.0" },
+    { id: "longcat-2.5-preview-free", name: "LongCat 2.5 Preview (Free)" },
+    { id: "hy4-preview", name: "Hy4 Preview" },
+    { id: "hy3", name: "Hy3" },
+    { id: "hy3-preview", name: "Hy3 Preview" },
+    { id: "space-bunny-free", name: "Space Bunny (Free)" },
+    { id: "omen-alpha", name: "Omen Alpha" },
     { id: "minimax-m3", name: "MiniMax M3", targetFormat: "claude" },
     { id: "minimax-m2.7", name: "MiniMax M2.7", targetFormat: "claude" },
     { id: "minimax-m2.5", name: "MiniMax M2.5", targetFormat: "claude" },
+    // Served on /zen/go/v1/responses only: /chat/completions and /messages answer
+    // 400 ModelProtocolUnsupported (#23). The executor converts to and from the
+    // Responses API, so the rest of the pipeline still sees an OpenAI provider.
+    { id: "grok-4.7", name: "Grok 4.7", transport: "responses" },
+    { id: "grok-4.6", name: "Grok 4.6", transport: "responses" },
+    { id: "grok-4.5", name: "Grok 4.5", transport: "responses" },
+    { id: "gpt-6-luna", name: "GPT 6 Luna", transport: "responses" },
+    { id: "gpt-5.6-luna", name: "GPT 5.6 Luna", transport: "responses" },
+    { id: "muse-spark-1.3-contributor", name: "Muse Spark 1.3 Contributor", transport: "responses" },
+    { id: "muse-spark-1.2-contributor", name: "Muse Spark 1.2 Contributor", transport: "responses" },
   ],
   oc: [  // OpenCode
     // { id: "nemotron-3-super-free", name: "Nemotron 3 Super" },
@@ -943,6 +980,44 @@ export function getModelTargetFormat(aliasOrId, modelId) {
   if (!models) return null;
   const found = models.find(m => m.id === modelId);
   return found?.targetFormat || null;
+}
+
+// Which upstream endpoint a model needs when the provider's executor can talk to
+// more than one (OpenCode Go). Unlike targetFormat this does not change how
+// chatCore shapes the body -- the executor converts -- so it never touches the
+// non-streaming paths that only understand chat completions.
+export function getModelTransport(aliasOrId, modelId) {
+  const models = PROVIDER_MODELS[aliasOrId];
+  const found = models?.find(m => m.id === modelId);
+  return found?.transport || null;
+}
+
+// Wire protocols a multi-protocol provider (OpenCode Go) can be told to use for a
+// model. "chat" = /chat/completions, "messages" = /messages, "responses" = /responses.
+export const MODEL_TRANSPORTS = Object.freeze(["chat", "messages", "responses"]);
+
+// The protocol a model uses unless a connection overrides it. Shared by the
+// executor (server) and the dashboard's protocol toggle (client), so "Auto" means
+// the same thing in both.
+export function getDefaultTransport(aliasOrId, modelId) {
+  if (getModelTransport(aliasOrId, modelId) === "responses") return "responses";
+  if (getModelTargetFormat(aliasOrId, modelId) === "claude") return "messages";
+  return "chat";
+}
+
+const MAX_TRANSPORT_OVERRIDES = 500;
+const MAX_MODEL_ID_LENGTH = 200;
+
+// A connection's per-model protocol overrides, as stored. Anything that is not a
+// known protocol for a plausible model id is dropped rather than stored.
+export function sanitizeModelTransports(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  return Object.fromEntries(
+    Object.entries(value)
+      .filter(([id, transport]) => typeof id === "string" && id.length > 0 && id.length <= MAX_MODEL_ID_LENGTH
+        && MODEL_TRANSPORTS.includes(transport))
+      .slice(0, MAX_TRANSPORT_OVERRIDES)
+  );
 }
 
 export function getModelType(aliasOrId, modelId) {

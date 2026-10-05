@@ -65,7 +65,10 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
 
   const alias = PROVIDER_ID_TO_ALIAS[provider] || provider;
   const modelTargetFormat = getModelTargetFormat(alias, model);
-  const targetFormat = modelTargetFormat || getTargetFormat(provider);
+  // An executor that serves several wire formats per model decides first: its
+  // per-connection overrides (OpenCode Go's protocol toggle) are not in the table.
+  const executorTargetFormat = getExecutor(provider)?.resolveTargetFormat?.(model, credentials) || null;
+  const targetFormat = executorTargetFormat || modelTargetFormat || getTargetFormat(provider);
   const stripList = getModelStrip(alias, model);
   // Model Deprecation (0.5.31): auto-upgrade legacy models to their successors
   const upstreamModelRaw = getModelUpstreamId(alias, model);
@@ -434,7 +437,7 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
   }
 
   try {
-    const result = await executor.execute({ model, body: translatedBody, stream, credentials, clientTool, signal: streamController.signal, log, proxyOptions });
+    const result = await executor.execute({ model, body: translatedBody, clientBody: body, stream, credentials, clientTool, signal: streamController.signal, log, proxyOptions });
     providerResponse = result.response;
     providerUrl = result.url;
     providerHeaders = result.headers;
@@ -487,7 +490,7 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
           try { await onCredentialsRefreshed(newCredentials); } catch (e) { log?.warn?.("TOKEN", `onCredentialsRefreshed failed: ${e.message}`); }
         }
         try {
-          const retryResult = await executor.execute({ model, body: translatedBody, stream, credentials: updatedCredentials, clientTool, signal: streamController.signal, log, proxyOptions });
+          const retryResult = await executor.execute({ model, body: translatedBody, clientBody: body, stream, credentials: updatedCredentials, clientTool, signal: streamController.signal, log, proxyOptions });
           // Always adopt the retry result — even on non-ok. The retry's error is
           // the real reason the user's request failed; the original 401 body is
           // stale and was only ever a refresh trigger. Downstream parseUpstreamError
@@ -567,7 +570,7 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
 
   // Provider forced streaming but client wants JSON
   if (!clientRequestedStreaming && providerRequiresStreaming) {
-    const result = await handleForcedSSEToJson({ ...sharedCtx, providerResponse, sourceFormat, trackDone, appendLog });
+    const result = await handleForcedSSEToJson({ ...sharedCtx, providerResponse, sourceFormat, targetFormat, trackDone, appendLog });
     if (result) { streamController.handleComplete(); return result; }
   }
 
