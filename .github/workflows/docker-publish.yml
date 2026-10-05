@@ -54,8 +54,12 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=registry,ref=${{ env.GHCR_IMAGE }}:buildcache
-          cache-to: type=registry,ref=${{ env.GHCR_IMAGE }}:buildcache,mode=max
+          # No build cache. The old one was a :buildcache tag in this GHCR package --
+          # the newest tag, so GHCR's page told people to pull it, and it is not a
+          # runnable image. GitHub's Actions cache cannot help either: entries are
+          # scoped to the tag that wrote them, and this workflow only runs on tags.
+          # Little was reused anyway: every release bumps package.json, which
+          # invalidates npm ci and the build; only the apk layer was ever a hit.
           platforms: linux/amd64,linux/arm64
           provenance: false
           sbom: false

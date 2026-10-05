@@ -125,3 +125,27 @@ jobs:
             echo "::error::npm publish failed. If this is an auth error, configure the trusted publisher on npmjs.com (see the comment at the top of this workflow), or publish this version manually."
             exit 1
           fi
+
+  # v0.5.161's publish failed (E404, no trusted publisher) while Docker and the
+  # GitHub Release succeeded, and nothing said so -- the same silence that hid
+  # three failed Docker releases. A failed tag publish now opens one issue. It is
+  # a separate job so issues: write is never granted to the publish job, where
+  # npm ci runs third-party install scripts.
+  report-failure:
+    needs: publish
+    if: failure() && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+    steps:
+      - name: Open an issue if publishing failed
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          title="npm publish failed for $TAG"
+          if gh issue list --repo "${{ github.repository }}" --state open --search "in:title \"$title\"" --json title --jq '.[].title' | grep -qxF "$title"; then
+            echo "An open issue already tracks this"; exit 0
+          fi
+          gh issue create --repo "${{ github.repository }}" --title "$title" --label bug \
+            --body "**$TAG** was not published to npm, so \`npm install -g @sifxprime/krouter\` still installs the previous version. If the log shows \`E404\` on \`PUT\`, the npm Trusted Publisher for @sifxprime/krouter is missing or does not match (user \`sifxprime\`, repository \`krouter\`, workflow \`npm-publish.yml\`, no environment): fix it on npmjs.com, then re-run the failed job. Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
