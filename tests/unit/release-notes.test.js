@@ -63,6 +63,19 @@ describe("release notes", () => {
     expect(out).toContain("- Second item\n  - nested item nested continuation");
   });
 
+  it("joins a wrapped line that merely starts with a number", () => {
+    // v0.5.162's notes wrapped "remote logins now get a\n  403. Log in ..." and the
+    // "403." was taken for a numbered list, leaving one forced <br>. Markdown only
+    // lets a numbered list interrupt a paragraph when it starts at 1.
+    const out = unwrap("- If unset, remote logins now get a\n  403. Log in on the machine.\n");
+    expect(out).toBe("- If unset, remote logins now get a 403. Log in on the machine.\n");
+  });
+
+  it("keeps real numbered lists, including wrapped items", () => {
+    const out = unwrap("Steps:\n\n1. First item\n   wraps here.\n2. Second item\n3. Third\n");
+    expect(out).toBe("Steps:\n\n1. First item wraps here.\n2. Second item\n3. Third\n");
+  });
+
   it("leaves headings, tables, code fences and explicit breaks alone", () => {
     const out = unwrap(extractSection(CHANGELOG, "v2.0.0").body);
     expect(out).toContain("\n## Fixed\n");

@@ -16,7 +16,16 @@ const fs = require("fs");
 
 const VERSION_HEADING = /^# v\d/;
 // A line that starts its own block instead of continuing the one above it.
-const BLOCK_START = /^\s*([-*+] |\d+[.)] |#|\||>|```|<|(-{3,}|\*{3,}|_{3,})\s*$)/;
+const BLOCK_START = /^\s*([-*+] |#|\||>|```|<|(-{3,}|\*{3,}|_{3,})\s*$)/;
+// A numbered item. As in Markdown, it interrupts a paragraph only when it starts
+// at 1 or follows another numbered item -- so a wrapped "403. Log in" joins up.
+const ORDERED_ITEM = /^\s*(\d+)[.)] /;
+
+function startsBlock(line, prev) {
+  if (BLOCK_START.test(line)) return true;
+  const m = ORDERED_ITEM.exec(line);
+  return Boolean(m) && (m[1] === "1" || ORDERED_ITEM.test(prev));
+}
 // A line whose end must stay a line end.
 const HARD_END = /^\s*(#|\||<|```|(-{3,}|\*{3,}|_{3,})\s*$)|( {2}|\\)$/;
 
@@ -41,7 +50,7 @@ function unwrap(markdown) {
     const continues =
       !inFence && !isFence &&
       line.trim() !== "" && prev.trim() !== "" &&
-      !BLOCK_START.test(line) && !HARD_END.test(prev);
+      !startsBlock(line, prev) && !HARD_END.test(prev);
     if (continues) out[out.length - 1] = `${prev.trimEnd()} ${line.trim()}`;
     else out.push(line);
     if (isFence) inFence = !inFence;
