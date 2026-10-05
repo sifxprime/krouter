@@ -44,6 +44,9 @@ COPY --from=builder /app/open-sse ./open-sse
 # Copy Presidio config and init script
 COPY --from=builder /app/presidio-sidecar/redaction_config.yaml ./presidio-sidecar/redaction_config.yaml
 COPY --from=builder /app/scripts/init-presidio-config.sh ./scripts/init-presidio-config.sh
+# The kRouter CLI is not in the image; this is how Docker users reset a forgotten
+# dashboard password: docker exec krouter node scripts/reset-password.js
+COPY --from=builder /app/scripts/reset-password.js ./scripts/reset-password.js
 # Next file tracing can omit sibling files; MITM runs server.js as a separate process.
 COPY --from=builder /app/src/mitm ./src/mitm
 # dns/dnsConfig.js requires this from outside src/mitm. It is not reachable from
