@@ -542,8 +542,11 @@ export function openaiResponsesToOpenAIResponse(chunk, state) {
     return null;
   }
 
-  // Response completed
-  if (eventType === "response.completed" || eventType === "response.done") {
+  // Response completed. response.incomplete is terminal too: it is how a Responses
+  // upstream ends a reply cut off by max_output_tokens (or a content filter).
+  // Without it no final chunk was ever sent -- no finish_reason, no usage -- and a
+  // Claude stream never got message_stop.
+  if (eventType === "response.completed" || eventType === "response.done" || eventType === "response.incomplete") {
     // Extract usage from response.completed event
     const responseUsage = data.response?.usage;
     if (responseUsage && typeof responseUsage === "object") {
@@ -568,7 +571,10 @@ export function openaiResponsesToOpenAIResponse(chunk, state) {
     }
     
     if (!state.finishReasonSent) {
-      const finishReason = computeFinishReason(state);
+      const incompleteReason = eventType === "response.incomplete" ? data.response?.incomplete_details?.reason : null;
+      const finishReason = incompleteReason === "max_output_tokens" ? "length"
+        : incompleteReason === "content_filter" ? "content_filter"
+        : computeFinishReason(state);
 
       state.finishReasonSent = true;
       state.finishReason = finishReason; // Mark for usage injection in stream.js
@@ -600,17 +606,25 @@ export function openaiResponsesToOpenAIResponse(chunk, state) {
     // Avoid emitting duplicate errors (error + response.failed arrive back-to-back)
     if (state.finishReasonSent) return null;
 
-    const error = data.error || data.response?.error;
+    // The spec's ResponseErrorEvent carries its fields at the top level
+    // ({type:"error", code, message, param}); older shapes nest them in `error`.
+    const error = data.error || data.response?.error
+      || (eventType === "error" && (data.message || data.code)
+        ? { message: data.message || String(data.code), code: data.code, type: data.code, param: data.param }
+        : null);
     if (error) {
       state.error = error;
       state.finishReasonSent = true;
 
-      // Surface the error as an OpenAI-compatible error chunk
+      // A streaming client sees the error as text; the `error` field lets the
+      // non-streaming aggregator fail closed instead of returning a "successful"
+      // reply made of partial content.
       return {
         id: state.chatId || `chatcmpl-${Date.now()}`,
         object: "chat.completion.chunk",
         created: state.created || Math.floor(Date.now() / 1000),
         model: state.model || "unknown",
+        error: { message: error.message || JSON.stringify(error), type: error.type || error.code, code: error.code },
         choices: [{
           index: 0,
           delta: { content: `[Error] ${error.message || JSON.stringify(error)}` },

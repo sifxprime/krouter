@@ -3,10 +3,10 @@ import { PROVIDERS } from "../config/providers.js";
 import { OAUTH_ENDPOINTS, GITHUB_COPILOT } from "../config/appConstants.js";
 import { HTTP_STATUS } from "../config/runtimeConfig.js";
 import { openaiToOpenAIResponsesRequest } from "../translator/request/openai-responses.js";
-import { openaiResponsesToOpenAIResponse } from "../translator/response/openai-responses.js";
 import { initState, translateRequest, translateResponse } from "../translator/index.js";
 import { FORMATS } from "../translator/formats.js";
 import { parseSSELine, formatSSE } from "../utils/streamHelpers.js";
+import { responsesToChatResponse } from "../utils/responsesToChatStream.js";
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
 import { stripUnsupportedParams } from "../translator/helpers/paramSupport.js";
 import crypto from "crypto";
@@ -211,62 +211,8 @@ export class GithubExecutor extends BaseExecutor {
       return { response, url, headers, transformedBody };
     }
 
-    const state = initState("openai-responses");
-    state.model = model;
-
-    const decoder = new TextDecoder();
-    let buffer = "";
-
-    const transformStream = new TransformStream({
-      async transform(chunk, controller) {
-        buffer += decoder.decode(chunk, { stream: true });
-        const lines = buffer.split("\n");
-
-        buffer = lines.pop() || "";
-
-        for (const line of lines) {
-          const trimmed = line.trim();
-          if (!trimmed) continue;
-
-          const parsed = parseSSELine(trimmed);
-          if (!parsed) continue;
-
-          if (parsed.done && stream === true) {
-            controller.enqueue(new TextEncoder().encode("data: [DONE]\n\n"));
-            continue;
-          }
-
-          const converted = openaiResponsesToOpenAIResponse(parsed, state);
-          if (converted) {
-            const sseString = formatSSE(converted, "openai");
-            controller.enqueue(new TextEncoder().encode(sseString));
-          }
-        }
-      },
-      flush(controller) {
-        if (buffer.trim()) {
-          const parsed = parseSSELine(buffer.trim());
-          if (parsed && !parsed.done) {
-            const converted = openaiResponsesToOpenAIResponse(parsed, state);
-            if (converted) {
-              controller.enqueue(new TextEncoder().encode(formatSSE(converted, "openai")));
-            }
-          }
-        }
-      }
-    });
-
-    if (!response.body) {
-      return { response: new Response("", { status: response.status, headers: response.headers }), url, headers, transformedBody };
-    }
-    const convertedStream = response.body.pipeThrough(transformStream);
-
     return {
-      response: new Response(convertedStream, {
-        status: response.status,
-        statusText: response.statusText,
-        headers: response.headers
-      }),
+      response: responsesToChatResponse(response, { model, stream }),
       url,
       headers,
       transformedBody

@@ -222,18 +222,24 @@ export function openaiToOpenAIResponsesRequest(model, body, stream, credentials)
     store: false
   };
 
-  // Extract system message as instructions
+  // System and developer messages become instructions -- all of them, in order.
+  // Only the first system message used to be kept: a second system message, any
+  // developer message (Codex sends these) and array-shaped content were dropped
+  // silently, so the model never saw part of its instructions.
   let hasSystemMessage = false;
   const messages = body.messages || [];
+  const instructionParts = [];
 
   for (const msg of messages) {
-    if (msg.role === "system") {
-      // Use first system message as instructions
-      if (!hasSystemMessage) {
-        result.instructions = typeof msg.content === "string" ? msg.content : "";
-        hasSystemMessage = true;
-      }
-      continue; // Skip system messages in input
+    if (msg.role === "system" || msg.role === "developer") {
+      const text = typeof msg.content === "string"
+        ? msg.content
+        : Array.isArray(msg.content)
+          ? msg.content.filter((p) => typeof p?.text === "string").map((p) => p.text).join("\n")
+          : "";
+      if (text) instructionParts.push(text);
+      hasSystemMessage = true;
+      continue; // Skip system/developer messages in input
     }
 
     // Convert user/assistant messages to input items
@@ -298,9 +304,7 @@ export function openaiToOpenAIResponsesRequest(model, body, stream, credentials)
   }
 
   // If no system message, leave instructions empty (will be filled by executor)
-  if (!hasSystemMessage) {
-    result.instructions = "";
-  }
+  result.instructions = hasSystemMessage ? instructionParts.join("\n\n") : "";
 
   // Convert tools format
   if (body.tools && Array.isArray(body.tools)) {

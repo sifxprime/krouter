@@ -1,76 +1,31 @@
 import { FORMATS } from "../../translator/formats.js";
 import { geminiFinishReasonToOpenAI } from "../../utils/geminiFinishReason.js";
 import { needsTranslation } from "../../translator/index.js";
-import { convertFinishReason } from "../../translator/response/openai-to-claude.js";
 import { ollamaBodyToOpenAI } from "../../translator/response/ollama-to-openai.js";
 import { addBufferToUsage, filterUsageForFormat } from "../../utils/usageTracking.js";
 import { createErrorResult } from "../../utils/error.js";
 import { HTTP_STATUS } from "../../config/runtimeConfig.js";
 import { parseSSEToOpenAIResponse } from "./sseToJsonHandler.js";
+import { openAICompletionToClaudeMessage, openAICompletionToResponsesObject } from "./completionConverters.js";
 import { buildRequestDetail, extractRequestConfig, extractUsageFromResponse, saveUsageStats } from "./requestDetail.js";
 import { appendRequestLog, saveRequestDetail } from "@/lib/usageDb.js";
 import { decloakToolNames } from "../../utils/claudeCloaking.js";
 import { detectEmptyCompletion, readCompletionShape, EMPTY_COMPLETION_STATUS } from "../../utils/emptyCompletion.js";
 
-function parseToolArguments(value) {
-  if (!value) return {};
-  if (typeof value === "object") return value;
-  try {
-    return JSON.parse(value);
-  } catch {
-    return {};
-  }
+
+
+
+// Request-detail summary for a Responses object, which has no choices[].
+function summarizeResponsesObject(r) {
+  const items = Array.isArray(r?.output) ? r.output : [];
+  const text = items.filter((o) => o?.type === "message")
+    .flatMap((o) => o.content || []).map((c) => c?.text || "").join("") || null;
+  const thinking = items.filter((o) => o?.type === "reasoning")
+    .flatMap((o) => o.summary || []).map((s) => s?.text || "").join("") || null;
+  const finish = r?.status === "incomplete" ? "length" : r?.status === "completed" ? "stop" : (r?.status || "unknown");
+  return { content: text, thinking, finish_reason: finish };
 }
 
-/**
- * Convert an OpenAI chat.completion body into a Claude message body.
- *
- * Used when the provider speaks OpenAI but the client speaks Claude and the
- * request was non-streaming. Mirrors the block order the streaming translator
- * produces: thinking, then text, then tool_use.
- */
-function openAICompletionToClaudeMessage(responseBody) {
-  if (!responseBody?.choices?.[0]) return responseBody;
-  const choice = responseBody.choices[0];
-  const message = choice.message || {};
-  const content = [];
-
-  const reasoning = message.reasoning_content || message.provider_specific_fields?.reasoning_content || "";
-  if (reasoning) content.push({ type: "thinking", thinking: reasoning });
-  if (typeof message.content === "string" && message.content.length > 0) {
-    content.push({ type: "text", text: message.content });
-  }
-  for (const toolCall of message.tool_calls || []) {
-    const fn = toolCall.function || {};
-    content.push({
-      type: "tool_use",
-      id: toolCall.id || `toolu_${Date.now()}_${content.length}`,
-      name: fn.name || toolCall.name || "",
-      input: parseToolArguments(fn.arguments || toolCall.arguments),
-    });
-  }
-  // Claude clients require a non-empty content array.
-  if (content.length === 0) content.push({ type: "text", text: "" });
-
-  const usage = responseBody.usage || {};
-  return {
-    id: String(responseBody.id || `msg_${Date.now()}`).replace(/^chatcmpl-/, ""),
-    type: "message",
-    role: "assistant",
-    model: responseBody.model || "unknown",
-    content,
-    stop_reason: convertFinishReason(choice.finish_reason),
-    stop_sequence: null,
-    usage: {
-      input_tokens: usage.prompt_tokens || usage.input_tokens || 0,
-      output_tokens: usage.completion_tokens || usage.output_tokens || 0,
-    },
-  };
-}
-
-/**
- * Translate non-streaming response body from provider format → OpenAI format.
- */
 export function translateNonStreamingResponse(responseBody, targetFormat, sourceFormat) {
   if (targetFormat === sourceFormat) return responseBody;
 
@@ -91,6 +46,9 @@ export function translateNonStreamingResponse(responseBody, targetFormat, source
   // a pre-existing gap the direct-route work surfaced.
   if (targetFormat === FORMATS.KIRO && sourceFormat === FORMATS.CLAUDE) {
     return openAICompletionToClaudeMessage(responseBody);
+  }
+  if (targetFormat === FORMATS.OPENAI && sourceFormat === FORMATS.OPENAI_RESPONSES) {
+    return openAICompletionToResponsesObject(responseBody);
   }
   if (targetFormat === FORMATS.OPENAI) return responseBody;
 
@@ -241,6 +199,14 @@ export async function handleNonStreamingResponse({ providerResponse, provider, m
       appendLog({ status: `FAILED ${HTTP_STATUS.BAD_GATEWAY}` });
       return createErrorResult(HTTP_STATUS.BAD_GATEWAY, "Invalid SSE response for non-streaming request");
     }
+    // An error event mid-stream (e.g. a Responses upstream's response.failed) is a
+    // failure, not a 200 whose content is the error text.
+    if (parsed.error) {
+      const code = String(parsed.error.code || parsed.error.type || "");
+      const status = /rate_limit|quota/i.test(code) ? HTTP_STATUS.RATE_LIMITED : HTTP_STATUS.BAD_GATEWAY;
+      appendLog({ status: `FAILED ${status}` });
+      return createErrorResult(status, parsed.error.message || "Upstream stream failed");
+    }
     responseBody = parsed;
   } else {
     try {
@@ -282,6 +248,8 @@ export async function handleNonStreamingResponse({ providerResponse, provider, m
   // below — they would stamp `object: "chat.completion"` and `created` onto it
   // and hand the client a hybrid that is neither format.
   const isClaudeMessageResponse = sourceFormat === FORMATS.CLAUDE && translatedResponse?.type === "message";
+  // A Responses object (a /v1/responses client) is not a chat.completion either.
+  const isResponsesObject = translatedResponse?.object === "response";
 
   // Fix finish_reason for tool_calls: some providers return non-standard values (e.g. "other")
   if (translatedResponse?.choices?.[0]) {
@@ -294,7 +262,7 @@ export async function handleNonStreamingResponse({ providerResponse, provider, m
   }
 
   // Ensure OpenAI-required fields
-  if (!isClaudeMessageResponse) {
+  if (!isClaudeMessageResponse && !isResponsesObject) {
     if (!translatedResponse.object) translatedResponse.object = "chat.completion";
     if (!translatedResponse.created) translatedResponse.created = Math.floor(Date.now() / 1000);
 
@@ -330,7 +298,7 @@ export async function handleNonStreamingResponse({ providerResponse, provider, m
     request: extractRequestConfig(body, stream),
     providerRequest: finalBody || translatedBody || null,
     providerResponse: responseBody || null,
-    response: {
+    response: isResponsesObject ? summarizeResponsesObject(translatedResponse) : {
       content: translatedResponse?.choices?.[0]?.message?.content || translatedResponse?.content || null,
       thinking: translatedResponse?.choices?.[0]?.message?.reasoning_content || translatedResponse?.reasoning_content || null,
       finish_reason: translatedResponse?.choices?.[0]?.finish_reason || "unknown"

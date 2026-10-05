@@ -1,4 +1,5 @@
 import { convertResponsesStreamToJson } from "../../transformer/streamToJsonConverter.js";
+import { openAICompletionToClaudeMessage, openAICompletionToResponsesObject } from "./completionConverters.js";
 import { detectEmptyCompletion, readCompletionShape, EMPTY_COMPLETION_STATUS } from "../../utils/emptyCompletion.js";
 import { createErrorResult } from "../../utils/error.js";
 import { HTTP_STATUS } from "../../config/runtimeConfig.js";
@@ -110,7 +111,7 @@ export function parseSSEToOpenAIResponse(rawSSE, fallbackModel) {
  * Handle case: provider forced streaming but client wants JSON.
  * Supports both Codex/Responses API SSE and standard Chat Completions SSE.
  */
-export async function handleForcedSSEToJson({ providerResponse, sourceFormat, provider, model, body, stream, translatedBody, finalBody, requestStartTime, connectionId, apiKey, clientRawRequest, onRequestSuccess, trackDone, appendLog }) {
+export async function handleForcedSSEToJson({ providerResponse, sourceFormat, targetFormat, provider, model, body, stream, translatedBody, finalBody, requestStartTime, connectionId, apiKey, clientRawRequest, onRequestSuccess, trackDone, appendLog }) {
   const contentType = providerResponse.headers.get("content-type") || "";
   const isSSE = contentType.includes("text/event-stream") || (contentType === "" && provider === "codex");
   if (!isSSE) return null; // not handled here
@@ -132,10 +133,12 @@ export async function handleForcedSSEToJson({ providerResponse, sourceFormat, pr
   // `choices[].delta.content` in a stream that only carries
   // `response.output_text.delta` events, and quietly produced an empty message.
   // grok-cli hit exactly that: 200 upstream, real tokens billed, empty reply.
+  // (It also checked sourceFormat, which made an openai provider's chat stream
+  // be parsed as Responses events for a /v1/responses client: empty reply.)
   const providerFormat = PROVIDERS[provider]?.format;
   const isCodexResponsesApi = provider === "codex"
     || providerFormat === FORMATS.OPENAI_RESPONSES
-    || sourceFormat === FORMATS.OPENAI_RESPONSES;
+    || targetFormat === FORMATS.OPENAI_RESPONSES;
   if (isCodexResponsesApi) {
     try {
       const jsonResponse = await convertResponsesStreamToJson(providerResponse.body);
@@ -294,7 +297,12 @@ export async function handleForcedSSEToJson({ providerResponse, sourceFormat, pr
       }
     }
 
-    return { success: true, response: new Response(JSON.stringify(parsed), { headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" } }) };
+    // Hand each client its own format; this used to return the chat.completion to
+    // Claude and Responses clients too.
+    const clientBody = sourceFormat === FORMATS.CLAUDE ? openAICompletionToClaudeMessage(parsed)
+      : sourceFormat === FORMATS.OPENAI_RESPONSES ? openAICompletionToResponsesObject(parsed)
+      : parsed;
+    return { success: true, response: new Response(JSON.stringify(clientBody), { headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" } }) };
   } catch (err) {
     console.error("[ChatCore] Chat Completions SSE→JSON failed:", err);
     return createErrorResult(HTTP_STATUS.BAD_GATEWAY, "Failed to convert streaming response to JSON");
