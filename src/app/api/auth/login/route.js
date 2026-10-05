@@ -6,8 +6,9 @@ import { setDashboardAuthCookie } from "@/lib/auth/dashboardSession";
 import { isOidcConfigured } from "@/lib/auth/oidc";
 import { checkLock, recordFail, recordSuccess, getClientIp } from "@/lib/auth/loginLimiter";
 import { isLocalRequest } from "@/dashboardGuard";
+import { isPlaceholderInitialPassword } from "@/lib/auth/initialPassword";
 
-const RESET_HINT = "Forgot password? Reset to default via the kRouter CLI → Settings → Reset Password to Default.";
+const RESET_HINT = "Forgot password? npm install: kRouter CLI → Settings → Reset Password to Default. Docker: docker exec <container> node scripts/reset-password.js";
 
 function isTunnelRequest(request, settings) {
   const host = (request.headers.get("host") || "").split(":")[0].toLowerCase();
@@ -58,12 +59,14 @@ export async function POST(request) {
       // password ("123456") walked away with a valid dashboard JWT and could
       // simply ignore the flag — then PATCH /api/settings to disable auth
       // entirely. A remote login on the default password is refused outright.
-      const usingDefaultPassword = !storedHash && !process.env.INITIAL_PASSWORD;
+      const initialPasswordEnv = process.env.INITIAL_PASSWORD;
+      const usingDefaultPassword =
+        !storedHash && (!initialPasswordEnv || isPlaceholderInitialPassword(initialPasswordEnv));
       if (usingDefaultPassword && !isLocalRequest(request)) {
         return NextResponse.json(
           {
             error:
-              "This instance still uses the default password. For safety it can only be changed from the machine running kRouter — open the dashboard locally and set a password first.",
+              "This instance has no password yet (or INITIAL_PASSWORD is a documentation placeholder), and the default only works from the machine running kRouter. In Docker, behind a reverse proxy or on a server, start kRouter with INITIAL_PASSWORD set (Docker: -e INITIAL_PASSWORD=...) and log in with that; otherwise open the dashboard on that machine and set a password under Settings → Security.",
             mustChangePassword: true,
           },
           { status: 403 }
