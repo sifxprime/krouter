@@ -1,3 +1,41 @@
+# v0.5.163 (2026-10-05) — OpenCode Go's Grok, GPT Luna and Muse Spark models work, and you can pick each model's protocol
+
+**OpenCode Go users: seven models stopped failing.** grok-4.5, grok-4.6, grok-4.7, gpt-5.6-luna,
+gpt-6-luna and Muse Spark 1.2/1.3 are served by OpenCode only on its Responses API. kRouter sent
+them to `/chat/completions`, so every request answered `400 ModelProtocolUnsupported` (#23). Worse,
+OpenCode reports that error as HTTP 401, which kRouter treated as a bad account — so one request to
+one of these models cooled your whole OpenCode Go account down for about a minute, breaking every
+other model on it too. Both are fixed. Thanks @AincradBot for the precise report.
+
+## Fixed
+
+- **The seven Responses-only models** now go to OpenCode's `/responses` endpoint. kRouter converts to
+  and from the Responses API itself, so every client works: OpenAI, Claude Code and Responses
+  clients (Codex), streaming or not, with tools, reasoning and JSON mode.
+- **OpenCode's "model not supported" error is reported as 400**, not 401, so it no longer cools down
+  the account.
+- **OpenCode Go's model list is complete**: all 43 models OpenCode offers today (it listed 11),
+  including Kimi K3, GLM 5.2/5.3, DeepSeek V4, Qwen 3.7/3.8, MiMo V2.5/V2.6 and Hy3/Hy4.
+
+**Also fixed, for every provider reached through a Responses API** (GitHub Copilot, Codex, grok-cli):
+
+- **A reply cut off by the token limit** ended with no finish reason and no usage, and Claude Code's
+  stream never properly closed. It now ends with `max_tokens` / `length` and its usage.
+- **A failed reply came back as a successful one** whose text was the error. Non-streaming clients now
+  get a real error (429 for rate limits).
+- **Only the first system message reached the model.** Later system messages and developer messages
+  (Codex sends these) were dropped. All of them now arrive, in order.
+- **Non-streaming `/v1/responses` requests got a chat reply** they could not read, from every
+  OpenAI-format provider. They now get a proper Responses object. Always-streamed providers returned
+  an empty reply there, and Claude clients got a chat reply too; both are fixed.
+
+## New
+
+- **Pick the protocol for each OpenCode Go model.** Every model on the OpenCode Go provider page has a
+  Protocol control: Auto (kRouter's choice, shown), Chat Completions, Messages or Responses. If
+  OpenCode moves a model, you can follow it the same day instead of waiting for a release. The
+  choice applies to all your OpenCode Go connections, including ones added later.
+
 # v0.5.162 (2026-10-05) — Docker users can log in, and example secrets from the docs no longer open the dashboard
 
 **Upgrade if you run kRouter where anyone else can reach it.** kRouter's docs — and upstream
