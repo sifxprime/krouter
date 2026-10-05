@@ -65,6 +65,41 @@ jobs:
             echo "::notice::@sifxprime/krouter@$V is already on npm -- nothing to publish."
           fi
 
+      # npm logs why a trusted-publishing exchange failed only at verbose level, then
+      # uploads without auth and reports a bare E404 -- which is all v0.5.161's
+      # publish ever showed. This asks the registry directly, on dry runs too, and
+      # prints the status, npm's message and the claims it matches against the
+      # Trusted Publisher settings. Tokens are masked and never printed.
+      - name: Check npm trusted publishing
+        if: steps.v.outputs.already != 'true'
+        run: |
+          if [ -z "${ACTIONS_ID_TOKEN_REQUEST_URL:-}" ]; then
+            echo "::error::No GitHub OIDC token available (id-token: write missing)"; exit 1
+          fi
+          ID_TOKEN=$(curl -sS -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+            "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=npm:registry.npmjs.org" | jq -r .value)
+          echo "::add-mask::$ID_TOKEN"
+          echo "Claims npm compares with the Trusted Publisher settings:"
+          printf '%s' "$ID_TOKEN" | node -e '
+            let t = ""; process.stdin.on("data", (c) => (t += c)).on("end", () => {
+              const c = JSON.parse(Buffer.from(t.split(".")[1], "base64url").toString());
+              const keep = ["repository", "repository_owner", "workflow_ref", "job_workflow_ref", "environment", "ref", "event_name"];
+              console.log(JSON.stringify(Object.fromEntries(keep.map((k) => [k, c[k] ?? null]))));
+            });' || true
+          PKG=$(node -p "require('./cli/package.json').name")
+          ENC=$(node -p "process.argv[1].replace('/', '%2f')" "$PKG") # npm's own escapedName form
+          code=$(curl -sS -o "$RUNNER_TEMP/oidc.json" -w '%{http_code}' -X POST \
+            -H "Authorization: Bearer $ID_TOKEN" \
+            "https://registry.npmjs.org/-/npm/v1/oidc/token/exchange/package/$ENC")
+          msg=$(jq -r '.message // .error // empty' "$RUNNER_TEMP/oidc.json" 2>/dev/null)
+          rm -f "$RUNNER_TEMP/oidc.json"
+          if [ "$code" = "200" ] || [ "$code" = "201" ]; then
+            echo "npm accepted this workflow as a trusted publisher of $PKG (HTTP $code)"
+          else
+            echo "::error::npm refused the trusted-publishing exchange for $PKG: HTTP $code ${msg:-<no message>}"
+            exit 1
+          fi
+
       - name: Install app dependencies
         if: steps.v.outputs.already != 'true'
         run: npm ci
