@@ -203,14 +203,18 @@ export default function LoginPage() {
                   {retryAfter > 0 ? `Wait ${retryAfter}s` : "Login"}
                 </Button>
 
-                <p className="text-xs text-center text-text-muted mt-2">
-                  Default password is <code className="bg-sidebar px-1 rounded">123456</code>
-                </p>
                 {hasPassword === false && (
-                  <p className="text-xs text-center text-amber-600 dark:text-amber-400">
-                    Security risk: no password set. Remote logins are refused until you set
-                    one — sign in here, then open your profile from the sidebar to set a password.
-                  </p>
+                  <>
+                    <p className="text-xs text-center text-text-muted mt-2">
+                      No password set yet: use the <code className="bg-sidebar px-1 rounded">INITIAL_PASSWORD</code> kRouter
+                      was started with, or the default <code className="bg-sidebar px-1 rounded">123456</code> on the
+                      machine kRouter runs on.
+                    </p>
+                    <p className="text-xs text-center text-amber-600 dark:text-amber-400">
+                      Security risk: no password set. Remote logins are refused until you set one — sign in, then set
+                      it under Settings → Security.
+                    </p>
+                  </>
                 )}
               </form>
             ) : (

@@ -53,7 +53,7 @@ wait_for_service() {
     echo -n "  Waiting for $name to be ready..."
 
     while [ $elapsed -lt $MAX_WAIT ]; do
-        if curl -s -f "$url/health" > /dev/null 2>&1; then
+        if curl -s -f "$url" > /dev/null 2>&1; then
             echo -e " ${GREEN}✓${NC}"
             return 0
         fi
@@ -68,8 +68,8 @@ wait_for_service() {
 }
 
 # Wait for both services
-wait_for_service "http://localhost:$SIDECAR_PORT" "Presidio Sidecar" || exit 1
-wait_for_service "http://localhost:$KROUTER_PORT" "kRouter" || exit 1
+wait_for_service "http://localhost:$SIDECAR_PORT/health" "Presidio Sidecar" || exit 1
+wait_for_service "http://localhost:$KROUTER_PORT/api/health" "kRouter" || exit 1
 
 echo ""
 echo -e "${GREEN}╔══════════════════════════════════════════════════════════╗${NC}"

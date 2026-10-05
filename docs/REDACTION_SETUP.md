@@ -48,12 +48,18 @@ downloads a ~500 MB spaCy language model on first run.
 ## Option 1 — Docker Compose
 
 The compose file wires kRouter and the sidecar together on a private network
-with a shared config volume.
-
-`INITIAL_PASSWORD` has no default on purpose. Set a real one first:
+with a shared config volume. It builds both from source, so start from a clone:
 
 ```bash
-export KROUTER_INITIAL_PASSWORD="$(openssl rand -base64 24)"
+git clone https://github.com/sifxprime/krouter.git && cd krouter
+```
+
+`KROUTER_INITIAL_PASSWORD` has no default on purpose — compose refuses to start
+without it. Save a random one to `.env`, where compose reads it on every start;
+the command prints it, and that is your dashboard password:
+
+```bash
+echo "KROUTER_INITIAL_PASSWORD='$(openssl rand -base64 18)'" > .env && cat .env
 ```
 
 Then:
@@ -104,7 +110,7 @@ uvicorn sidecar:app --host 127.0.0.1 --port 5001
 
 > There is no prebuilt sidecar image on a registry yet, so both paths above
 > build or run from the source you just cloned. The Docker Compose setup in
-> Option 1 builds it for you and needs none of this.
+> Option 1 builds the sidecar image for you from its clone.
 
 Then tell kRouter where it is and start normally:
 

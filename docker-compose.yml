@@ -57,8 +57,9 @@ services:
       # INITIAL_PASSWORD=123456 satisfies the guard while keeping the password
       # everyone already knows -- which re-opens the exact hole it closed.
       #
-      # Set it in a .env beside this file, or export it before `docker compose up`:
-      #   KROUTER_INITIAL_PASSWORD=$(openssl rand -base64 24)
+      # Generate one into a .env beside this file (compose reads .env, but does
+      # not run commands in it, so do not paste $(...) into .env itself):
+      #   echo "KROUTER_INITIAL_PASSWORD='$(openssl rand -base64 18)'" > .env && cat .env
       - INITIAL_PASSWORD=${KROUTER_INITIAL_PASSWORD:?set KROUTER_INITIAL_PASSWORD to a strong value}
     volumes:
       # Persist data

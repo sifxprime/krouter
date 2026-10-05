@@ -33,9 +33,10 @@ krouter -t
 
 The dashboard is at **[http://localhost:20128/dashboard](http://localhost:20128/dashboard)** — open it in your browser, or from the tray icon.
 
-**First login:** the default dashboard password is `123456`. Change it under **Profile** once you're in.
+**First login:** the default dashboard password is `123456`. Change it under **Settings → Security** once you're in.
 For safety, the default only works from the machine kRouter is running on — sign-ins from other devices
-on your network are refused until you set your own.
+on your network are refused until you set your own. Under Docker that includes your own browser, so
+set `INITIAL_PASSWORD` as shown below.
 
 Prefer running in the foreground with live logs? Just use `krouter` (no flag).
 
@@ -65,21 +66,32 @@ npm run dev
 ### Docker
 
 ```bash
+KROUTER_PASSWORD="$(openssl rand -base64 18)" && echo "Dashboard password: $KROUTER_PASSWORD"
 docker run -d \
   -p 20128:20128 \
+  -e INITIAL_PASSWORD="${KROUTER_PASSWORD:?run the line above first}" \
   -v "$HOME/.krouter:/app/data" \
   --name krouter \
   sifxprime/krouter:latest
 ```
 
+The first line makes a random password and prints it. Log in with it, then set your own under
+**Settings → Security**; until you do, the password is whatever `INITIAL_PASSWORD` the container started with.
+Under Docker the default `123456` is refused, because your browser's requests reach the container
+from outside it. If `~/.krouter` already holds a password from an npm install, that one is used.
+Forgot it? With image 0.5.162 or newer: `docker exec krouter node scripts/reset-password.js` (see
+[DOCKER.md](DOCKER.md)).
+
 #### With PII Redaction (Presidio)
 
-To enable automatic PII redaction before sending requests to AI providers.
-`INITIAL_PASSWORD` has no default — set one before starting, or compose will
-refuse to come up:
+To enable automatic PII redaction before sending requests to AI providers. Compose builds kRouter
+and the sidecar from source, so it runs from a clone. `KROUTER_INITIAL_PASSWORD` has no default —
+compose refuses to start without it. The second line saves a random one to `.env`, where compose
+reads it on every start, and prints it: that is your dashboard password.
 
 ```bash
-export KROUTER_INITIAL_PASSWORD="$(openssl rand -base64 24)"
+git clone https://github.com/sifxprime/krouter.git && cd krouter
+echo "KROUTER_INITIAL_PASSWORD='$(openssl rand -base64 18)'" > .env && cat .env
 docker compose up -d
 ```
 
@@ -325,7 +337,8 @@ Behind Nginx / Caddy + Cloudflare Tunnel for HTTPS.
 ### Docker
 
 ```bash
-docker run -d -p 20128:20128 -v "$HOME/.krouter:/app/data" --name krouter sifxprime/krouter:latest
+KROUTER_PASSWORD="$(openssl rand -base64 18)" && echo "Dashboard password: $KROUTER_PASSWORD"
+docker run -d -p 20128:20128 -e INITIAL_PASSWORD="${KROUTER_PASSWORD:?run the line above first}" -v "$HOME/.krouter:/app/data" --name krouter sifxprime/krouter:latest
 ```
 
 ### PM2
@@ -419,7 +432,7 @@ kRouter is a hardened fork of the upstream **[decolua/9router](https://github.co
 
 ## 📄 License
 
-MIT License — see [LICENSE](LICENSE) for details.
+MIT License — see [LICENSE](https://github.com/sifxprime/krouter/blob/main/LICENSE) for details.
 
 ---
 

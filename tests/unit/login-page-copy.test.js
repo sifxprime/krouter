@@ -35,7 +35,9 @@ describe("login page", () => {
 
   it("tells the user what actually happens and where to fix it", () => {
     expect(raw).toContain("Remote logins are refused until you set");
-    expect(raw).toMatch(/profile/i);
+    // The page is /dashboard/profile, but the sidebar and header call it Settings,
+    // and the password form sits in its Security card: name what the user sees.
+    expect(raw).toContain("Settings → Security");
   });
 
   it("still handles a successful login and surfaces server errors", () => {
