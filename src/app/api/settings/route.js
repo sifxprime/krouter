@@ -36,6 +36,10 @@ export async function PATCH(request) {
   try {
     const body = await request.json();
 
+    // The stored hash is only ever written by the newPassword branch below, after
+    // the current-password check. A raw `password` from the client would skip it.
+    delete body.password;
+
     // If updating password, hash it
     if (body.newPassword) {
       const settings = await getSettings();
@@ -51,9 +55,12 @@ export async function PATCH(request) {
           return NextResponse.json({ error: "Invalid current password" }, { status: 401 });
         }
       } else {
-        // First time setting password, no current password needed
-        // Allow empty currentPassword or default "123456"
-        if (body.currentPassword && body.currentPassword !== "123456") {
+        // First time setting password, no current password needed.
+        // Allow an empty currentPassword (what the Profile page sends), or the
+        // password login accepts in this state -- INITIAL_PASSWORD, else "123456"
+        // (same rule as auth/login). Docker users must set INITIAL_PASSWORD.
+        const initialPassword = process.env.INITIAL_PASSWORD || "123456";
+        if (body.currentPassword && body.currentPassword !== initialPassword) {
            return NextResponse.json({ error: "Invalid current password" }, { status: 401 });
         }
       }
