@@ -11,6 +11,14 @@
  */
 export const MODEL_PRICING = {
   // === Anthropic / Claude ===
+  // 0.5.164 — Claude 5.x ids the claude-opus-* / claude-sonnet-* / claude-* patterns
+  // misprice (platform.claude.com/docs/en/about-claude/pricing, 2026-10-06).
+  // Cache reads are 0.05x input on Opus 5.5 and 0.025x on Fable 5.1.
+  "claude-opus-5-5":              { input: 4.00,  output: 20.00, cached: 0.20,  reasoning: 20.00,  cache_creation: 5.00  },
+  "claude-sonnet-5-5":            { input: 2.00,  output: 10.00, cached: 0.20,  reasoning: 10.00,  cache_creation: 2.50  },
+  "claude-sonnet-5":              { input: 2.00,  output: 10.00, cached: 0.20,  reasoning: 10.00,  cache_creation: 2.50  },
+  "claude-fable-5-1":             { input: 10.00, output: 50.00, cached: 0.25,  reasoning: 50.00,  cache_creation: 12.50 },
+  "claude-fable-5":               { input: 10.00, output: 50.00, cached: 1.00,  reasoning: 50.00,  cache_creation: 12.50 },
   "claude-opus-4-6":              { input: 5.00,  output: 25.00, cached: 0.50,  reasoning: 25.00,  cache_creation: 6.25  },
   "claude-opus-4-5-20251101":     { input: 5.00,  output: 25.00, cached: 0.50,  reasoning: 25.00,  cache_creation: 6.25  },
   "claude-sonnet-4-6":            { input: 3.00,  output: 15.00, cached: 0.30,  reasoning: 15.00,  cache_creation: 3.75  },
@@ -86,8 +94,18 @@ export const MODEL_PRICING = {
   "deepseek-r1":                  { input: 0.14,  output: 0.28,  cached: 0.0028, reasoning: 0.28,   cache_creation: 0.14  },
   "deepseek-v3.2-chat":           { input: 0.14,  output: 0.28,  cached: 0.0028, reasoning: 0.28,   cache_creation: 0.14  },
   "deepseek-v3.2-reasoner":       { input: 0.14,  output: 0.28,  cached: 0.0028, reasoning: 0.28,   cache_creation: 0.14  },
-  "deepseek-v4-flash":            { input: 0.14,  output: 0.28,  cached: 0.0028, reasoning: 0.28,   cache_creation: 0.14  },
-  "deepseek-v4-pro":              { input: 0.435, output: 0.87,  cached: 0.003625, reasoning: 0.87,  cache_creation: 0.435 },
+  // 0.5.164 — DeepSeek priced by time of day from 2026-08-16 (off-peak = half
+  // of peak) and retired V4 Flash for V4.1-Flash on 2026-09-10; the old Flash
+  // names bill at Flash prices. One rate per model here, so the peak rate.
+  // api-docs.deepseek.com/quick_start/pricing and /updates (2026-10-06).
+  "deepseek-flash":               { input: 0.30,  output: 1.20,  cached: 0.006, reasoning: 1.20,   cache_creation: 0.30  },
+  "deepseek-v4-flash":            { input: 0.30,  output: 1.20,  cached: 0.006, reasoning: 1.20,   cache_creation: 0.30  },
+  "deepseek-v4-flash-vision-exp": { input: 0.30,  output: 1.20,  cached: 0.006, reasoning: 1.20,   cache_creation: 0.30  },
+  "deepseek-v4-pro":              { input: 1.32,  output: 3.96,  cached: 0.044, reasoning: 3.96,   cache_creation: 1.32  },
+  // 0.5.164 — catalog aliases of deepseek-v4-pro (thinking max / off); usage is
+  // priced by catalog id, so without rows they fell to the old deepseek-v* rate.
+  "deepseek-v4-pro-max":          { input: 1.32,  output: 3.96,  cached: 0.044, reasoning: 3.96,   cache_creation: 1.32  },
+  "deepseek-v4-pro-none":         { input: 1.32,  output: 3.96,  cached: 0.044, reasoning: 3.96,   cache_creation: 1.32  },
 
   // === GLM ===
   "glm-4.6":                      { input: 0.50,  output: 2.00,  cached: 0.25,  reasoning: 3.00,   cache_creation: 0.50  },

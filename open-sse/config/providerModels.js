@@ -26,16 +26,33 @@ function withCodexReviewModels(models) {
   });
 }
 
+// Claude API ids, shared by Claude Code (cc) and the Anthropic API key provider.
+// 0.5.164 — current models first, then legacy ids Anthropic still serves (kept
+// so existing combos resolve). Retired ids are left out: they only 404.
+// Status: platform.claude.com/docs/en/about-claude/model-deprecations (2026-10-06).
+const CLAUDE_API_MODELS = [
+  { id: "claude-opus-5-5", name: "Claude Opus 5.5" },
+  { id: "claude-sonnet-5-5", name: "Claude Sonnet 5.5" },
+  { id: "claude-fable-5-1", name: "Claude Fable 5.1" },
+  { id: "claude-haiku-4-5-20251001", name: "Claude 4.5 Haiku" },
+  // Legacy, still served
+  { id: "claude-fable-5", name: "Claude Fable 5" },
+  { id: "claude-opus-5", name: "Claude Opus 5" },
+  { id: "claude-sonnet-5", name: "Claude Sonnet 5" },
+  { id: "claude-opus-4-8", name: "Claude Opus 4.8" },
+  { id: "claude-opus-4-7", name: "Claude Opus 4.7" },
+  { id: "claude-opus-4-6", name: "Claude Opus 4.6" },
+  { id: "claude-sonnet-4-6", name: "Claude Sonnet 4.6" },
+  { id: "claude-opus-4-5-20251101", name: "Claude 4.5 Opus" },
+  { id: "claude-sonnet-4-5-20250929", name: "Claude 4.5 Sonnet" },  // deprecated, retires 2026-11-30
+];
+
 export const PROVIDER_MODELS = {
   // OAuth Providers (using alias)
   cc: [  // Claude Code
-    { id: "claude-opus-4-8", name: "Claude Opus 4.8" },
-    { id: "claude-opus-4-7", name: "Claude Opus 4.7" },
-    { id: "claude-opus-4-6", name: "Claude Opus 4.6" },
-    { id: "claude-sonnet-4-6", name: "Claude Sonnet 4.6" },
-    { id: "claude-opus-4-5-20251101", name: "Claude 4.5 Opus" },
-    { id: "claude-sonnet-4-5-20250929", name: "Claude 4.5 Sonnet" },
-    { id: "claude-haiku-4-5-20251001", name: "Claude 4.5 Haiku" },
+    // 0.5.164 — Anthropic's current lineup first, Opus 5.5 (its recommended
+    // default) at the head; platform.claude.com/docs/en/models/overview.
+    ...CLAUDE_API_MODELS,
   ],
   cx: withCodexReviewModels([  // OpenAI Codex
     { id: "gpt-5.5", name: "GPT 5.5" },
@@ -225,12 +242,15 @@ export const PROVIDER_MODELS = {
     { id: "deepseek-v4.1-flash", name: "DeepSeek V4.1 Flash" },
     { id: "deepseek-v4-flash-vision-exp", name: "DeepSeek V4 Flash Vision (Exp)" },
     { id: "deepseek-flash", name: "DeepSeek Flash" },
-    { id: "qwen3.8-max", name: "Qwen 3.8 Max" },
-    { id: "qwen3.8-flash", name: "Qwen 3.8 Flash" },
-    { id: "qwen3.7-max", name: "Qwen 3.7 Max" },
-    { id: "qwen3.7-plus", name: "Qwen 3.7 Plus" },
-    { id: "qwen3.6-plus", name: "Qwen 3.6 Plus" },
-    { id: "qwen3.5-plus", name: "Qwen 3.5 Plus" },
+    // 0.5.164 — Qwen is served on /messages like MiniMax: the Go docs list 3.8 Max, 3.8 Flash
+    // and 3.7 Plus there (the older ids were listed there until dropped), and a keyed request
+    // for 3.7 Max on /chat/completions answers 400 ModelProtocolUnsupported, the #23 failure.
+    { id: "qwen3.8-max", name: "Qwen 3.8 Max", targetFormat: "claude" },
+    { id: "qwen3.8-flash", name: "Qwen 3.8 Flash", targetFormat: "claude" },
+    { id: "qwen3.7-max", name: "Qwen 3.7 Max", targetFormat: "claude" },
+    { id: "qwen3.7-plus", name: "Qwen 3.7 Plus", targetFormat: "claude" },
+    { id: "qwen3.6-plus", name: "Qwen 3.6 Plus", targetFormat: "claude" },
+    { id: "qwen3.5-plus", name: "Qwen 3.5 Plus", targetFormat: "claude" },
     { id: "mimo-v2.6-pro", name: "MiMo V2.6 Pro" },
     { id: "mimo-v2.6-flash", name: "MiMo V2.6 Flash" },
     { id: "mimo-v2.5-pro", name: "MiMo V2.5 Pro" },
@@ -242,7 +262,9 @@ export const PROVIDER_MODELS = {
     { id: "hy4-preview", name: "Hy4 Preview" },
     { id: "hy3", name: "Hy3" },
     { id: "hy3-preview", name: "Hy3 Preview" },
-    { id: "space-bunny-free", name: "Space Bunny (Free)" },
+    // 0.5.164 — was space-bunny-free; OpenCode renamed it when the promo ended and
+    // now rejects the old id ("Model space-bunny-free is not supported").
+    { id: "space-bunny", name: "Space Bunny" },
     { id: "omen-alpha", name: "Omen Alpha" },
     { id: "minimax-m3", name: "MiniMax M3", targetFormat: "claude" },
     { id: "minimax-m2.7", name: "MiniMax M2.7", targetFormat: "claude" },
@@ -381,11 +403,9 @@ export const PROVIDER_MODELS = {
     { id: "dall-e-3", name: "DALL-E 3", type: "image", params: ["size", "quality", "style", "response_format"] },
     { id: "dall-e-2", name: "DALL-E 2", type: "image", params: ["n", "size", "response_format"] },
   ],
-  anthropic: [
-    { id: "claude-sonnet-4-20250514", name: "Claude Sonnet 4" },
-    { id: "claude-opus-4-20250514", name: "Claude Opus 4" },
-    { id: "claude-3-5-sonnet-20241022", name: "Claude 3.5 Sonnet" },
-  ],
+  // 0.5.164 — was Sonnet 4, Opus 4 and 3.5 Sonnet, all retired by Anthropic
+  // (2026-06-15 / 2025-10-28), so every listed model 404'd.
+  anthropic: [...CLAUDE_API_MODELS],
   gemini: [
     // Stable API alias supported by Gemini generateContent.
     { id: "gemini-flash-latest", name: "Gemini Flash (Latest)" },
