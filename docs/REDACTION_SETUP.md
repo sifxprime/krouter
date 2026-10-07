@@ -36,7 +36,8 @@ none, because you would trust it.
 ## Requirements
 
 The sidecar is a Python service. It needs to be reachable from kRouter, and it
-downloads a ~500 MB spaCy language model on first run.
+needs the spaCy `en_core_web_lg` language model (about 590 MB), fetched when you
+install its requirements or build its image.
 
 | Setup | Sidecar | Effort |
 |---|---|---|
@@ -81,8 +82,8 @@ Open <http://localhost:20128/dashboard>, sign in with that password, and go to
 
 ## Option 2 — npm or global install
 
-kRouter itself has no Python dependency. Run the sidecar separately and point
-kRouter at it.
+kRouter itself has no Python dependency. Run the sidecar separately, on the same
+machine or anywhere kRouter can reach.
 
 The npm package does not include the sidecar, so fetch it first. It is three
 small files plus a requirements list:
@@ -105,22 +106,31 @@ docker run -d --name presidio-sidecar -p 5001:5001 \
 ```bash
 python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
-uvicorn sidecar:app --host 127.0.0.1 --port 5001
+PRESIDIO_CONFIG_PATH="$HOME/.krouter/presidio/redaction_config.yaml" \
+  uvicorn sidecar:app --host 127.0.0.1 --port 5001
 ```
+
+Set `PRESIDIO_CONFIG_PATH` when running from source. The sidecar's own default is
+the container path `/app/config/redaction_config.yaml`, which it cannot create on
+a normal machine; pointing it at `~/.krouter/presidio/` also lets it read the
+patterns you save from the dashboard.
 
 > There is no prebuilt sidecar image on a registry yet, so both paths above
 > build or run from the source you just cloned. The Docker Compose setup in
 > Option 1 builds the sidecar image for you from its clone.
 
-Then tell kRouter where it is and start normally:
+kRouter looks for the sidecar at `http://127.0.0.1:5001/redact` by default, so
+with the commands above you can start it normally. If the sidecar runs anywhere
+else, tell kRouter where:
 
 ```bash
 export SIDECAR_URL="http://127.0.0.1:5001/redact"
 krouter
 ```
 
-Config is read from `~/.krouter/presidio/redaction_config.yaml`, created on
-first save from the dashboard.
+kRouter saves custom patterns to `~/.krouter/presidio/redaction_config.yaml`
+(`$DATA_DIR/presidio/` if you moved the data directory) the first time you save
+them from the dashboard.
 
 ---
 
@@ -130,7 +140,9 @@ Both toggles must be on before anything is redacted:
 
 1. **Presidio Sidecar** — enables the middleware.
 2. **PII Redaction** — enables ML-based detection.
-3. **Custom Regex Patterns** — optional, enables your own YAML patterns.
+3. **Custom Regex Patterns** — optional, opens the YAML editor so you can save
+   your own patterns. The sidecar applies whatever is in the saved pattern file;
+   switching this toggle off later does not unload patterns already saved.
 
 Verify the sidecar is reachable before relying on it:
 
@@ -144,11 +156,11 @@ curl http://127.0.0.1:5001/health
 
 | Variable | Default | What it does |
 |---|---|---|
-| `SIDECAR_URL` | `http://presidio-sidecar:5001/redact` | Where the sidecar lives. Override for non-Docker setups. |
+| `SIDECAR_URL` | `http://127.0.0.1:5001/redact` | Where the sidecar lives. Docker Compose sets it to `http://presidio-sidecar:5001/redact`. |
 | `REDACTION_ENABLED` | `true` | Set `false` to disable the middleware regardless of the dashboard toggles. |
 | `REDACTION_FAIL_OPEN` | `false` | Set `true` to forward requests unredacted when redaction fails. Not recommended — it removes the guarantee. |
 | `REDACTION_TIMEOUT_MS` | `15000` | Sidecar timeout. Presidio analyses texts serially, so long conversations need headroom. |
-| `PRESIDIO_CONFIG_PATH` | `~/.krouter/presidio/redaction_config.yaml` | Pattern file. Docker Compose points this at the shared volume. |
+| `PRESIDIO_CONFIG_PATH` | `~/.krouter/presidio/redaction_config.yaml` | Pattern file kRouter writes. The sidecar reads the same variable, with its own default `/app/config/redaction_config.yaml`. Docker Compose points both at the shared volume. |
 
 ---
 
@@ -174,7 +186,11 @@ syntax is shared, but lookbehind and named-group syntax differ from JavaScript.
 
 ## What gets redacted
 
-Covered:
+Covered endpoints: `/v1/chat/completions`, `/v1/messages`, `/v1/responses`,
+`/v1/responses/compact`, the Ollama-compatible `/v1/api/chat`, and the
+Gemini-format `generateContent` / `streamGenerateContent` route.
+
+Covered fields:
 
 - Chat messages, string and multimodal text blocks
 - The Anthropic top-level `system` prompt
@@ -186,7 +202,8 @@ Covered:
 
 Not covered — these endpoints do not pass through the middleware:
 
-- `/v1/embeddings`, `/v1/audio/speech`, `/v1/images/generations`, `/v1/videos/*`
+- `/v1/embeddings`, `/v1/audio/*`, `/v1/images/generations`, `/v1/videos/*`
+- `/v1/search` and `/v1/web/fetch`
 - Binary content: images, PDFs, audio
 - Anything already sent before you enabled the feature
 
@@ -195,16 +212,19 @@ Not covered — these endpoints do not pass through the middleware:
 ## Troubleshooting
 
 **Every request returns 503 after enabling it.** The sidecar is not reachable.
-That is the fail-closed behaviour working. Check `curl <SIDECAR_URL>` and that
-`SIDECAR_URL` matches where it actually runs — the default hostname
-`presidio-sidecar` only resolves inside the compose network.
+That is the fail-closed behaviour working. Check that the sidecar's `/health`
+answers (`curl http://127.0.0.1:5001/health`) and that `SIDECAR_URL` matches
+where it actually runs. The default is
+`http://127.0.0.1:5001/redact`; the hostname `presidio-sidecar` only resolves
+inside the compose network.
 
 **Large requests time out.** Raise `REDACTION_TIMEOUT_MS`. Presidio processes
 texts in a serial loop, so time scales with total conversation size.
 
-**Custom patterns are not applied.** Confirm the **Custom Regex Patterns**
-toggle is on, and that the sidecar can read the config path. In Docker both
-containers must mount the same `presidio-config` volume.
+**Custom patterns are not applied.** Confirm you saved them from the YAML editor
+(it appears when the **Custom Regex Patterns** toggle is on), and that the
+sidecar reads the file kRouter writes: both use `PRESIDIO_CONFIG_PATH`. In Docker
+both containers must mount the same `presidio-config` volume.
 
 **Redaction makes answers worse.** Expected in some cases — if a name or
 identifier is meaningful to the task, removing it removes context. Narrow your
@@ -240,18 +260,18 @@ Features and Providers sections on the GitHub and npm pages.
 
 This ensures PII is never accidentally sent to AI providers when the redaction service is unavailable.
 
-> ⚠️ **Important:** For production use, monitor redaction failures and set up alerts. See [Troubleshooting](#troubleshooting-presidio).
+> **Important:** For production use, monitor redaction failures and set up alerts. See [Troubleshooting](#troubleshooting-presidio).
 
 ### Environment Variables
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `REDACTION_ENABLED` | `true` | Enable/disable redaction middleware |
-| `REDACTION_FAIL_OPEN` | `false` | **⚠️ SECURITY:** If true, allow requests on redaction failure (not recommended) |
-| `SIDECAR_URL` | `http://presidio-sidecar:5001/redact` | Presidio sidecar endpoint |
-| `PRESIDIO_CONFIG_PATH` | `/app/redaction_config.yaml` | Path to custom regex YAML config |
+| `REDACTION_ENABLED` | `true` | Set `false` to disable the redaction middleware |
+| `REDACTION_FAIL_OPEN` | `false` | **Security:** if true, allow requests on redaction failure (not recommended) |
+| `SIDECAR_URL` | `http://127.0.0.1:5001/redact` | Presidio sidecar endpoint (`http://presidio-sidecar:5001/redact` under Docker Compose) |
+| `PRESIDIO_CONFIG_PATH` | `~/.krouter/presidio/redaction_config.yaml` | Path to custom regex YAML config (`/app/config/redaction_config.yaml` under Docker Compose) |
 
-> 🔒 **Security Note:** Never set `REDACTION_FAIL_OPEN=true` in production unless you have a specific reason and understand the security implications.
+> **Security Note:** Never set `REDACTION_FAIL_OPEN=true` in production unless you have a specific reason and understand the security implications.
 
 ### Testing Redaction
 
@@ -262,11 +282,12 @@ curl -X POST http://localhost:5001/redact \
   -d '{
     "texts": [
       "Contact John Doe at john.doe@example.com or 555-123-4567",
-      "OpenAI key: sk-proj-abc123def456ghi789jkl"
+      "OpenAI key: sk-abc123def456ghi789jkl012mno345pqr678"
     ]
   }'
 
-# Response:
+# Example response. Labels depend on what is loaded: <OPENAI_KEY> needs an
+# OPENAI_KEY rule in your saved patterns, and a custom rule can relabel a match.
 # {
 #   "redacted_texts": [
 #     "Contact <PERSON> at <EMAIL_ADDRESS> or <PHONE_NUMBER>",
@@ -277,9 +298,11 @@ curl -X POST http://localhost:5001/redact \
 
 ### Performance
 
-- **Latency:** < 2ms per request (within Docker network)
-- **Overhead:** Minimal, typically < 10ms end-to-end
-- **Scalability:** Concurrent processing with Uvicorn workers
+- **Latency:** Presidio analyses each text in turn, so the added time grows with the
+  total size of the conversation. Raise `REDACTION_TIMEOUT_MS` (default 15000) for
+  long threads.
+- **Scalability:** The sidecar image runs Uvicorn with 4 workers; the from-source
+  command above runs one.
 
 ### Troubleshooting Presidio
 
@@ -287,13 +310,13 @@ curl -X POST http://localhost:5001/redact \
 
 ```bash
 # Check sidecar status
-docker-compose ps presidio-sidecar
+docker compose ps presidio-sidecar
 
 # Check sidecar logs
-docker-compose logs presidio-sidecar
+docker compose logs presidio-sidecar
 
 # Check kRouter redaction logs
-docker-compose logs krouter | grep redaction
+docker compose logs krouter | grep redaction
 ```
 
 **Sidecar won't start:**
@@ -303,20 +326,20 @@ docker-compose logs krouter | grep redaction
 lsof -i :5001
 
 # Rebuild the sidecar container
-docker-compose build presidio-sidecar
-docker-compose up -d presidio-sidecar
+docker compose build presidio-sidecar
+docker compose up -d presidio-sidecar
 ```
 
 **Redaction not working:**
 
-1. Verify Presidio toggles are enabled in Dashboard → Settings → Presidio
-2. Check that `REDACTION_ENABLED=true` in docker-compose.yml
+1. Verify both toggles are on in the **Presidio** page of the dashboard sidebar
+2. Check that `REDACTION_ENABLED` is not set to `false` (docker-compose.yml sets it to `true`)
 3. Ensure sidecar is healthy: `curl http://localhost:5001/health`
 4. Check kRouter logs for errors
 
 **High false positive rate:**
 
-- Add custom patterns to YAML config in Dashboard → Settings → Presidio
+- Add custom patterns in the YAML editor on the **Presidio** page
 - Review and refine regex patterns
 - Test patterns using the sidecar API directly
 
@@ -325,14 +348,14 @@ docker-compose up -d presidio-sidecar
 1. **Never disable fail-closed in production** — Keep `REDACTION_FAIL_OPEN=false`
 2. **Monitor redaction failures** — Set up alerts on 503/502 errors
 3. **Review custom regex patterns** — Ensure they're specific and don't match valid content
-4. **Keep sidecar updated** — Pull latest image for security patches
+4. **Keep sidecar updated** — Rebuild the sidecar image from an updated clone for security patches (there is no prebuilt image to pull)
 5. **Use dedicated network** — Isolate redaction traffic when possible
 
 ### Customization
 
 For advanced customization, see:
-- **Full configuration guide:** [docs/REDACTION_SETUP.md](docs/REDACTION_SETUP.md)
-- **Pattern examples:** [docs/REDACTION_SETUP.md#custom-patterns](docs/REDACTION_SETUP.md#custom-patterns)
-- **Fail-closed behaviour and limits:** [docs/REDACTION_SETUP.md#a-note-on-trust](docs/REDACTION_SETUP.md#a-note-on-trust)
+- **Full configuration guide:** [Configuration](#configuration)
+- **Pattern examples:** [Custom patterns](#custom-patterns)
+- **Fail-closed behaviour and limits:** [A note on trust](#a-note-on-trust)
 
 ---
