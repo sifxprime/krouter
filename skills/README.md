@@ -31,12 +31,15 @@ Then ask normally — *"generate an image of a cat"*, *"transcribe this URL"*, e
 
 ```bash
 export KROUTER_URL="http://localhost:20128"   # local default, or your VPS / tunnel URL
-export KROUTER_KEY="sk-..."                   # from Dashboard → Keys (only if requireApiKey=true)
+export KROUTER_KEY="sk-..."                   # from Dashboard → Endpoint → API Keys
 ```
+
+The key is required whenever `KROUTER_URL` is remote (VPS, tunnel) or kRouter runs in Docker or behind a reverse proxy: kRouter only skips the key for a caller on the same machine that reaches it directly, and Docker's published port does not count (the request arrives from the Docker network). Even that local caller needs the key once **Require API key** is on (Endpoint page) or the server runs with `REQUIRE_API_KEY=true`.
 
 Verify: `curl $KROUTER_URL/api/health` → `{"ok":true}`.
 
 ## Links
 
 - Source: https://github.com/sifxprime/krouter
-- Dashboard: https://krouter.com
+- Website: https://krouter.kodelyth.com
+- Dashboard: `$KROUTER_URL/dashboard` on your own server

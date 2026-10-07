@@ -5,17 +5,17 @@ description: Web search via kRouter /v1/search using Tavily / Exa / Brave / Serp
 
 # kRouter — Web Search
 
-Requires `KROUTER_URL` (and `KROUTER_KEY` if auth enabled). See https://raw.githubusercontent.com/sifxprime/krouter/refs/heads/main/skills/krouter/SKILL.md for setup.
+Requires `KROUTER_URL`, plus `KROUTER_KEY` unless kRouter runs on this machine outside Docker with **Require API key** off. See https://raw.githubusercontent.com/sifxprime/krouter/refs/heads/main/skills/krouter/SKILL.md for setup.
 
 ## Discover
 
 ```bash
 curl $KROUTER_URL/v1/models/web | jq '.data[] | select(.kind=="webSearch") | .id'
-# Per-provider params (searchTypes, maxResults, required options like cx for google-pse)
+# Per-provider params (searchTypes, maxResults)
 curl "$KROUTER_URL/v1/models/info?id=tavily/search"
 ```
 
-IDs end in `/search` (e.g. `tavily/search`). Combos (`owned_by:"combo"`) chain providers with auto-fallback.
+IDs end in `/search` (e.g. `tavily/search`). Send only the part before `/search` as `model` (`tavily`); the full id is rejected as `Unknown provider`. Combos (`owned_by:"combo"`) chain providers with auto-fallback; send the combo name as is.
 
 ## Endpoint
 
@@ -23,11 +23,12 @@ IDs end in `/search` (e.g. `tavily/search`). Combos (`owned_by:"combo"`) chain p
 
 | Field | Required | Notes |
 |---|---|---|
-| `model` (or `provider`) | yes | from `/v1/models/web` (e.g. `tavily` or `brave`) |
+| `model` (or `provider`) | yes | `/v1/models/web` id without `/search` (e.g. `tavily` or `brave`), or a combo name |
 | `query` | yes | search query |
 | `max_results` | no | default 5 |
 | `search_type` | no | `web` (default) / `news` |
 | `country`, `language`, `time_range`, `domain_filter` | no | provider-dependent |
+| `provider_options` | no | provider-specific object, e.g. `{"cx":"..."}` for `google-pse` |
 
 ## Examples
 
@@ -82,8 +83,8 @@ All accept `query` + `max_results`. Optional fields vary:
 | `brave-search` | country, language | — |
 | `serper` | country, language, news endpoint | — |
 | `perplexity` | country, language, domain_filter | — |
-| `linkup` | domain_filter, time_range | `depth: fast/standard/deep` (option) |
-| `google-pse` | country, language, time_range, offset | **`cx` required** (providerOptions) |
+| `linkup` | domain_filter, time_range | `provider_options.depth`: `fast` / `standard` (default) / `deep` |
+| `google-pse` | country, language, time_range, offset | **`cx` required** (`provider_options.cx`) |
 | `searchapi` | country, language, pagination | — |
 | `youcom` | country, language, time_range, domain_filter, full_page | — |
 | `searxng` | language, time_range | Self-hosted, **noAuth** |

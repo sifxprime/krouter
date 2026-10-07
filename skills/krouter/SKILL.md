@@ -11,10 +11,10 @@ Local/remote AI gateway exposing OpenAI-compatible REST. One key, many providers
 
 ```bash
 export KROUTER_URL="http://localhost:20128"      # or VPS / tunnel URL
-export KROUTER_KEY="sk-..."                      # from Dashboard → Keys (only if requireApiKey=true)
+export KROUTER_KEY="sk-..."                      # from Dashboard → Endpoint → API Keys
 ```
 
-All requests: `${KROUTER_URL}/v1/...` with header `Authorization: Bearer ${KROUTER_KEY}` (omit if auth disabled).
+All requests: `${KROUTER_URL}/v1/...` with header `Authorization: Bearer ${KROUTER_KEY}` (`x-api-key` also works). The key is required whenever `KROUTER_URL` is remote (VPS, tunnel) or kRouter runs in Docker or behind a reverse proxy, including the `/v1/models` calls below: only a caller on the same machine that reaches kRouter directly may skip it, and Docker's published port does not count (the request arrives from the Docker network). Even that local caller needs the key once **Require API key** is on (Endpoint page) or the server runs with `REQUIRE_API_KEY=true`.
 
 Verify: `curl $KROUTER_URL/api/health` → `{"ok":true}`
 
@@ -30,13 +30,13 @@ curl $KROUTER_URL/v1/models/stt              # speech-to-text
 curl $KROUTER_URL/v1/models/image-to-text    # vision
 ```
 
-Use `data[].id` as `model` field in requests. Combos appear with `owned_by:"combo"`.
+Use `data[].id` as `model` field in requests. Combos appear with `owned_by:"combo"`. Exception: web search/fetch ids (`tavily/search`) are sent without the `/search` or `/fetch` suffix; see those skills.
 
 Response shape:
 ```json
 { "object": "list", "data": [
-  { "id": "openai/gpt-5", "object": "model", "owned_by": "openai", "created": 1735000000 },
-  { "id": "tavily/search", "object": "model", "kind": "webSearch", "owned_by": "tavily", "created": 1735000000 }
+  { "id": "openai/gpt-5", "object": "model", "owned_by": "openai" },
+  { "id": "tavily/search", "object": "model", "kind": "webSearch", "owned_by": "tavily" }
 ]}
 ```
 
@@ -56,6 +56,6 @@ When the user needs a specific capability, fetch that skill's `SKILL.md` from it
 
 ## Errors
 
-- 401 → set/refresh `KROUTER_KEY` (Dashboard → Keys)
+- 401 → set/refresh `KROUTER_KEY` (Dashboard → Endpoint → API Keys)
 - 400 `Invalid model format` → check `model` exists in `/v1/models/<kind>`
 - 503 `All accounts unavailable` → wait `retry-after` or add another provider account

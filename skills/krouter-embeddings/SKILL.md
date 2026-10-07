@@ -5,7 +5,7 @@ description: Generate vector embeddings via kRouter /v1/embeddings using OpenAI 
 
 # kRouter — Embeddings
 
-Requires `KROUTER_URL` (and `KROUTER_KEY` if auth enabled). See https://raw.githubusercontent.com/sifxprime/krouter/refs/heads/main/skills/krouter/SKILL.md for setup.
+Requires `KROUTER_URL`, plus `KROUTER_KEY` unless kRouter runs on this machine outside Docker with **Require API key** off. See https://raw.githubusercontent.com/sifxprime/krouter/refs/heads/main/skills/krouter/SKILL.md for setup.
 
 ## Discover
 

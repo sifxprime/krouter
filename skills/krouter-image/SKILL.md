@@ -5,7 +5,7 @@ description: Generate images via kRouter /v1/images/generations using OpenAI / G
 
 # kRouter — Image Generation
 
-Requires `KROUTER_URL` (and `KROUTER_KEY` if auth enabled). See https://raw.githubusercontent.com/sifxprime/krouter/refs/heads/main/skills/krouter/SKILL.md for setup.
+Requires `KROUTER_URL`, plus `KROUTER_KEY` unless kRouter runs on this machine outside Docker with **Require API key** off. See https://raw.githubusercontent.com/sifxprime/krouter/refs/heads/main/skills/krouter/SKILL.md for setup.
 
 ## Discover
 
@@ -42,7 +42,7 @@ curl -X POST "$KROUTER_URL/v1/images/generations?response_format=binary" \
   --output out.png
 ```
 
-JS (URL response):
+JS (JSON response):
 
 ```js
 const r = await fetch(`${process.env.KROUTER_URL}/v1/images/generations`, {
@@ -75,7 +75,7 @@ Common fields above work everywhere. These add/override:
 | Provider | Extra/changed fields | Notes |
 |---|---|---|
 | `openai`, `minimax`, `openrouter`, `recraft` | `quality`, `style`, `response_format` | Standard OpenAI shape |
-| `gemini` (nano-banana) | — | Only `prompt`; ignores `size`/`n` |
+| `gemini` (nano-banana) | — | Only `prompt`; ignores `size`/`n`; always returns `b64_json`, never `url` |
 | `codex` (gpt-5.4-image) | `image`, `images[]`, `image_detail`, `output_format`, `background` | SSE stream; **ChatGPT Plus/Pro required** |
 | `huggingface` | — | Only `prompt`; returns single image |
 | `nanobanana` | `image`, `images[]` (edit mode) | `size` → aspect ratio; async polling |

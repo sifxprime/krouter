@@ -5,7 +5,7 @@ description: Fetch URL → markdown / text / HTML via kRouter /v1/web/fetch usin
 
 # kRouter — Web Fetch
 
-Requires `KROUTER_URL` (and `KROUTER_KEY` if auth enabled). See https://raw.githubusercontent.com/sifxprime/krouter/refs/heads/main/skills/krouter/SKILL.md for setup.
+Requires `KROUTER_URL`, plus `KROUTER_KEY` unless kRouter runs on this machine outside Docker with **Require API key** off. See https://raw.githubusercontent.com/sifxprime/krouter/refs/heads/main/skills/krouter/SKILL.md for setup.
 
 ## Discover
 
@@ -15,7 +15,7 @@ curl $KROUTER_URL/v1/models/web | jq '.data[] | select(.kind=="webFetch") | .id'
 curl "$KROUTER_URL/v1/models/info?id=firecrawl/fetch"
 ```
 
-IDs end in `/fetch` (e.g. `firecrawl/fetch`, `jina/fetch`). `fetch-combo` chains providers with auto-fallback.
+IDs end in `/fetch` (e.g. `firecrawl/fetch`). Send only the part before `/fetch` as `model` (`firecrawl`); the full id is rejected as `Unknown provider`. One exception: Jina Reader is listed as `jina/fetch`, but `jina` is the Jina embeddings provider, so send `jina-reader`. A combo such as `fetch-combo` chains providers with auto-fallback; send its name as is.
 
 ## Endpoint
 
@@ -23,10 +23,10 @@ IDs end in `/fetch` (e.g. `firecrawl/fetch`, `jina/fetch`). `fetch-combo` chains
 
 | Field | Required | Notes |
 |---|---|---|
-| `model` (or `provider`) | yes | from `/v1/models/web` (e.g. `firecrawl` or `jina-reader`) |
+| `model` (or `provider`) | yes | `/v1/models/web` id without `/fetch` (e.g. `firecrawl`, `jina-reader`), or a combo name |
 | `url` | yes | URL to extract |
-| `format` | no | `markdown` (default) / `text` / `html` |
-| `max_characters` | no | truncate output |
+| `format` | no | `markdown` (default) / `text` / `html`. Only `firecrawl` converts, and only to `markdown` or `html` (Firecrawl has no `text` format); the others return their native text and echo the format |
+| `max_characters` | no | truncate output; `0` or omitted = no limit |
 
 ## Examples
 
@@ -35,7 +35,7 @@ IDs end in `/fetch` (e.g. `firecrawl/fetch`, `jina/fetch`). `fetch-combo` chains
 curl -X POST $KROUTER_URL/v1/web/fetch \
   -H "Authorization: Bearer $KROUTER_KEY" \
   -H "Content-Type: application/json" \
-  -d '{"model":"jina-reader","url":"https://krouter.com","format":"markdown"}'
+  -d '{"model":"jina-reader","url":"https://krouter.kodelyth.com","format":"markdown"}'
 ```
 
 ### Exa
@@ -71,8 +71,8 @@ const r = await fetch(`${process.env.KROUTER_URL}/v1/web/fetch`, {
   headers: { "Authorization": `Bearer ${process.env.KROUTER_KEY}`, "Content-Type": "application/json" },
   body: JSON.stringify({ model: "fetch-combo", url: "https://example.com", format: "markdown", max_characters: 5000 }),
 });
-const { data } = await r.json();
-console.log(data.title, data.content.length);
+const page = await r.json();  // top-level object, no `data` wrapper
+console.log(page.title, page.content.length);
 ```
 
 ## Response shape
@@ -95,5 +95,5 @@ console.log(data.title, data.content.length);
 |---|---|---|
 | `firecrawl` | Bearer | JS-rendered pages, `format=markdown/html` |
 | `jina-reader` | Bearer (optional) | Free tier (~1M chars/mo); fastest plain markdown |
-| `tavily` | Bearer | Bulk extract; returns `raw_content` |
+| `tavily` | Bearer | Bulk extract; Tavily's `raw_content` becomes `content.text` |
 | `exa` | `x-api-key` | Pre-indexed pages; fast text extraction |

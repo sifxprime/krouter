@@ -4,10 +4,14 @@ import { Card, Badge } from "@/shared/components";
 import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
 import {
   SKILLS,
-  SKILLS_REPO_URL,
+  SKILLS_BLOB_BASE,
   getSkillRawUrl,
   getSkillBlobUrl,
 } from "@/shared/constants/skills";
+
+// 0.5.164 — was a hardcoded tree/master; origin has only main and it resolved only
+// through GitHub's rename redirect. Derive it so it follows the raw/blob links' branch.
+const SKILLS_TREE_URL = SKILLS_BLOB_BASE.replace("/blob/", "/tree/");
 
 function CopyButton({ value, label = "Copy link" }) {
   const { copied, copy } = useCopyToClipboard(2000);
@@ -97,7 +101,7 @@ export default function SkillsPage() {
             </p>
           </div>
           <a
-            href={`${SKILLS_REPO_URL}/tree/master/skills`}
+            href={SKILLS_TREE_URL}
             target="_blank"
             rel="noreferrer"
             className="text-sm text-primary hover:underline inline-flex items-center gap-1"

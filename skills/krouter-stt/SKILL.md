@@ -1,11 +1,11 @@
 ---
 name: krouter-stt
-description: Speech-to-text via kRouter /v1/audio/transcriptions using OpenAI Whisper / Groq / Gemini / Deepgram / AssemblyAI / NVIDIA / HuggingFace models. Use when the user wants to transcribe audio, convert speech to text, or get subtitles from audio files.
+description: Speech-to-text via kRouter /v1/audio/transcriptions using OpenAI Whisper / Groq / Gemini / Deepgram / AssemblyAI / HuggingFace models. Use when the user wants to transcribe audio, convert speech to text, or get subtitles from audio files.
 ---
 
 # kRouter — Speech-to-Text
 
-Requires `KROUTER_URL` (and `KROUTER_KEY` if auth enabled). See https://raw.githubusercontent.com/sifxprime/krouter/refs/heads/main/skills/krouter/SKILL.md for setup.
+Requires `KROUTER_URL`, plus `KROUTER_KEY` unless kRouter runs on this machine outside Docker with **Require API key** off. See https://raw.githubusercontent.com/sifxprime/krouter/refs/heads/main/skills/krouter/SKILL.md for setup.
 
 ## Discover
 
@@ -75,5 +75,4 @@ Default (`response_format=json`):
 | `gemini` | `gemini-2.5-flash`, `gemini-2.5-pro`, `gemini-2.5-flash-lite` | Server converts to `generateContent` with audio inline |
 | `deepgram` | `nova-3`, `nova-2`, `whisper-large` | Token auth; server adapts response |
 | `assemblyai` | `universal-3-pro`, `universal-2` | Async upload+poll handled server-side |
-| `nvidia` | `nvidia/parakeet-ctc-1.1b-asr` | NIM endpoint |
 | `huggingface` | `openai/whisper-large-v3`, `openai/whisper-small` | HF Inference API |
