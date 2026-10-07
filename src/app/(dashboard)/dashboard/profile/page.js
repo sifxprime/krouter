@@ -971,7 +971,8 @@ export default function ProfilePage() {
                 disabled={loading}
                 className="w-44 sm:w-56 shrink-0"
                 options={[
-                  { value: "fill-first", label: "Fill First (default)" },
+                  // 0.5.164 — the stored "fill-first" runs Zenith (selectAccount, 0.5.70)
+                  { value: "fill-first", label: "Zenith (default)" },
                   { value: "round-robin", label: "Round Robin" },
                   { value: "p2c", label: "P2C (Power of 2 Choices)" },
                   { value: "random", label: "Random" },
@@ -1005,7 +1006,7 @@ export default function ProfilePage() {
               <div className="flex-1 min-w-0">
                 <p className="font-medium text-sm sm:text-base">Combo Round Robin</p>
                 <p className="text-xs sm:text-sm text-text-muted">
-                  Cycle through providers in combos instead of always starting with first
+                  Rotate which model a combo tries first
                 </p>
               </div>
               <Toggle
@@ -1036,17 +1037,22 @@ export default function ProfilePage() {
               </div>
             )}
 
+            {/* 0.5.164 — describe what auth.js / chat.js actually do: no stickiness under round robin (0.5.93), Antigravity default (0.5.119) */}
             <p className="text-xs text-text-muted italic pt-2 border-t border-border/50">
               {settings.fallbackStrategy === "round-robin"
-                ? `Distributing requests across all available accounts with ${settings.stickyRoundRobinLimit || 3} calls per account.`
-                : settings.fallbackStrategy === "p2c"
-                ? "Picking the healthier of 2 random accounts on each request (good for load-balancing equal-tier accounts)."
-                : settings.fallbackStrategy === "random"
-                ? "Picking a uniformly random account on each request."
-                : "Using accounts in priority order (Fill First)."}
+                ? `Each account serves ${settings.stickyRoundRobinLimit || 3} call${(settings.stickyRoundRobinLimit || 3) === 1 ? "" : "s"} in a row, then the least recently used account takes over. Conversations are not pinned to one account.`
+                : (settings.fallbackStrategy === "p2c"
+                  ? "Picking the better Zenith score of 2 random accounts (good for load-balancing equal-tier accounts)."
+                  : settings.fallbackStrategy === "random"
+                  ? "Picking a uniformly random account."
+                  // 0.5.164 — health dominates; tracked quota under 30% scales it down; list position only breaks near-ties (accountSelector.js zenithScore)
+                  : "Zenith scores each account on recent success rate, latency, tracked quota left and its place in the list, and picks the highest score.")
+                  + " A conversation keeps the account that answered it until 15 minutes idle, so the provider's prompt cache stays warm."
+                  + " Antigravity uses Round Robin by default whatever is picked here, as does any provider with its own Round Robin switch on."}
               {settings.comboStrategy === "round-robin"
-                ? ` Combos rotate after ${settings.comboStickyRoundRobinLimit || 1} call${(settings.comboStickyRoundRobinLimit || 1) === 1 ? "" : "s"} per model.`
-                : " Combos always start with their first model."}
+                ? ` Each combo model goes first for ${settings.comboStickyRoundRobinLimit || 1} call${(settings.comboStickyRoundRobinLimit || 1) === 1 ? "" : "s"} in turn`
+                : " Combos start with their first model"}
+              {", unless another has more quota left or is needed for an attachment (image, PDF, audio, video)."}
             </p>
           </div>
         </Card>

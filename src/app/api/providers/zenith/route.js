@@ -13,8 +13,8 @@
 import { NextResponse } from "next/server";
 import { getProviderConnections } from "@/lib/localDb";
 import { scoreOf, getHealthSnapshot } from "@/shared/services/connectionHealth";
-import { zenithScore } from "open-sse/services/accountSelector.js";
-import { scoreModelForCombo } from "open-sse/services/quotaPreflight.js";
+import { zenithScore, zenithQuotaFactor, zenithPriorityBonus } from "open-sse/services/accountSelector.js";
+import { remainingPctForAccount } from "open-sse/services/quotaPreflight.js";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -33,14 +33,12 @@ export async function GET(request) {
       const health = Math.max(0, scoreOf(c.id) ?? 500);
       const final = zenithScore(c, model);
       // Break out the quota + priority contributions so the UI can label them.
+      // 0.5.164 — the router's own helpers, so this view cannot drift from the real score.
       const remainingPct = model && c.provider
-        ? scoreModelForCombo(c.provider, c.id, model)
+        ? remainingPctForAccount(c.provider, c.id, model)
         : null;
-      let quotaFactor = 1.0;
-      if (remainingPct !== null && remainingPct < 30) {
-        quotaFactor = Math.max(0.1, remainingPct / 30);
-      }
-      const priorityBonus = (c.priority && c.priority > 0) ? c.priority * 10 : 0;
+      const quotaFactor = zenithQuotaFactor(remainingPct);
+      const priorityBonus = zenithPriorityBonus(c.priority);
 
       return {
         connectionId: c.id,

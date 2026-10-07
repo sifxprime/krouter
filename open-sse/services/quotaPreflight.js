@@ -157,6 +157,16 @@ export function scoreModelForCombo(provider, connectionId, model) {
   return mq.remainingPercentage;
 }
 
+// 0.5.164 — remaining % for ONE account, or null when there is no usable quota
+// data. Zenith needs "unknown" to mean "no penalty"; scoreModelForCombo's 0
+// (sort unknown last, for combos) scaled every API-key account's health to a tenth.
+export function remainingPctForAccount(provider, connectionId, model) {
+  const entry = cache.get(cacheKey(provider, connectionId));
+  if (!isCacheUsable(entry)) return null;
+  const mq = entry.byModel?.[model];
+  return mq ? mq.remainingPercentage : null;
+}
+
 // Combo scoring without a specific connection: take the MAX remainingPercentage
 // across all cached connections for this provider/model. Used by combo handler
 // which doesn't know which account will be picked yet. Returns null when we

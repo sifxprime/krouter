@@ -15,13 +15,29 @@
 
 import crypto from "node:crypto";
 import { scoreOf } from "../../src/shared/services/connectionHealth.js";
-import { scoreModelForCombo } from "./quotaPreflight.js";
+import { remainingPctForAccount } from "./quotaPreflight.js";
 
 function randInt(maxExclusive) {
   if (maxExclusive <= 0) return 0;
   // crypto.randomInt available in node 14.10+
   if (typeof crypto.randomInt === "function") return crypto.randomInt(maxExclusive);
   return Math.floor(Math.random() * maxExclusive);
+}
+
+// 0.5.164 — quota under 30% scales the score down in proportion, to a tenth at most.
+// null (no quota data) is no penalty.
+export function zenithQuotaFactor(remainingPct) {
+  if (remainingPct === null || remainingPct === undefined || remainingPct >= 30) return 1;
+  return Math.max(0.1, remainingPct / 30);
+}
+
+// 0.5.164 — list-position tie-breaker. priority 1 is the TOP of the dashboard list,
+// so the top gets the largest bonus (was priority * 10: the bottom account won).
+const PRIORITY_BONUS_STEP = 10;
+const PRIORITY_BONUS_SLOTS = 4;
+export function zenithPriorityBonus(priority) {
+  if (!Number.isFinite(priority) || priority <= 0) return 0;
+  return Math.max(0, PRIORITY_BONUS_SLOTS + 1 - priority) * PRIORITY_BONUS_STEP;
 }
 
 // 0.5.70 — Zenith Scoring Engine port.
@@ -34,29 +50,11 @@ export function zenithScore(account, model) {
   // 1000 = perfectly fast and healthy.
   const healthScore = Math.max(0, scoreOf(account.id) ?? 500);
 
-  let finalScore = healthScore;
+  // Quota Modifier: an account nearly out of quota for this model (e.g. 5% left)
+  // is discounted so healthier accounts rise above it.
+  const remainingPct = model && account.provider ? remainingPctForAccount(account.provider, account.id, model) : null;
 
-  // Quota Modifier: Remaining Percentage [0-100].
-  // If an account is nearly exhausted (e.g. 5% remaining), we aggressively discount
-  // its score so healthier accounts naturally rise above it in the ranking.
-  if (model && account.provider) {
-    const remainingPct = scoreModelForCombo(account.provider, account.id, model);
-    if (remainingPct !== null) {
-      // Linear penalty for quota under 30%
-      if (remainingPct < 30) {
-        const factor = Math.max(0.1, remainingPct / 30);
-        finalScore *= factor;
-      }
-    }
-  }
-
-  // Priority bonus: if the user explicitly set a priority level on this connection,
-  // bump its final score slightly so it breaks ties.
-  if (account.priority && account.priority > 0) {
-    finalScore += account.priority * 10;
-  }
-
-  return finalScore;
+  return healthScore * zenithQuotaFactor(remainingPct) + zenithPriorityBonus(account.priority);
 }
 
 // Zenith Strategy: Sort all accounts by their Zenith score and pick the top one.
