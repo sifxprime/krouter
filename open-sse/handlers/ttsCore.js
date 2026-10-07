@@ -46,9 +46,11 @@ function createTtsResponse(base64Audio, format, responseFormat) {
  * Synthesize text to audio. Provider logic lives in `./ttsProviders/{id}.js`
  * or is dispatched generically via `ttsConfig.format`.
  *
+ * 0.5.164 — `voice`: OpenAI-style request-body voice, passed to adapters that honour it (openai).
+ *
  * @returns {Promise<{success, response, status?, error?}>}
  */
-export async function handleTtsCore({ provider, model, input, credentials, responseFormat = "mp3", language }) {
+export async function handleTtsCore({ provider, model, input, credentials, responseFormat = "mp3", language, voice }) {
   if (!input?.trim()) {
     return createErrorResult(HTTP_STATUS.BAD_REQUEST, "Missing required field: input");
   }
@@ -57,7 +59,7 @@ export async function handleTtsCore({ provider, model, input, credentials, respo
     // Special-case adapters (google-tts, edge-tts, local-device, elevenlabs, openai, openrouter, gemini)
     const adapter = getTtsAdapter(provider);
     if (adapter) {
-      const result = await adapter.synthesize(input.trim(), model, credentials, responseFormat, { language });
+      const result = await adapter.synthesize(input.trim(), model, credentials, responseFormat, { language, voice });
       // Adapter may return a full {success, response} (legacy) or {base64, format}
       if (result.success !== undefined) return result;
       return createTtsResponse(result.base64, result.format, responseFormat);

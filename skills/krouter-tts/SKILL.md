@@ -18,7 +18,7 @@ curl "$KROUTER_URL/v1/models/info?id=el/eleven_multilingual_v2"
 curl "$KROUTER_URL/v1/audio/voices?provider=edge-tts&lang=vi" | jq '.data[].model'
 ```
 
-`model` field in `/v1/audio/speech` = voice ID directly (e.g. `edge-tts/vi-VN-HoaiMyNeural`, `el/<voice_id>`, or `openai/tts-1` model+default voice).
+`model` field in `/v1/audio/speech` = voice ID directly (e.g. `edge-tts/vi-VN-HoaiMyNeural`, `el/<voice_id>`, `openai/tts-1/nova` model+voice, or `openai/tts-1` model+default voice `alloy`).
 
 ## Endpoint
 
@@ -28,6 +28,7 @@ curl "$KROUTER_URL/v1/audio/voices?provider=edge-tts&lang=vi" | jq '.data[].mode
 |---|---|---|
 | `model` | yes | voice ID from `/v1/models/tts` |
 | `input` | yes | text to speak |
+| `voice` | no | OpenAI-style voice (`openai` provider only). Used when `model` names no voice (e.g. `openai/tts-1`); a voice in `model` wins |
 
 Query `?response_format=mp3` (default, raw bytes) or `?response_format=json` (`{audio: base64, format}`).
 
@@ -50,7 +51,7 @@ import { writeFile } from "node:fs/promises";
 const r = await fetch(`${process.env.KROUTER_URL}/v1/audio/speech`, {
   method: "POST",
   headers: { "Authorization": `Bearer ${process.env.KROUTER_KEY}`, "Content-Type": "application/json" },
-  body: JSON.stringify({ model: "el/eleven_multilingual_v2", input: "Xin chào" }),
+  body: JSON.stringify({ model: "edge-tts/vi-VN-HoaiMyNeural", input: "Xin chào" }),
 });
 await writeFile("speech.mp3", Buffer.from(await r.arrayBuffer()));
 ```
@@ -68,7 +69,7 @@ Default → raw audio bytes (Content-Type `audio/mp3`).
 
 | Provider | `model` format | Notes |
 |---|---|---|
-| `openai` | `tts-1/alloy` (model/voice) or just voice | Default model `gpt-4o-mini-tts` |
+| `openai` | `tts-1/alloy` (model/voice), a model id (`tts-1`, `tts-1-hd`, `gpt-4o-mini-tts`), or just a voice (`nova`) | Model id alone uses body `voice`, else `alloy`; voice alone uses model `gpt-4o-mini-tts`. `tts-1`/`tts-1-hd` lack `ballad`, `verse`, `marin`, `cedar` |
 | `elevenlabs` | `<model_id>/<voice_id>` or `<voice_id>` | Default model `eleven_flash_v2_5`; list voices in Dashboard |
 | `openrouter` | `openai/gpt-4o-mini-tts/alloy` | Streamed via chat-completions audio modality |
 | `edge-tts` | voice id e.g. `vi-VN-HoaiMyNeural` | **noAuth**; default `vi-VN-HoaiMyNeural` |
