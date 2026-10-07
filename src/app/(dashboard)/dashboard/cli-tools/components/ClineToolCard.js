@@ -111,7 +111,14 @@ export default function ClineToolCard({ tool, isExpanded, onToggle, baseUrl, api
     setRestoring(true);
     setMessage(null);
     try {
-      const res = await fetch("/api/cli-tools/cline-settings", { method: "DELETE" });
+      // 0.5.164 — name the kRouter endpoints this card knows, so Reset drops only a Cline CLI
+      // provider that points at kRouter (not, say, the user's own local Ollama).
+      const baseUrls = [getEffectiveBaseUrl(), `${baseUrl}/v1`, tunnelPublicUrl, tailscaleUrl].filter(Boolean);
+      const res = await fetch("/api/cli-tools/cline-settings", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ baseUrls }),
+      });
       const data = await res.json();
       if (res.ok) {
         setMessage({ type: "success", text: "Settings reset successfully!" });
@@ -131,18 +138,24 @@ export default function ClineToolCard({ tool, isExpanded, onToggle, baseUrl, api
     const keyToUse = (selectedApiKey && selectedApiKey.trim())
       ? selectedApiKey
       : (!cloudEnabled ? "sk_krouter" : "<API_KEY_FROM_DASHBOARD>");
+    // 0.5.164 — Cline requests `${base}/chat/completions`, so the base keeps /v1. The CLI
+    // reads only settings/providers.json, which `cline auth` writes without touching other providers.
     const effectiveUrl = getEffectiveBaseUrl();
-    const baseWithoutV1 = effectiveUrl.endsWith("/v1") ? effectiveUrl.slice(0, -3) : effectiveUrl;
+    const modelId = selectedModel || "provider/model-id";
 
     return [
       {
-        filename: "~/.cline/data/globalState.json",
+        filename: "Cline CLI (run in a terminal)",
+        content: `cline auth --provider openai-compatible --apikey "${keyToUse}" --modelid "${modelId}" --baseurl "${effectiveUrl}"`,
+      },
+      {
+        filename: "~/.cline/data/globalState.json (VS Code extension, edit with VS Code closed)",
         content: JSON.stringify({
           actModeApiProvider: "openai",
           planModeApiProvider: "openai",
-          openAiBaseUrl: baseWithoutV1,
-          openAiModelId: selectedModel || "provider/model-id",
-          planModeOpenAiModelId: selectedModel || "provider/model-id",
+          openAiBaseUrl: effectiveUrl,
+          actModeOpenAiModelId: modelId,
+          planModeOpenAiModelId: modelId,
         }, null, 2),
       },
       {
@@ -174,6 +187,20 @@ export default function ClineToolCard({ tool, isExpanded, onToggle, baseUrl, api
 
       {isExpanded && (
         <div className="mt-4 pt-4 border-t border-border flex flex-col gap-4">
+          {/* 0.5.164 — say which Cline Apply reaches: the extension loads ~/.cline/data once at
+              startup and saves its in-memory copy over it, so a running VS Code undoes Apply. */}
+          <div className="flex items-start gap-3 p-3 rounded-lg border bg-blue-500/10 border-blue-500/30">
+            <span className="material-symbols-outlined text-lg text-blue-500">info</span>
+            <div className="flex flex-col gap-1 text-sm text-blue-600 dark:text-blue-400">
+              <p>Apply writes ~/.cline/data on the machine running kRouter. The Cline CLI picks it up on its next run.</p>
+              <p>
+                Recent versions of the Cline VS Code extension share that folder but read it only when VS Code starts.
+                Quit VS Code before Apply, then reopen it. Or set it up by hand in Cline settings: API Provider
+                &quot;OpenAI Compatible&quot;, Base URL <code className="font-mono break-all">{getEffectiveBaseUrl()}</code>, your kRouter API Key, and the Model ID.
+              </p>
+            </div>
+          </div>
+
           {checking && (
             <div className="flex items-center gap-2 text-text-muted">
               <span className="material-symbols-outlined animate-spin">progress_activity</span>

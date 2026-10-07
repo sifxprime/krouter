@@ -153,8 +153,16 @@ const RESET_ENV_KEYS = [
   "ANTHROPIC_DEFAULT_OPUS_MODEL",
   "ANTHROPIC_DEFAULT_SONNET_MODEL",
   "ANTHROPIC_DEFAULT_HAIKU_MODEL",
-  "API_TIMEOUT_MS",
 ];
+
+// 0.5.164 — the card's Max context option writes CLAUDE_CODE_MAX_CONTEXT_TOKENS but
+// Reset never removed it, so Claude Code kept the old window. Keys here are removed
+// only when they hold a value kRouter writes (ClaudeToolCard CONTEXT_OPTIONS, the
+// TUI's Claude Quick Setup timeout); a value the user set themselves survives.
+const RESET_ENV_VALUES = {
+  CLAUDE_CODE_MAX_CONTEXT_TOKENS: ["198000", "298000", "498000", "998000"],
+  API_TIMEOUT_MS: ["600000"],
+};
 
 // DELETE - Reset settings (remove env fields)
 export async function DELETE() {
@@ -181,7 +189,10 @@ export async function DELETE() {
       RESET_ENV_KEYS.forEach((key) => {
         delete currentSettings.env[key];
       });
-      
+      Object.entries(RESET_ENV_VALUES).forEach(([key, values]) => {
+        if (values.includes(currentSettings.env[key])) delete currentSettings.env[key];
+      });
+
       // Clean up empty env object
       if (Object.keys(currentSettings.env).length === 0) {
         delete currentSettings.env;

@@ -229,21 +229,25 @@ export const CLI_TOOLS = {
     color: "#7C3AED",
     description: "Continue AI Assistant",
     configType: "guide",
+    // 0.5.164 — Continue reads ~/.continue/config.yaml; config.json (the old block here) is deprecated.
     guideSteps: [
-      { step: 1, title: "Open Config", desc: "Open Continue configuration file" },
+      { step: 1, title: "Open Config", desc: "Open ~/.continue/config.yaml (Windows: %USERPROFILE%\\.continue\\config.yaml). In Continue, the gear next to Local Config opens it." },
       { step: 2, title: "API Key", type: "apiKeySelector" },
       { step: 3, title: "Select Model", type: "modelSelector" },
-      { step: 4, title: "Add Model Config", desc: "Add the following configuration to your models array:" },
+      // 0.5.164 — Continue's own new file ends in "models: []"; an entry added under that line is invalid YAML.
+      { step: 4, title: "Add Model Config", desc: "Empty file: paste the whole block. If the file has models: [] (Continue's default), replace that line with the models: section below. If models: already lists entries, add only the - name: entry under them." },
     ],
     codeBlock: {
-      language: "json",
-      code: `{
-  "apiBase": "{{baseUrl}}",
-  "title": "{{model}}",
-  "model": "{{model}}",
-  "provider": "openai",
-  "apiKey": "{{apiKey}}"
-}`,
+      language: "yaml",
+      code: `name: kRouter
+version: 0.0.1
+schema: v1
+models:
+  - name: "{{model}} (kRouter)"
+    provider: openai
+    model: "{{model}}"
+    apiBase: "{{baseUrl}}"
+    apiKey: "{{apiKey}}"`,
     },
   },
   amp: {

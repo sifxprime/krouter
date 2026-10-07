@@ -11,6 +11,8 @@ const CLOUD_URL = process.env.NEXT_PUBLIC_CLOUD_URL;
 
 // 0.5.132 (upstream 8b0fcf4b) — Claude Code context-window presets. UI shows the
 // round number; the value written is nudged 2K under the upstream hard cap.
+// 0.5.164 — claude-settings Reset removes exactly these values; keep its
+// RESET_ENV_VALUES in sync (tests/unit/claude-reset-removes-max-context.test.js).
 const CONTEXT_OPTIONS = [
   { label: "Default", value: "" },
   { label: "200K", value: "198000" },
