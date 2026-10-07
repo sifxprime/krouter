@@ -1,6 +1,6 @@
 {
   "name": "@sifxprime/krouter",
-  "version": "0.5.163",
+  "version": "0.5.164",
   "description": "Local AI gateway for Claude Code, Cursor, Codex, Copilot, Cline and any OpenAI-compatible client. Route 40+ LLM providers and 100+ models through one endpoint with automatic fallback, OAuth key management and 20-40% token savings.",
   "homepage": "https://krouter.kodelyth.com",
   "repository": {

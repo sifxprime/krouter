@@ -1,3 +1,73 @@
+# v0.5.164 (2026-10-07) — Zenith stops preferring your last account, Anthropic spend caps stop costing a request each time, and Cline works through kRouter again
+
+**Everyone with more than one account on a provider: upgrade.** Zenith, the default routing engine,
+was meant to pick the healthiest account. Two bugs turned it around. An account whose provider
+reports no quota (almost every API-key account) was scored as if it had none left, cutting its
+health score to a tenth. And the list-position bonus ran backwards: priority 1 is the top of your
+list, but the bonus was 10 points per position, so the bottom account got the most. With health
+cut to a tenth, that bonus decided the pick, and Zenith tended to send traffic to the last account
+in your list.
+
+**Cline users: click Apply again.** The dashboard's Cline setup removed `/v1` from the base URL, so
+every Cline request went to a path kRouter does not serve and returned 404. The Cline CLI also
+ignored Apply entirely once it had been set up, because current Cline reads a different file.
+
+## Fixed
+
+- **Zenith picks the healthiest account again.** An account with no quota data is no longer
+  penalised, and the list-position bonus now favours the top of your list: 40, 30, 20 and 10 points
+  for the first four accounts, nothing below. On a score of about a thousand that only settles
+  near-ties. The dashboard's Zenith view uses the same numbers the router does.
+- **Anthropic's monthly spend cap holds the account until it resets.** When an organization reaches
+  its spend cap, Anthropic answers `429` with `enforced_spend_limit_reached` and no `retry-after`
+  until the date it names. kRouter treated it as an ordinary rate limit and retried the account
+  every few minutes for the rest of the month, spending a round-trip on it before every fallback.
+  It now locks the whole account until that date (or 00:00 UTC on the 1st of next month) and falls
+  back at once. A spend limit you set yourself (a `400` saying "You have reached your specified API
+  usage limits") is held the same way. The connection shows why, and a successful Test connection
+  clears it early, for example after you raise the limit.
+- **An expired per-model cooldown could hide an account-wide lock**, so a locked account kept being
+  picked for the model it last failed on. The longer of the two locks now applies.
+- **OpenRouter's free-model daily cap holds that model until midnight UTC.** The
+  `free-models-per-day` 429 was treated as a per-minute limit, so kRouter retried the model about
+  every 90 seconds until the day reset and said the daily quota was healthy. It now parks that model
+  on that account until the reset OpenRouter names (or 00:00 UTC) and falls back at once; paid
+  models on the same key keep working. The per-minute free limit is unchanged.
+- **OpenCode Go:** Qwen models now go to OpenCode's Messages endpoint, where OpenCode serves them;
+  on Chat Completions they fail with the same `ModelProtocolUnsupported` error as #23 (the
+  Protocol control can still send them back). Space Bunny uses its current id (`space-bunny`), and
+  the price note says $10 a month, or $40 for Go Plus.
+- **Cline:**
+  - Apply keeps `/v1` on the base URL.
+  - Apply also writes the providers file the Cline CLI reads, keeping your other Cline providers.
+  - The VS Code extension gets a model for Act mode too; it only had one for Plan mode.
+  - Reset removes only the entry kRouter wrote. It no longer deletes a `cline auth` entry for your
+    own local endpoint, such as Ollama.
+  - Apply refuses a base URL that is not `http(s)`, and the stored API key is readable only by you.
+  - The card says which Cline it configures and that VS Code must be closed while you click Apply.
+- **Continue's setup guide uses `config.yaml`.** It showed the deprecated `config.json` block, and
+  says how to add the model to the `models: []` file Continue creates on first run.
+- **Claude Code's Reset removes the Max context override.** Reset left
+  `CLAUDE_CODE_MAX_CONTEXT_TOKENS` in `~/.claude/settings.json`, so Claude Code kept the old context
+  window. A value you set yourself is kept.
+- **OpenAI text-to-speech with a model id.** `openai/tts-1` was read as a voice named "tts-1" and
+  failed; so did every OpenAI speech model in the catalog. A bare model id is now the model with the
+  default voice, and the request's `voice` field reaches the provider. A base URL stored on an OpenAI
+  connection (set through the API) is now used for speech too; it was ignored.
+- **Claude models.** The `anthropic` provider listed only three models Anthropic has retired. Both
+  Claude providers now list Opus 5.5, Sonnet 5.5, Fable 5.1 and Haiku 4.5 first, followed by the
+  older models Anthropic still serves. Their context window (1M), output limit (128K) and prices are
+  correct, and Opus 5.5, Sonnet 5.5 and Fable are marked as unable to turn thinking off, which they
+  reject with a 400.
+- **DeepSeek.** V4 Pro is no longer marked as able to read images; DeepSeek says it cannot. Prices
+  follow DeepSeek's August 2026 repricing, and V4 Pro Max and V4 Pro No Thinking, which had no price of
+  their own and were costed at an older, much lower DeepSeek rate, now cost the same as V4 Pro.
+- **Settings describes routing as it works.** The default strategy is labelled Zenith, not Fill
+  First; it has run Zenith since 0.5.70. The help text says round robin does not keep a conversation
+  on one account, and that Antigravity uses round robin by default.
+- **Skills:** the docs point to Endpoint → API Keys (there is no Keys page), say a key is needed
+  under Docker too, and the "View on GitHub" link uses the right branch.
+
 # v0.5.163 (2026-10-05) — OpenCode Go's Grok, GPT Luna and Muse Spark models work, and you can pick each model's protocol
 
 **OpenCode Go users: seven models stopped failing.** grok-4.5, grok-4.6, grok-4.7, gpt-5.6-luna,
