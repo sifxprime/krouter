@@ -127,10 +127,12 @@ export function getModelLockKey(model) {
  * Reads flat field `modelLock_${model}` (or `modelLock___all` when model=null).
  */
 export function isModelLockActive(connection, model) {
-  const key = getModelLockKey(model);
-  const expiry = connection[key] || connection[MODEL_LOCK_ALL];
-  if (!expiry) return false;
-  return new Date(expiry).getTime() > Date.now();
+  // 0.5.164 — locked until the LATER of the model's key and modelLock___all. The
+  // old `connection[key] || connection[MODEL_LOCK_ALL]` let an expired per-model
+  // key (only cleared on a success) hide an active account-wide monthly hold.
+  const lockMs = (v) => (v ? new Date(v).getTime() || 0 : 0);
+  const expiryMs = Math.max(lockMs(connection[getModelLockKey(model)]), lockMs(connection[MODEL_LOCK_ALL]));
+  return expiryMs > Date.now();
 }
 
 /**

@@ -7,7 +7,7 @@ import { selectAccount, getRoundRobinState } from "open-sse/services/accountSele
 import { getEffectiveFallbackStrategy } from "open-sse/config/providerStrategy.js";
 import { scoreOf } from "@/shared/services/connectionHealth";
 import { MAX_QUOTA_RESET_COOLDOWN_MS } from "open-sse/config/errorConfig.js";
-import { resolveProviderId, FREE_PROVIDERS } from "@/shared/constants/providers.js";
+import { resolveProviderId, FREE_PROVIDERS, ANTHROPIC_COMPATIBLE_PREFIX } from "@/shared/constants/providers.js";
 import * as log from "../utils/logger.js";
 
 // Mutex to prevent race conditions during account selection
@@ -24,6 +24,101 @@ export function githubMonthlyResetMs(status, errorText, provider) {
   if (!String(errorText || "").toLowerCase().includes(GITHUB_MONTHLY_USAGE_LIMIT)) return null;
   const now = new Date();
   return Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1);
+}
+
+// 0.5.164 — Anthropic spend limits are monthly holds, not rate limits. The tier
+// cap answers 429 rate_limit_error + details.error_code "enforced_spend_limit_reached"
+// with NO retry-after; a limit the user set answers 400 "You have reached your
+// specified (workspace) API usage limits". Both name the date access returns and
+// fail until then, so the generic 429 backoff (<=5 min) / 30s default re-tried the
+// dead account all month. Hold the WHOLE account until that date, else 00:00 UTC on
+// the 1st of next month (the documented reset). Checked before resetsAtMs: the cap
+// 429 may still carry anthropic-ratelimit-*-reset headers seconds away. A successful
+// Test connection clears the hold early (e.g. after the limit is raised).
+// https://platform.claude.com/docs/en/api/rate-limits#reaching-your-spend-cap
+const ANTHROPIC_SPEND_CAP = /enforced_spend_limit_reached|you have reached your api usage limits/i;
+const ANTHROPIC_USER_SPEND_LIMIT = /you have reached your specified (?:workspace )?api usage limits/i;
+const ANTHROPIC_REGAIN_ACCESS = /regain access on (\d{4})-(\d{2})-(\d{2})(?:\s+at\s+(\d{2}):(\d{2})\s*UTC)?/i;
+const MAX_SPEND_LIMIT_HOLD_MS = 32 * 24 * 60 * 60 * 1000; // a monthly reset is never further out
+
+function isAnthropicProvider(provider) {
+  const id = String(resolveProviderId(provider) || "");
+  return id === "anthropic" || id === "claude" || id.startsWith(ANTHROPIC_COMPATIBLE_PREFIX);
+}
+
+// Date from "You will regain access on 2026-11-01 at 00:00 UTC", or null when it
+// is missing or not a real calendar date/time.
+function parseRegainAccessMs(text) {
+  const m = text.match(ANTHROPIC_REGAIN_ACCESS);
+  if (!m) return null;
+  const [y, mo, d, h, mi] = [m[1], m[2], m[3], m[4] || 0, m[5] || 0].map(Number);
+  if (h > 23 || mi > 59) return null;
+  const ms = Date.UTC(y, mo - 1, d, h, mi);
+  const back = new Date(ms);
+  return back.getUTCFullYear() === y && back.getUTCMonth() === mo - 1 && back.getUTCDate() === d ? ms : null;
+}
+
+/**
+ * @returns {{resetAtMs: number, reason: string}|null} null = not a spend limit
+ *   (or its date already passed), so ordinary error handling applies.
+ */
+export function anthropicSpendLimitHold(status, errorText, provider, now = Date.now()) {
+  if (!provider || !isAnthropicProvider(provider)) return null;
+  const text = String(errorText || "");
+  const code = Number(status);
+  const isCap = code === 429 && ANTHROPIC_SPEND_CAP.test(text);
+  if (!isCap && !(code === 400 && ANTHROPIC_USER_SPEND_LIMIT.test(text))) return null;
+
+  let resetAtMs = parseRegainAccessMs(text);
+  if (resetAtMs !== null && resetAtMs <= now) return null; // access is already due back
+  if (resetAtMs === null || resetAtMs - now > MAX_SPEND_LIMIT_HOLD_MS) {
+    const d = new Date(now);
+    resetAtMs = Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 1);
+  }
+  const until = `${new Date(resetAtMs).toISOString().slice(0, 16).replace("T", " ")} UTC`;
+  const reason = isCap
+    ? `Anthropic monthly spend cap reached — paused until ${until} (raise the cap in Claude Console, then Test connection)`
+    : `Anthropic spend limit you set was reached — paused until ${until} (raise it in Claude Console, then Test connection)`;
+  return { resetAtMs, reason };
+}
+
+// 0.5.164 — OpenRouter's free-model DAILY cap ("Rate limit exceeded: free-models-per-day",
+// limit_source "openrouter_free_tier_daily") is per account per UTC day, shared by
+// every ":free" model. It fell into the TPM downgrade below (no OpenRouter quota
+// fetcher, so "daily quota healthy" fails open) and was re-tried every ~90s until
+// midnight. Hold THAT model until metadata.headers X-RateLimit-Reset (epoch ms in
+// the body), else the next 00:00 UTC. Per-model only: paid models on the same key
+// still work. The per-minute cap ("free-models-per-min") keeps the TPM path.
+// https://openrouter.ai/docs/api/reference/limits#rate-limits
+const OPENROUTER_FREE_DAILY_CAP = /free-models-per-day|openrouter_free_tier_daily/i;
+const OPENROUTER_RESET = /x-ratelimit-reset["']?\s*:\s*["']?(\d{13}|\d{10})(?!\d)/i;
+const MAX_FREE_DAILY_HOLD_MS = 25 * 60 * 60 * 1000; // a UTC-day reset is never further out
+const PAST_RESET_RETRY_MS = 60 * 1000; // a reset already passed = the day rolled over (clock skew)
+// Accounts with 10+ credits get "free-models-per-day-high-balance" (1000/day); credits cannot raise it.
+const OPENROUTER_HIGH_BALANCE = /free-models-per-day-high-balance/i;
+
+/**
+ * @returns {{resetAtMs: number, reason: string}|null} null = not the daily cap,
+ *   so ordinary error handling applies.
+ */
+export function openrouterFreeDailyCapHold(status, errorText, provider, now = Date.now()) {
+  if (!provider || resolveProviderId(provider) !== "openrouter" || Number(status) !== 429) return null;
+  const text = String(errorText || "");
+  if (!OPENROUTER_FREE_DAILY_CAP.test(text)) return null;
+
+  const m = text.match(OPENROUTER_RESET);
+  let resetAtMs = m ? Number(m[1]) * (m[1].length === 10 ? 1000 : 1) : null;
+  if (resetAtMs !== null && resetAtMs <= now) resetAtMs = now + PAST_RESET_RETRY_MS;
+  if (resetAtMs === null || resetAtMs - now > MAX_FREE_DAILY_HOLD_MS) {
+    const d = new Date(now);
+    resetAtMs = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() + 1);
+  }
+  const until = `${new Date(resetAtMs).toISOString().slice(0, 16).replace("T", " ")} UTC`;
+  return {
+    resetAtMs,
+    reason: `OpenRouter free-model daily limit reached — this model paused until ${until} (paid models still work; ${
+      OPENROUTER_HIGH_BALANCE.test(text) ? "the 1,000-a-day free limit cannot be raised" : "10 credits raise it to 1,000 a day"})`,
+  };
 }
 
 /**
@@ -347,9 +442,21 @@ export async function markAccountUnavailable(connectionId, status, errorText, pr
     // (modelLock___all) until next UTC month, uncapped, with NO banCount escalation
     // (it's a quota, not abuse). Checked first so it wins over the resetsAtMs cap.
     const githubMonthlyResetAtMs = githubMonthlyResetMs(status, errorText, provider);
-    if (githubMonthlyResetAtMs) {
+    // 0.5.164 — Anthropic spend cap / user-set spend limit: same whole-account hold.
+    const spendLimitHold = githubMonthlyResetAtMs ? null : anthropicSpendLimitHold(status, errorText, provider);
+    const monthlyResetAtMs = githubMonthlyResetAtMs || spendLimitHold?.resetAtMs || null;
+    // 0.5.164 — OpenRouter free-model daily cap: per-MODEL hold until the UTC-day
+    // reset. Checked before resetsAtMs: the 13-digit X-RateLimit-Reset header is
+    // misread there as a seconds duration.
+    const freeDailyHold = (monthlyResetAtMs || !model) ? null : openrouterFreeDailyCapHold(status, errorText, provider);
+    if (monthlyResetAtMs) {
       shouldFallback = true;
-      cooldownMs = githubMonthlyResetAtMs - Date.now();
+      cooldownMs = monthlyResetAtMs - Date.now();
+      newBackoffLevel = 0;
+      permanent = false;
+    } else if (freeDailyHold) {
+      shouldFallback = true;
+      cooldownMs = freeDailyHold.resetAtMs - Date.now();
       newBackoffLevel = 0;
       permanent = false;
     } else if (resetsAtMs && resetsAtMs > Date.now()) {
@@ -393,7 +500,7 @@ export async function markAccountUnavailable(connectionId, status, errorText, pr
       || /resets?\s+in\s+\d+\s*(?:hour|day)/i.test(errorText || "");
 
     let isTpmRateLimit = false;
-    if (status === 429 && looksLikeQuotaError && provider && model && connectionId && !hasHoursOrDaysReset) {
+    if (status === 429 && looksLikeQuotaError && provider && model && connectionId && !hasHoursOrDaysReset && !monthlyResetAtMs && !freeDailyHold) {
       // Re-check the cached daily quota for THIS model. If it's well above the
       // skip threshold, the 429 isn't about daily budget — it's TPM.
       const dailyOk = isAccountAboveThreshold(provider, connectionId, model, TPM_HEALTHY_QUOTA_THRESHOLD);
@@ -443,9 +550,9 @@ export async function markAccountUnavailable(connectionId, status, errorText, pr
       cooldownMs = cooldownMs * mult;
       if (newBanCount >= 3) chronicallyBanned = true;
     }
-    // Account-wide lock for a verify-ban (accountLock) OR a GitHub monthly hold —
-    // but only accountLock escalates banCount above (the monthly hold is a quota).
-    const lockUpdate = (accountLock || githubMonthlyResetAtMs)
+    // Account-wide lock for a verify-ban (accountLock) OR a monthly hold (GitHub,
+    // Anthropic spend limit) — only accountLock escalates banCount above (a quota).
+    const lockUpdate = (accountLock || monthlyResetAtMs)
       ? buildModelLockUpdate(null, cooldownMs)   // null → modelLock___all
       : buildModelLockUpdate(model, cooldownMs);
     lockKey = Object.keys(lockUpdate)[0];
@@ -472,7 +579,7 @@ export async function markAccountUnavailable(connectionId, status, errorText, pr
       // truncated error and has no idea what to do.
       lastError: accountLock && verifyUrl
         ? `Verify your account: ${verifyUrl}`
-        : (_tpmRateLimit_for_reason ? `TPM rate-limited (per-minute window) — daily quota healthy, retries in ~90s` : reason),
+        : (spendLimitHold?.reason || freeDailyHold?.reason || (_tpmRateLimit_for_reason ? `TPM rate-limited (per-minute window) — daily quota healthy, retries in ~90s` : reason)),
       errorCode: status,
       lastErrorAt: new Date().toISOString(),
       backoffLevel: newBackoffLevel ?? backoffLevel,
