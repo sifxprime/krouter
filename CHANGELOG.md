@@ -1,3 +1,45 @@
+# v0.5.167 (2026-11-02) — the Next.js remote-code-execution fixes, and fourteen other advisories, actually reach you
+
+**Upgrade, and prefer this over 0.5.166 on anything exposed.** Every change here is a dependency
+fix. Two of them are unauthenticated remote code execution in Next.js — one in the `use cache`
+function, one in the Image Optimization API — which 0.5.166 shipped with, because the patches
+landed on `main` after that release was tagged. Installing from npm or Docker before today handed
+you the vulnerable versions.
+
+Nothing in the application changed. The whole release is `package.json` and the two lockfiles, so
+there is no behaviour to re-learn and no configuration to touch.
+
+## Fixed
+
+- **Next.js 16.3.8 → 16.4.1.** Closes two CRITICAL unauthenticated RCEs (`use cache`, Image
+  Optimization API) and a HIGH denial of service in the App Router's Server Actions.
+
+- **node-forge 1.4.0 → 1.4.2.** Twelve advisories, six of them HIGH, and not a dependency to wave
+  off: `src/mitm/cert/rootCA.js` calls `forge.pki` directly to generate and sign kRouter's MITM
+  root CA and its leaf certificates. An X.509 `basicConstraints` bypass in `verifyCertificateChain`
+  and RSA PKCS#1 v1.5 signature verification accepting trailing data were therefore sitting on the
+  path that issues the certificates clients are asked to trust, alongside PKCS#12 MAC forgery, PEM
+  decoding ReDoS and two DoS paths in TLS record processing. `^1.3.3` already allowed the fix in
+  both manifests — only the lockfiles pinned it back, and no automated bump had been opened. Two of
+  the twelve have no patched release upstream and stay open.
+
+- **undici 7.19.2 → 7.30.1.** A HIGH denial of service from an unhandled error on excessive
+  headers, and a subresource-integrity bypass via a non-lowercase algorithm. undici is the fetch
+  implementation behind every upstream call kRouter makes, including the SSRF-guarded readers added
+  in 0.5.165 and 0.5.166.
+
+- **ip-address 10.7.3 → 10.7.5.** Quadratic-time matching on an IPv6 zone identifier.
+
+- **vitest 4.1.9 → 4.1.12 and vite to 8.3.5** (both development-only). Code injection via
+  unauthenticated manual mock registration and a Windows backslash traversal in `@vitest/mocker`,
+  plus the Vite file-serving and `launch-editor` advisories — the vite bump arrives transitively
+  with vitest, and drops `launch-editor` from the tree entirely.
+
+Verified before release: certificate generation exercised with the exact `forge.pki` calls
+`rootCA.js` makes and the result checked with Node's own `crypto` rather than with forge, the nine
+MITM/certificate test files green, the full suite at 3401 passing on Node 20.19 and 22, and the
+dashboard build green on the Node 20.9 runtime floor.
+
 # v0.5.166 (2026-10-19) — the upstream sync: Zenith stops preferring your last account, strict proxy pools stop leaking, and Claude, Codex, Gemini and Kiro requests stop being rejected
 
 **The largest sync this fork has done.** 369 upstream commits (9router v0.5.50 → v0.5.104) were
@@ -132,6 +174,25 @@ refreshes went direct too, carrying the refresh token to the provider from your 
   now lands at the end of the pool instead of the front.
 
 # v0.5.165 (2026-10-18) — the image URLs you pass, and the ones providers hand back, are checked before kRouter fetches them
+
+> **Correction, added in v0.5.167.** The advisory below overstated how reachable this was, and its
+> credential-rotation advice was broader than the facts support. Two things narrow it sharply.
+>
+> A remote caller could not reach `/v1/images/generations` without an API key at all. That is
+> `dashboardGuard`, and it does not depend on `requireApiKey`: `/v1/*` is exempt only for a loopback
+> peer, and "loopback" is established from a socket address carrying a per-process stamp the caller
+> cannot know or replay — not from the `Host` header, which stopped being trusted in 0.5.135.
+> Production fails closed when the server wrapper is absent, and any non-loopback `Origin` is
+> rejected, so neither an anonymous request from the internet nor a page in somebody's browser could
+> drive it.
+>
+> It also required a configured `cloudflare-ai` credential. Without one the request is refused with
+> `400 No credentials for provider` before the image URL is read.
+>
+> What remains is real, and the fix stands: another process on the same host, or anything able to
+> originate a loopback request, could have made kRouter read an internal address and hand the bytes
+> to a provider. That is a local-origin issue, not the unauthenticated internet exposure the wording
+> below implies. Rotate instance credentials only if something untrusted ran on that machine.
 
 **If your kRouter is reachable by anyone but you, upgrade.** The image endpoints fetched URLs
 server-side without checking where they pointed. `/v1/images/generations` is unauthenticated by
