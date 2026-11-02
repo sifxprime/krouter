@@ -1,6 +1,7 @@
 import crypto from "node:crypto";
 import { BaseExecutor } from "./base.js";
 import { PROVIDERS } from "../config/providers.js";
+import { MEMORY_CONFIG } from "../config/runtimeConfig.js";
 import { injectReasoningContent } from "../utils/reasoningContentInjector.js";
 import { applyFingerprintTools, recordRenamedToolNames, restoreToolNamesInResponse, takeRenamedToolNames } from "../utils/opencodeFingerprint.js";
 import { resolveOpenCodeGoSeed, toOpenCodeGoResponsesBody } from "./opencode-go.js";
@@ -54,14 +55,14 @@ const MESSAGES_MODELS = new Set(["union-alpha"]);
 const FORCE_AUTO_TOOL_CHOICE = new Set(["muse-spark-1.3", "muse-spark-1.3-contributor-free"]);
 
 // The gate decodes the session prefix as ~(timeMs * 0x1000 + counter) over 48 bits and
-// rejects a counter that is not small (probed: 1 passes, 500 is a 403), so the counter
-// has to look like a real new-session counter rather than filler.
+// reads BOTH halves: it rejects a counter that is not small (probed: 1 passes, 500 is a
+// 403), and it rejects a timeMs in the future or older than the free-tier window. Both
+// have to look like a real new session rather than filler — see translateSessionId.
 //
 // Upstream also keeps a live counter that it bumps once per minted id, which climbs
-// past the limit under any burst inside one millisecond. kRouter never needs that: the
-// id is always derived from a seed below, so the counter is always 1.
+// past the limit under any burst inside one millisecond. kRouter never needs that: it
+// pins the counter to 1 on every mint and memoizes the id per conversation instead.
 const SESSION_PREFIX_MASK = (1n << 48n) - 1n;
-const SESSION_TIME_MASK = (1n << 36n) - 1n;
 
 function descendingTimeHex(time, counterValue) {
   return (~(BigInt(time) * 0x1000n + BigInt(counterValue)) & SESSION_PREFIX_MASK)
@@ -77,27 +78,75 @@ export function decodeSessionCounter(sessionId) {
 }
 
 /**
+ * The millisecond clock the gate reads back out of a session prefix, wrapped to the
+ * 36 bits the encoding carries. Exported for the tests: the gate refuses a session
+ * whose decoded time is in the future or older than the free-tier window, so this is
+ * the invariant the old digest-derived prefix violated.
+ */
+export function decodeSessionTime(sessionId) {
+  const hex = String(sessionId || "").slice(4, 16);
+  if (!/^[0-9a-f]{12}$/.test(hex)) return null;
+  return (~BigInt(`0x${hex}`) & SESSION_PREFIX_MASK) / 0x1000n;
+}
+
+/**
  * One stable session id per conversation.
  *
- * The free quota is accounted per session, so a fresh id on every request burns it
- * and comes back as 429 FreeUsageLimitError; the real CLI keeps one id per
- * conversation. Deriving it from a digest gives that for free, with no store to
- * evict: the same seed always yields the same id. The counter is pinned to 1, which
- * is what the CLI sends on a new session.
+ * Two independent things have to be true at once, and the gate reads them from the
+ * same 12 hex chars:
+ *
+ * 1. Stability. The free quota is accounted per session, so a fresh id on every
+ *    request burns it and comes back as 429 FreeUsageLimitError; the real CLI keeps
+ *    one id per conversation.
+ * 2. A current timestamp. The gate decodes the time field and refuses a session whose
+ *    time is in the future or older than the free-tier window. Upstream's live probes
+ *    on 2026-10-26 measured a Date.now() session accepted 10/10 against 1/10 for a
+ *    digest-derived one.
+ *
+ * kRouter used to derive the whole prefix from a sha256 of the seed, which bought (1)
+ * with no store to evict but lost (2): the 36-bit time field became a uniform draw
+ * over 2^36 ms, so it almost never landed inside the window. That tradeoff was made
+ * on 2026-10-18 probes, which found the counter gate but not the time-window gate.
+ *
+ * Determinism was only ever the mechanism; stability is the goal. So mint with the
+ * current time and memoize on the same (clientTool, seed) tuple the digest keyed on —
+ * the seed resolveOpencodeSession() hands in is already stable per connection, so one
+ * conversation still gets exactly one id. The counter stays pinned to 1, which is what
+ * the CLI sends on a new session.
  */
+const translatedSessions = new Map();
+const MAX_TRANSLATED_SESSIONS = 5000;
+const translatedSessionCleanup = setInterval(() => {
+  const now = Date.now();
+  for (const [key, entry] of translatedSessions) {
+    if (now - entry.lastUsed > MEMORY_CONFIG.sessionTtlMs) translatedSessions.delete(key);
+  }
+}, MEMORY_CONFIG.sessionCleanupIntervalMs);
+if (translatedSessionCleanup.unref) translatedSessionCleanup.unref();
+
+function randomSessionSuffix() {
+  const bytes = crypto.randomBytes(14);
+  let out = "";
+  for (let i = 0; i < 14; i++) out += BASE62_CHARS[bytes[i] % 62];
+  return out;
+}
+
 export function translateSessionId(sessionId, clientTool = "") {
   if (typeof sessionId === "string" && OPENCODE_SESSION_RE.test(sessionId.trim())) {
     return sessionId.trim();
   }
-  const digest = crypto
-    .createHash("sha256")
-    .update(`opencode\0${clientTool || "generic"}\0${sessionId || ""}`)
-    .digest();
-  const time = BigInt(`0x${digest.subarray(0, 5).toString("hex")}`) & SESSION_TIME_MASK;
-  const timeHex = descendingTimeHex(time, 1);
-  let randomPart = "";
-  for (let i = 6; i < 20; i++) randomPart += BASE62_CHARS[digest[i] % 62];
-  return `ses_${timeHex}${randomPart}`;
+  const key = `${clientTool || "generic"}\0${sessionId || ""}`;
+  const existing = translatedSessions.get(key);
+  if (existing) {
+    existing.lastUsed = Date.now();
+    return existing.sessionId;
+  }
+  const minted = `ses_${descendingTimeHex(Date.now(), 1)}${randomSessionSuffix()}`;
+  if (translatedSessions.size >= MAX_TRANSLATED_SESSIONS) {
+    translatedSessions.delete(translatedSessions.keys().next().value);
+  }
+  translatedSessions.set(key, { sessionId: minted, lastUsed: Date.now() });
+  return minted;
 }
 
 function normalizeSession(value) {
