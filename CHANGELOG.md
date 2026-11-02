@@ -1,3 +1,100 @@
+# v0.5.168 (2026-11-02) — Haiku 5.5 thinking, images inside tool results, and the OpenCode Free session id that was a 1-in-100 lottery
+
+**Upgrade if you use Claude Haiku 5.5 with thinking, send images back from a tool, or run the
+OpenCode Free lane.** Each of those was broken in a way that returned an upstream 400 or 429 rather
+than an answer, and none of them had a test holding them down.
+
+This release comes out of a commit-by-commit triage of 9router v0.5.105 → v0.5.112 against this
+fork — 70 commits, of which 13 were already fixed here, 15 do not apply to this fork's structure
+and 4 need a feature this fork does not have. The seven that mattered are below. 47 new tests; the
+suite is 3,465.
+
+Every fix below was confirmed present in this tree before it was ported, and every test was run
+against the pre-fix code and **shown to fail** before it was kept — so none of this is held by a
+test that cannot fail.
+
+## Fixed
+
+- **Claude Haiku 5.5 lost its thinking.** The passthrough downgraded `thinking.type: "adaptive"`
+  to `enabled/budget_tokens` for every model id matching `haiku`. That is right for Haiku 3.x and
+  4.x, which reject adaptive — but Haiku 5.5 accepts *only* adaptive, so Anthropic answered 400
+  `thinking.type.enabled is not supported for this model` and the request died. `claude-haiku-5-5`
+  is in the catalog, so any client sending thinking hit this. The version is now read out of the id
+  and the downgrade applies only below major 5, across every id shape the catalogs carry
+  (`claude-haiku-4-5`, `claude-haiku-4.5`, `claude-4.5-haiku`, `claude-3-5-haiku-20241022`), with
+  or without a provider prefix or date suffix. A future Haiku 6 is not downgraded either.
+
+- **An image inside a tool result was rejected.** A `role: "tool"` message had its content array
+  forwarded into Anthropic's `tool_result` verbatim, so an OpenAI `image_url` part arrived
+  unconverted and the request failed with 400 `Input tag 'image_url' ... does not match any of the
+  expected tags`. Claude does accept image blocks inside a tool result — they only have to be
+  Claude-shaped, which the user-message path already did and the tool path did not. Data URIs now
+  become base64 image blocks, `http(s)` urls become url blocks, already-Claude blocks pass through,
+  and a plain string is untouched. If nothing in the payload is convertible it is sent as it was,
+  because an empty tool result is itself a 400.
+
+- **OpenCode Free minted session ids that the gate threw away.** The free lane encodes a timestamp
+  and a counter into the `ses_` prefix, and the upstream decodes **both**: it refuses a session
+  whose time is in the future or older than the free-tier window. kRouter derived those 36 time
+  bits from a sha256 of the conversation seed — a uniform draw over 2^36 ms — so the field almost
+  never qualified. Measured here: digest-derived ids decode 12 to 660 days away from the server's
+  clock and fall inside a 7-day window **97 times in 10,000**. Ids are now minted from the current
+  clock and memoised per conversation, which keeps the property the digest existed for — the free
+  quota is counted per session, so a fresh id on every request burns it and comes back 429 — while
+  putting a timestamp in the field that the gate accepts.
+
+  **This alone does not revive the lane.** The free tier also gates on the TLS ClientHello, and
+  without a TLS-impersonating client the request still leaves over Node's fingerprint and is
+  answered 429. That work is not in this release.
+
+- **`oc/deepseek-v4.1-flash-free` advertised a 1M context window.** The free lane has no static
+  catalog in this fork, so the id inherited the *paid* `deepseek-v4.1-flash` capability row —
+  1,000,000 tokens — while the free backend rejects prompts above roughly 330k. Clients size their
+  compaction budget from the published `context_length`, so a long session never compacted and then
+  hard-failed mid-run on a 400. Pinned to 330,000 with a 128,000 max output, leaving every other
+  capability of that id as it was.
+
+- **A drained credential stayed in rotation.** A provider answering HTTP 400 `insufficient credits`
+  matched no error rule, so it fell through to the request-scoped branch and took no cooldown. A
+  combo did still move to its next model, but the account picker kept choosing the key with no
+  money on it, and every later request spent another round trip to find out again. Anthropic's
+  wording (`credit balance is too low`) was already handled; this adds the phrasing the other
+  upstreams use, as a cooldown so the key steps out of rotation until it is topped up.
+
+- **NUL bytes in a bound string corrupted the write.** SQLite stores TEXT as a NUL-terminated C
+  string, and telemetry binds values that can carry raw bytes — a model id or endpoint straight
+  from the request, tool output, a diff. Depending on the driver the write throws
+  (`String contains null byte`, which takes the background flush worker with it), silently keeps
+  only the text before the NUL, or — measured on better-sqlite3 with Node 26 — stores the NUL and
+  then never matches on a later lookup. Bound strings are now sanitised once at the binding
+  boundary, before migrations run, so all four SQLite drivers behave the same.
+
+- **The dashboard's code editor loaded Monaco from a CDN, unpinned.** Nothing imports the
+  `monaco-editor` package — `@monaco-editor/react` fetches Monaco from jsdelivr at a version
+  hardcoded in its loader, which ships `monaco-editor@0.55.1` and bundles DOMPurify 3.2.7. So the
+  DOMPurify advisories reported against monaco-editor described code the browser really loaded, and
+  raising the dependency range would not have changed one byte of it — which is also why no scanner
+  flagged it: the vulnerable copy is fetched at runtime, not installed. The CDN copy is now pinned
+  to 0.57.0 (DOMPurify 3.4.15), configured inside the existing lazy import so the editor still
+  loads on demand.
+
+- **zod 4.4.3 → 4.6.7** (development-only). A HIGH memory-exhaustion advisory when validating
+  oversized constrained collections. It arrives transitively through `eslint-plugin-react-hooks`
+  and is not in the production tree, so nothing shipped was affected; the bump clears the last
+  HIGH from `npm audit`.
+
+Verified before release: the full suite at 3,465 passing on Node 20.19 and 22, the dashboard build
+green on the Node 20.9 runtime floor, eslint clean, and `npm audit --omit=dev` reporting **zero
+vulnerabilities at every severity**. Fifteen moderate advisories remain in the development tree,
+all of them one root cause — `minimatch` below 11.0.1 reached through eslint, which has not widened
+its range — and npm's only suggested fix is to downgrade eslint to 4.0.0. None of it ships in the
+npm package or the Docker image.
+
+Not verified live: the Monaco pin. The editor sits behind dashboard auth and
+`@monaco-editor/loader` keeps its resolved paths in a closure with no accessor, so the pin rests on
+the wiring, the pinned URL appearing in the production bundle and a clean build rather than on a
+observed browser fetch.
+
 # v0.5.167 (2026-11-02) — the Next.js remote-code-execution fixes, and fourteen other advisories, actually reach you
 
 **Upgrade, and prefer this over 0.5.166 on anything exposed.** Every change here is a dependency
