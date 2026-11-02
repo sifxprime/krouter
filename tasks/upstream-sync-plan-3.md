@@ -312,6 +312,10 @@ independent, and none needs a provider credential to verify.
   - Change: pin the CDN copy to 0.57.0 (DOMPurify 3.4.15) in a shared constant and configure the loader with
     it inside the existing `dynamic()` import so the editor stays lazy. Add the test that keeps the CDN pin,
     the `package.json` range and the installed package in step.
+  - **Dependabot cannot see this one.** Checked on 2026-11-02: the only open alerts on `sifxprime/krouter`
+    are two `minimatch` glob-DoS mediums — no DOMPurify alert, because the vulnerable copy is fetched from
+    jsdelivr at runtime rather than installed into `node_modules`. So this will not arrive as a Dependabot PR
+    and has to be taken deliberately. That is an argument for landing it, not against.
   - Coordinate: this touches `package.json`, and a v0.5.167 security release is in flight. Flag it to whoever
     cuts that release rather than landing it underneath them.
 - **1da5b0d7 - `oc/deepseek-v4.1-flash-free` publishes a 1M window the backend refuses above ~330k** (risk low)
