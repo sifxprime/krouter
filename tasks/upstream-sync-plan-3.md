@@ -270,7 +270,30 @@ Upstream rows: **38a0c449** (89 files, +14 572), **ce060c79** parts 1 and 3, **e
 
 ---
 
-## Slice `s2` - live request bugs users hit today (no new features, no new deps)
+## Slice `s2` - live request bugs users hit today (no new features, no new deps) — **SHIPPED**
+
+All six rows landed, each with a falsified test (the test was run against the pre-fix code
+and shown to fail). Suite 3418 -> 3465, build exit 0, no dependency changes.
+
+Two corrections to this slice's own assessment, found while implementing it:
+
+1. **b82f5c4a was half already-have.** kRouter already carried Anthropic's
+   `credit balance is too low` as `cooldownMs: COOLDOWN.long`. Only the generic
+   `insufficient credit` wording was missing, and because kRouter already has the
+   request-scoped 4xx advance (5cdcddf5), a combo *did* already move to its next member —
+   the real defect was narrower: the drained credential took no cooldown, so the account
+   picker kept choosing it. Ported in kRouter's idiom (a cooldown rule beside the
+   existing one), not upstream's `backoff: true`, which would contradict the line above it.
+2. **1da5b0d7's window is worse here than upstream described, and an arg-order slip nearly
+   hid it.** `getCapabilitiesForModel(provider, model)` — called with the arguments
+   reversed it silently returns DEFAULT_CAPABILITIES, which looks like a safe 200k window.
+   Called correctly, `oc/deepseek-v4.1-flash-free` resolved to **1 000 000 / 384 000**,
+   inherited from the *paid* `deepseek-v4.1-flash` pattern row, because the free lane has
+   no static catalog in this tree at all. The test asserts the cap and pins the
+   neighbouring capabilities so the override cannot drift.
+
+`5883110b` landed as the **CDN pin only**; the `package.json` dependency range was
+deliberately left alone (see that row).
 
 Files: `open-sse/translator/helpers/claudeHelper.js`, `open-sse/translator/request/openai-to-claude.js`,
 `src/lib/db/driver.js` (+ new `src/lib/db/helpers/nullBytes.js`), `open-sse/config/errorConfig.js`,
@@ -319,8 +342,18 @@ independent, and none needs a provider credential to verify.
     are two `minimatch` glob-DoS mediums — no DOMPurify alert, because the vulnerable copy is fetched from
     jsdelivr at runtime rather than installed into `node_modules`. So this will not arrive as a Dependabot PR
     and has to be taken deliberately. That is an argument for landing it, not against.
-  - Coordinate: this touches `package.json`, and a v0.5.167 security release is in flight. Flag it to whoever
-    cuts that release rather than landing it underneath them.
+  - **Shipped as the CDN pin alone.** Confirmed in this tree: nothing imports `monaco-editor` (only
+    `@monaco-editor/react`, via `dynamic()`), the installed package is 0.53.0, and `@monaco-editor/loader`
+    hardcodes `monaco-editor@0.55.1`. So the installed version is what users run *nothing* of, and the CDN pin
+    is the entire fix. The `package.json` range was left at `^0.53.0` on purpose — bumping it changes nothing
+    a browser loads and would put this change in the release's path. If the release wants the audit line clean,
+    bump the range there; it needs no code change.
+  - **Not verified live.** The editor sits on an auth-gated dashboard page, so the pin was verified by wiring
+    (`loader.config` runs inside the `dynamic()` import, before `init()`), by the pinned URL appearing in the
+    production bundle, and by a clean build — not by watching a browser fetch 0.57.0.
+    `@monaco-editor/loader` keeps its resolved paths in a closure with no accessor, so a test cannot assert the
+    effective value either. Someone with dashboard access should confirm the editor still loads and that the
+    network tab shows `monaco-editor@0.57.0`.
 - **1da5b0d7 - `oc/deepseek-v4.1-flash-free` publishes a 1M window the backend refuses above ~330k** (risk low)
   - Change: provider-scoped capability entry, `contextWindow 330000` / `maxOutput 128000`. Clients size their
     compaction budget from the published number, so today a long session never compacts and hard-fails on a
@@ -544,9 +577,9 @@ missing one and that bug has already shipped three times.**
 
 ## Recommended order
 
-1. **`s0`** — applied and proven. Keep it; add the decoded-timestamp test.
-2. **`s2`** — live bugs, small diffs, no new deps, no credentials needed to verify. Best value per risk in the
-   whole range. Coordinate the Monaco row with the v0.5.167 release.
+1. ~~**`s0`**~~ — **done** (547f2446). Digest replaced, decoded-timestamp test added and falsified.
+2. ~~**`s2`**~~ — **done**. All six rows, 46 tests, each falsified. See the slice header for the two
+   assessment corrections it produced.
 3. **`s3`** — providers and catalog. `b9c27225` (Runcrate) first as the cheapest end-to-end exercise of the
    wiring checklist; then the Kimi K3.1 Pro pair, the Codex rows, then the adapt-heavy capability rows.
    Every row needs a live key or it ships unverified.

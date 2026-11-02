@@ -1,4 +1,5 @@
 import { ensureDirs, DATA_FILE } from "./paths.js";
+import { stripNullBytes } from "./helpers/nullBytes.js";
 
 // Use global to survive Next.js dev hot-reload (module state resets on reload)
 if (!global._dbAdapter) global._dbAdapter = { instance: null, initPromise: null, logged: false };
@@ -52,6 +53,28 @@ async function trySqlJs() {
   }
 }
 
+/**
+ * Make every bound string NUL-safe, once, for all four drivers.
+ *
+ * Sanitising at the binding boundary covers every driver and every column type with a
+ * single rule, instead of one call site at a time. The spread keeps the adapter's other
+ * members (exec, transaction, close, raw, driver) exactly as the driver built them;
+ * `exec` takes no bound params, and a `transaction(fn)` body reaches the DB through this
+ * same wrapper because that is what getAdapter() returns.
+ *
+ * @param {object} adapter
+ * @returns {object} adapter with NUL-safe run/get/all
+ */
+function withNullByteSafeParams(adapter) {
+  const clean = (params) => (Array.isArray(params) ? params.map(stripNullBytes) : params);
+  return {
+    ...adapter,
+    run: (sql, params = []) => adapter.run(sql, clean(params)),
+    get: (sql, params = []) => adapter.get(sql, clean(params)),
+    all: (sql, params = []) => adapter.all(sql, clean(params)),
+  };
+}
+
 async function initAdapter() {
   ensureDirs();
   // Order per runtime:
@@ -62,6 +85,9 @@ async function initAdapter() {
   if (!adapter) adapter = await tryNodeSqlite();
   if (!adapter) adapter = await trySqlJs();
   if (!adapter) throw new Error("[DB] No SQLite driver available (bun/better/node/sql.js all failed)");
+
+  // Before the migration runs, so migrations bind through it too.
+  adapter = withNullByteSafeParams(adapter);
 
   if (!state.logged) {
     console.log(`[DB] Driver: ${adapter.driver} | file: ${DATA_FILE}`);

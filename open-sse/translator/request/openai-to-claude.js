@@ -269,6 +269,39 @@ function applyClaudeThinkingShape(model, body, result) {
   result.thinking = { ...thinking, display: "summarized" };
 }
 
+// A tool message may carry an OpenAI content array (text + image_url parts). Claude
+// accepts image blocks inside tool_result, but not OpenAI image_url parts: forwarding
+// one verbatim is answered 400 "Input tag 'image_url' ... does not match any of the
+// expected tags" (upstream 95009651, #5125). Convert them the way the user branch below
+// already does — same regex and same block shapes, so the two paths cannot drift.
+// A plain string is passed through untouched.
+function convertToolResultContent(content) {
+  if (!Array.isArray(content)) return content;
+
+  const parts = [];
+  for (const part of content) {
+    if (part.type === "text" && part.text) {
+      parts.push({ type: "text", text: part.text });
+    } else if (part.type === "image_url" && part.image_url?.url) {
+      const url = part.image_url.url;
+      const match = url.match(/^data:([^;]+);base64,(.+)$/);
+      if (match) {
+        parts.push({
+          type: "image",
+          source: { type: "base64", media_type: match[1], data: match[2] }
+        });
+      } else if (url.startsWith("http://") || url.startsWith("https://")) {
+        parts.push({ type: "image", source: { type: "url", url } });
+      }
+    } else if (part.type === "image" && part.source) {
+      parts.push({ type: "image", source: part.source });
+    }
+  }
+
+  // Nothing convertible: keep the original payload rather than sending an empty result.
+  return parts.length > 0 ? parts : content;
+}
+
 // Get content blocks from single message
 function getContentBlocksFromMessage(msg, toolNameMap = new Map()) {
   const blocks = [];
@@ -277,7 +310,7 @@ function getContentBlocksFromMessage(msg, toolNameMap = new Map()) {
     blocks.push({
       type: "tool_result",
       tool_use_id: msg.tool_call_id,
-      content: msg.content
+      content: convertToolResultContent(msg.content)
     });
   } else if (msg.role === "user") {
     if (typeof msg.content === "string") {

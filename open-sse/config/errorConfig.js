@@ -104,6 +104,13 @@ export const ERROR_RULES = [
   // over to the next key: Anthropic's empty credit balance, Gemini's bad key and
   // region block (the region depends on the connection's proxy).
   { text: "credit balance is too low",          cooldownMs: COOLDOWN.long },
+  // Same class, the wording most other upstreams use (upstream b82f5c4a, #4713).
+  // Substring, so it also covers the plural "insufficient credits". Without a rule
+  // this fell into the request-scoped branch below: a combo would still advance to its
+  // next member, but the drained credential took no cooldown and the picker kept
+  // choosing it for every later request. Antigravity already handles its own wording
+  // in services/antigravity429Engine.js; this is the general case.
+  { text: "insufficient credit",                cooldownMs: COOLDOWN.long },
   { text: "api key not valid",                  cooldownMs: COOLDOWN.long },
   { text: "api_key_invalid",                    cooldownMs: COOLDOWN.long },
   { text: "user location is not supported",     cooldownMs: COOLDOWN.long },
