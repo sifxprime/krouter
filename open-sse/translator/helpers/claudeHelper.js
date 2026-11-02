@@ -239,8 +239,20 @@ export function fixToolUseOrdering(messages) {
   return merged;
 }
 
-// Models that reject thinking.type "adaptive" (only Sonnet/Opus support it)
-const ADAPTIVE_THINKING_UNSUPPORTED = /haiku/i;
+// Haiku 3.x/4.x reject thinking.type "adaptive"; Haiku 5+ accepts ONLY adaptive, and a
+// downgrade to enabled/budget_tokens is answered 400 "thinking.type.enabled is not
+// supported for this model" (upstream 0ad0a722, #5183). The catalog carries
+// claude-haiku-5-5, so a bare /haiku/ test breaks it.
+//
+// The version may follow "haiku" (haiku-5-5, haiku-4.5) or precede it (claude-4.5-haiku,
+// claude-3-5-haiku-20241022), with or without a provider prefix or date suffix. The
+// leading lookbehind keeps a date suffix from being read as the version. An unversioned
+// "haiku" keeps the old, safe downgrade, and a future haiku-6 is left alone.
+function isAdaptiveThinkingUnsupported(model = "") {
+  if (!/haiku/i.test(model)) return false;
+  const m = String(model).match(/haiku[-._]?(\d+)|(?<![\d.])(\d+)(?:[-._]\d+)?[-._]?haiku/i);
+  return m ? Number(m[1] || m[2]) < 5 : true;
+}
 
 // Normalize a native Claude passthrough body to match Anthropic Messages API spec.
 // Newer Cowork/Claude Code clients emit beta-only shapes that OAuth endpoints reject:
@@ -262,7 +274,7 @@ export function normalizeClaudePassthrough(body, model = "") {
   if (!body || typeof body !== "object") return body;
 
   // 1. Downgrade adaptive thinking for models that don't support it
-  if (body.thinking?.type === "adaptive" && ADAPTIVE_THINKING_UNSUPPORTED.test(model)) {
+  if (body.thinking?.type === "adaptive" && isAdaptiveThinkingUnsupported(model)) {
     body.thinking = { type: "enabled", budget_tokens: 10000 };
   }
 

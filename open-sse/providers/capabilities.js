@@ -257,6 +257,19 @@ export const PROVIDER_CAPABILITIES = {
   "opencode-go": {
     "claude-haiku-5-5": { vision: true, pdf: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 },
   },
+  // OpenCode Free (oc). The free lane has no static catalog here, so its ids fall
+  // through to the pattern table and pick up the paid deepseek-v4.1-flash row's
+  // 1000000/384000. The free backend rejects prompts above ~330k tokens (upstream
+  // 1da5b0d7, #5097), and clients size their compaction budget from the published
+  // context_length (src/app/api/v1/models/route.js), so they never compacted and the
+  // session hard-failed mid-run with a 400.
+  //
+  // Only the limits change: vision, reasoning and thinkingFormat are what this id
+  // already resolved to. maxOutput drops to 128000 to stay <= contextWindow, since a
+  // max_completion_tokens above the window is itself rejected.
+  "opencode": {
+    "deepseek-v4.1-flash-free": { vision: true, reasoning: true, thinkingFormat: "deepseek", contextWindow: 330000, maxOutput: 128000 },
+  },
 };
 
 /**

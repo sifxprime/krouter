@@ -18,6 +18,7 @@ import {
   OPENCODE_SESSION_RE,
   translateSessionId,
   decodeSessionCounter,
+  decodeSessionTime,
 } from "../../open-sse/executors/opencode.js";
 import { injectReasoningContent } from "../../open-sse/utils/reasoningContentInjector.js";
 
@@ -90,19 +91,33 @@ describe("OpenCode Free session ids decode the way the gate expects", () => {
 
   it("keeps the encoded counter small — 500 was answered with 403", () => {
     // Upstream decodes the prefix; live probes passed at counter 1 and failed at 500.
-    // Upstream mints from a live counter that climbs past the limit under a burst
-    // inside one millisecond; kRouter derives every id from a seed instead, so the
-    // counter is pinned to 1 no matter how many ids are made (see translateSessionId).
+    // Upstream mints from a live counter that climbs past the limit under a burst inside
+    // one millisecond; kRouter pins the counter to 1 for every minted id and memoizes
+    // per conversation instead, so no burst can move it (see translateSessionId).
     expect(decodeSessionCounter(translateSessionId("conversation-1"))).toBe(1);
     for (let i = 0; i < 40; i++) {
       expect(decodeSessionCounter(translateSessionId(`conversation-${i}`))).toBeLessThan(17);
     }
   });
 
-  it("derives the same id for one conversation and different ids for two", () => {
+  // Stability is the whole reason this translation exists: the free quota is accounted
+  // per session, so a fresh id per request burns it and comes back 429.
+  it("returns the same id for one conversation and different ids for two", () => {
     expect(translateSessionId("conversation-1")).toBe(translateSessionId("conversation-1"));
     expect(translateSessionId("conversation-1")).not.toBe(translateSessionId("conversation-2"));
     expect(translateSessionId("conversation-1")).toMatch(OPENCODE_SESSION_RE);
+  });
+
+  // The gate decodes this field and refuses a session whose time is in the future or
+  // older than the free-tier window. The old digest-derived prefix drew it uniformly
+  // over 2^36 ms, so it landed inside the window about 1% of the time (upstream
+  // measured 1/10 accepted against 10/10 for Date.now(); ce060c79). Nothing asserted
+  // it, so the lane 429'd while every other test here stayed green.
+  it("stamps the prefix with the current clock, not a digest", () => {
+    const wrappedNow = BigInt(Date.now()) & ((1n << 36n) - 1n);
+    const decoded = decodeSessionTime(translateSessionId("conversation-clock"));
+    const skewMs = Number(wrappedNow > decoded ? wrappedNow - decoded : decoded - wrappedNow);
+    expect(skewMs).toBeLessThan(5000);
   });
 
   it("namespaces by client tool so two tools reusing one id do not collide", () => {
