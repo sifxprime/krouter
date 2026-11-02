@@ -93,7 +93,10 @@ sets those 36 time bits from `sha256(...)[0..4]`, i.e. a uniform draw over 2^36 
 probes found the gate also refuses a session whose decoded time is in the future or older than the free-tier
 window.
 
-Measured in this tree (`probe-session-time.mjs`, reproducible):
+Measured in this tree. To reproduce: decode the prefix of a minted id with the exported
+`decodeSessionTime()` and compare it against `BigInt(Date.now()) & ((1n << 36n) - 1n)` — the encoding carries
+only 36 bits, so both sides must be read wrapped. `tests/unit/opencode-free-inference-endpoint.test.js`
+("stamps the prefix with the current clock, not a digest") is that comparison as an assertion.
 
 ```
 server's own wrapped clock now : 6908441852
