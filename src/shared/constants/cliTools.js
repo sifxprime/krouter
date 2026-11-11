@@ -61,7 +61,10 @@ export const MITM_TOOLS = {
     ],
   },
   copilot: {
-    // 0.5.175 — Not verified for this client; see the note on kiro.
+    // 0.5.175 — Unverifiable on the machine this was built on: Copilot needs VS
+    // Code, which is not installed (the Codex.app present is com.openai.codex, a
+    // different product). Not listed because nothing was tested, not because it
+    // is known to fail.
     captureModes: ["dns"],
     id: "copilot",
     name: "GitHub Copilot",
@@ -89,9 +92,21 @@ export const MITM_TOOLS = {
     ],
   },
   kiro: {
-    // 0.5.175 — Proxy mode is not listed because it has not been verified for
-    // this client, not because it is known to fail. Add "proxy" once a request
-    // through it has actually been seen intercepted.
+    // 0.5.175 — Half proven, so "proxy" is deliberately NOT listed yet.
+    //
+    // Proven: the proxy handles Kiro's own protocol. A real Kiro 1.4.154 request
+    // (POST /v1/responses to runtime.us-east-1.kiro.dev, user-agent KiroIDE
+    // 1.4.154, model "auto") replayed through the proxy got our leaf for that
+    // hostname (CN runtime.us-east-1.kiro.dev, issuer 9Router MITM Root CA),
+    // HTTP 200, `[proxy intercept] kiro auto -> cc/claude-fable-5-1`, and the
+    // model echoed the marker back -- with a deliberately invalid bearer token,
+    // so it never reached AWS.
+    //
+    // Not proven: that the Kiro client itself routes through a proxy. Kiro is a
+    // VS Code fork and its out/main.js references HTTPS_PROXY, --proxy-server and
+    // @vscode/proxy-agent, so it is expected to; it was running during this work
+    // and was not restarted, which is what confirming it needs. List "proxy" once
+    // a chat sent from the Kiro UI has been seen in the proxy log.
     captureModes: ["dns"],
     id: "kiro",
     name: "Kiro",
@@ -116,10 +131,21 @@ export const MITM_TOOLS = {
     ],
   },
   claude: {
-    // 0.5.175 — Verified: the Claude CLI bundle references HTTPS_PROXY/HTTP_PROXY
-    // and installs a ProxyAgent, and a gzip /v1/messages sent through the proxy was
-    // intercepted and served as the mapped target. Proxy mode needs no sudo and no
-    // /etc/hosts, so it cannot leave api.anthropic.com unreachable machine-wide.
+    // 0.5.175 — Proxy mode verified with the REAL client, not a crafted request.
+    // `HTTPS_PROXY=http://127.0.0.1:20129 claude -p "..." --model claude-opus-5`
+    // answered correctly, and the proxy log shows it sent everything through us:
+    // 15 non-chat calls passed through untouched (claude_cli/bootstrap, mcp-registry,
+    // oauth/account/settings, event_logging/v2/batch) and exactly one intercepted --
+    // `[proxy intercept] claude claude-opus-5 -> cc/claude-fable-5`. That split is
+    // the design working: only the chat is rerouted, telemetry and auth are not.
+    //
+    // Needs no sudo and no /etc/hosts, so unlike the DNS transport it cannot leave
+    // api.anthropic.com unreachable for the whole machine.
+    //
+    // NOT yet proven for the Claude Desktop GUI's own chat, which is a separate
+    // path from the agent-sdk CLI above. Its app.asar does reference HTTPS_PROXY,
+    // ProxyAgent and NODE_EXTRA_CA_CERTS, so it is expected to work; confirming it
+    // needs the app relaunched with the variable set.
     captureModes: ["dns", "proxy"],
     id: "claude",
     name: "Claude Desktop",
