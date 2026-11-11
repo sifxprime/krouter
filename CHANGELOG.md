@@ -1,3 +1,55 @@
+# v0.5.174 (2026-11-11) — Claude Desktop gzips its bodies, so every request was passed through
+
+**Upgrade if you route Claude Desktop or Claude Code through MITM.** Interception looked
+on and was not; your own Anthropic quota was paying for it.
+
+## Fixed
+
+- **33 of 34 Claude Desktop requests left the machine on the vendor's quota.** Everything
+  you would check was correct, which is why this survived two releases: the `claude` DNS
+  toggle on, `/etc/hosts` pointing `api.anthropic.com` at `127.0.0.1`, the TLS handshake
+  served by `9Router MITM Root CA`, the MITM listening on `:443`. The requests arrived and
+  were forwarded straight back out. From the MITM's own dumps on a live install:
+
+  ```
+  /v1/messages raw dumps        34
+  of those, passthrough         33
+  content-encoding              gzip   (5 of 5 sampled)
+  body as the MITM read it      \x1f\x8b...  (binary)
+  model as the MITM read it     (not found)
+  user-agent                    claude-cli/2.1.321 (external, claude-desktop, ...)
+  ```
+
+  Claude Desktop and Claude Code send `/v1/messages` gzip-compressed. `extractModel()` read
+  the raw bytes, `isBinaryData()` counted >30% non-printable bytes in the gzip header and
+  bailed, the model came back `null`, `getMappedModel()` had nothing to map, and
+  `if (!mappedModel) return passthrough(...)` sent the request to Anthropic.
+  `handlers/claude.js` would have failed on the same body a line later.
+
+  Kiro was unaffected throughout — plain JSON, no `content-encoding` — which is why this
+  read as a Claude-only certificate or toggle problem rather than a body-reading one.
+
+  The body is now decoded once before dispatch (gzip, x-gzip, deflate including raw,
+  br, zstd, and stacked encodings undone right-to-left), and the decoded buffer goes to
+  both `extractModel` and the handler. `passthrough` still sends the original bytes,
+  because it forwards the client's own headers and those still say gzip. The decoder is
+  deliberately forgiving: an unknown encoding or a failed inflate returns the body
+  untouched, so the existing passthrough path applies and no request is ever failed by
+  this layer. `content-encoding` joins `STRIP_HEADERS`, since `fetchRouter` re-serializes
+  with `JSON.stringify` and forwarding the header would tell kRouter to gunzip plain JSON.
+
+  It lives in `src/mitm/bodyCodec.js` for the reason `getMappedModel` moved to
+  `modelMap.js` in 0.5.169: `server.js` opens a TLS listener on require, so logic left
+  inside it can only be tested by re-implementing it, and a re-implementation drifts.
+
+- **The CLI Tools card now says Antigravity 2.x chat cannot be intercepted.** The toggle
+  used to look like every other one and then silently do nothing. Antigravity's chat is
+  made by `~/.gemini/bin/agy`, a 200 MB Go binary built with boringcrypto that carries its
+  own certificate pool and reads no proxy or CA environment variable
+  (`HTTPS_PROXY`, `SSL_CERT_FILE`, `NODE_EXTRA_CA_CERTS`, `GODEBUG`: zero occurrences).
+  No DNS redirect, proxy, or transparent-decrypt scheme changes that. Use the `ag/`
+  provider instead, which reaches the same Google backend over OAuth.
+
 # v0.5.173 (2026-11-11) — Kiro moved its endpoint again, and a watchdog that deleted the redirects it was meant to protect
 
 **Upgrade if you use MITM at all.** One of these was billing your IDE vendor instead of
