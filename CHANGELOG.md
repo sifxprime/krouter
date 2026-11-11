@@ -1,3 +1,54 @@
+# v0.5.171 (2026-11-11) — when MITM dies, it must not take the network with it
+
+**Upgrade if you use MITM.** A crash, force-quit or power cut left the DNS redirects
+behind with nothing listening, and every redirected provider host stopped working until
+you worked out why and restarted kRouter — on many machines, not even then.
+
+## Fixed
+
+- **MITM crashing took the providers offline, and the repair did not run.** The DNS
+  redirects are what make MITM work and what break the machine when the server is gone:
+  the host resolves to `127.0.0.1`, nothing is on `:443`, and the request does not fall
+  back to the real vendor — it fails to connect.
+
+  A clean stop already handles this (`server.js` shutdown calls
+  `removeAllDNSEntriesSync`, which can write `/etc/hosts` directly because the MITM
+  server runs as root). A SIGKILL, crash, force-quit or power cut does not. Reproduced
+  on a real machine:
+
+  ```
+  kill -9 <mitm pid>
+  :443 listener        0
+  hosts entries left   5
+  curl daily-cloudcode-pa.googleapis.com -> Couldn't connect to server
+  curl runtime.us-east-1.kiro.dev        -> Couldn't connect to server
+  ```
+
+  Two things made it stick. The repair ran **only at app startup**, so a crash meant no
+  provider traffic until the user restarted kRouter. And it called
+  `removeAllDNSEntries()` with **no argument**, so it needed a passwordless sudo and
+  silently did nothing on exactly the machines that get stuck — the user was then told to
+  run a `sed` command by hand.
+
+  The repair now runs on the 60-second watchdog tick as well as at startup, supplies the
+  sudo password already stored (the same one that started MITM), refuses to act while the
+  server is running, and verifies the removal by re-reading the status instead of trusting
+  the call.
+
+## Notes
+
+- Worth knowing: the MITM server is spawned with `detached: false`, so it is a child of
+  the kRouter app and stops when the app stops. That is why restarting kRouter drops MITM
+  until you turn it on again.
+- Verified on the wire this release: Claude Desktop through MITM returns
+  `claude-opus-5-5 -> claude-opus-5` (the id that leaked to Anthropic before 0.5.169), and
+  Kiro returns a 200 AWS EventStream via `auto -> ag/claude-opus-5-5-high`.
+- Antigravity's agent cannot be intercepted: `agy` embeds its own root pool
+  (`NewCertPool`/`RootCAs`, 22 bundled PEM blocks) and reads no TLS, CA or proxy
+  environment variables. `antigravity.caCertificates` exists only in `@vscode/proxy-agent`,
+  the Electron side, so it fixes sign-in and never the agent. Not fixable from kRouter.
+- One new test file, 8 tests; the suite is 3,630.
+
 # v0.5.170 (2026-11-11) — the Antigravity roster, and a test instance that could repoint the whole machine
 
 **Upgrade if you use Antigravity.** Every Gemini chat id kRouter published for it returned
