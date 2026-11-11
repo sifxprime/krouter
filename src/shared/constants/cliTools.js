@@ -1,6 +1,11 @@
 // MITM Tools — IDE tools intercepted via MITM proxy
 export const MITM_TOOLS = {
   antigravity: {
+    // 0.5.175 — Proxy mode cannot help here either, for a second independent
+    // reason: ~/.gemini/bin/agy (Go, boringcrypto) contains zero references to
+    // HTTPS_PROXY, HTTP_PROXY, ALL_PROXY or ProxyFromEnvironment, so it would never
+    // send the CONNECT -- on top of already rejecting the kRouter CA.
+    captureModes: ["dns"],
     id: "antigravity",
     name: "Antigravity",
     image: "/providers/antigravity.png",
@@ -56,6 +61,8 @@ export const MITM_TOOLS = {
     ],
   },
   copilot: {
+    // 0.5.175 — Not verified for this client; see the note on kiro.
+    captureModes: ["dns"],
     id: "copilot",
     name: "GitHub Copilot",
     image: "/providers/copilot.png",
@@ -82,6 +89,10 @@ export const MITM_TOOLS = {
     ],
   },
   kiro: {
+    // 0.5.175 — Proxy mode is not listed because it has not been verified for
+    // this client, not because it is known to fail. Add "proxy" once a request
+    // through it has actually been seen intercepted.
+    captureModes: ["dns"],
     id: "kiro",
     name: "Kiro",
     image: "/providers/kiro.png",
@@ -105,6 +116,11 @@ export const MITM_TOOLS = {
     ],
   },
   claude: {
+    // 0.5.175 — Verified: the Claude CLI bundle references HTTPS_PROXY/HTTP_PROXY
+    // and installs a ProxyAgent, and a gzip /v1/messages sent through the proxy was
+    // intercepted and served as the mapped target. Proxy mode needs no sudo and no
+    // /etc/hosts, so it cannot leave api.anthropic.com unreachable machine-wide.
+    captureModes: ["dns", "proxy"],
     id: "claude",
     name: "Claude Desktop",
     image: "/providers/claude.png",

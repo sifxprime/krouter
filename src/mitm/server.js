@@ -1,18 +1,13 @@
 const https = require("https");
 const http2 = require("http2");
 const tls = require("tls");
-const fs = require("fs");
-const path = require("path");
-const dns = require("dns");
-const { promisify } = require("util");
 const { execSync } = require("child_process");
 const { log, err, dumpRequest, createResponseDumper, clearDumpDir } = require("./logger");
 const { IS_DEV, LSOF_BIN, TARGET_HOSTS, URL_PATTERNS, MODEL_NO_MAP, getToolForHost, isChatRequest } = require("./config");
-const { DATA_DIR, MITM_DIR } = require("./paths");
-const { getCertForDomain } = require("./cert/generate");
+const { sniCallback, rootCredentials } = require("./certContext");
 const { applyAntigravityIdeVersionOverride } = require("./antigravityIdeVersion");
-const { getMappedModel } = require("./modelMap");
-const { decodeRequestBody } = require("./bodyCodec");
+const { decideRoute, INTERNAL_REQUEST_HEADER } = require("./dispatch");
+const { resolveTargetIP } = require("./resolveUpstream");
 const LOCAL_PORT = 443;
 const IS_WIN = process.platform === "win32";
 // 0.5.120 — Raw request/response dumps to ~/.krouter/logs/mitm. OFF by default.
@@ -25,7 +20,6 @@ const ENABLE_FILE_LOG = process.env.MITM_FILE_LOG === "1" || process.env.DEBUG_M
 
 // Clear stale dump files on every MITM start (prevents unbounded disk usage)
 clearDumpDir();
-const INTERNAL_REQUEST_HEADER = { name: "x-request-source", value: "local" };
 
 // Host rewrite for upstream forward: PROD cloudcode-pa is rate-limited (429),
 // daily-cloudcode-pa (dev endpoint) accepts same body+token. Same trick as open-sse.
@@ -42,33 +36,12 @@ const handlers = {
 };
 
 // ── SSL / SNI ─────────────────────────────────────────────────
-
-const certCache = new Map();
-let rootCAPem;
-
-function sniCallback(servername, cb) {
-  try {
-    if (certCache.has(servername)) return cb(null, certCache.get(servername));
-    const certData = getCertForDomain(servername);
-    if (!certData) return cb(new Error(`Failed to generate cert for ${servername}`));
-    const ctx = require("tls").createSecureContext({
-      key: certData.key,
-      cert: `${certData.cert}\n${rootCAPem}`
-    });
-    certCache.set(servername, ctx);
-    cb(null, ctx);
-  } catch (e) {
-    err(`SNI error for ${servername}: ${e.message}`);
-    cb(e);
-  }
-}
+// Contexts come from certContext.js so the proxy capture mode presents the
+// identical certificate chain; see that file.
 
 let sslOptions;
 try {
-  const rootKey = fs.readFileSync(path.join(MITM_DIR, "rootCA.key"));
-  const rootCert = fs.readFileSync(path.join(MITM_DIR, "rootCA.crt"));
-  rootCAPem = rootCert.toString("utf8");
-  sslOptions = { key: rootKey, cert: rootCert, SNICallback: sniCallback };
+  sslOptions = { ...rootCredentials(), SNICallback: sniCallback };
 } catch (e) {
   err(`Root CA not found: ${e.message}`);
   process.exit(1);
@@ -76,21 +49,6 @@ try {
 
 // ── Helpers ───────────────────────────────────────────────────
 
-const cachedTargetIPs = {};
-const CACHE_TTL_MS = 5 * 60 * 1000;
-
-async function resolveTargetIP(hostname) {
-  // Node v26: dns.resolve4() throws ENOTFOUND on raw IPv4 — skip DNS for IPs
-  if (require("net").isIP(hostname)) return hostname;
-  const cached = cachedTargetIPs[hostname];
-  if (cached && Date.now() - cached.ts < CACHE_TTL_MS) return cached.ip;
-  const resolver = new dns.Resolver();
-  resolver.setServers(["8.8.8.8"]);
-  const resolve4 = promisify(resolver.resolve4.bind(resolver));
-  const addresses = await resolve4(hostname);
-  cachedTargetIPs[hostname] = { ip: addresses[0], ts: Date.now() };
-  return cachedTargetIPs[hostname].ip;
-}
 
 function collectBodyRaw(req) {
   return new Promise((resolve, reject) => {
@@ -99,42 +57,6 @@ function collectBodyRaw(req) {
     req.on("end", () => resolve(Buffer.concat(chunks)));
     req.on("error", reject);
   });
-}
-
-// Extract model from URL path (Gemini), body (OpenAI/Anthropic), or Kiro conversationState
-function extractModel(url, body) {
-  const urlMatch = url.match(/\/models\/([^/:]+)/);
-  if (urlMatch) return urlMatch[1];
-  
-  // Skip parsing if body is binary (AWS EventStream, Protocol Buffers, etc.)
-  if (isBinaryData(body)) return null;
-  
-  try {
-    const parsed = JSON.parse(body.toString());
-    if (parsed.conversationState) {
-      return parsed.conversationState.currentMessage?.userInputMessage?.modelId || null;
-    }
-    return parsed.model || null;
-  } catch { return null; }
-}
-
-// Detect binary data vs JSON text
-function isBinaryData(buffer) {
-  if (!buffer || buffer.length === 0) return false;
-  // AWS EventStream signature: first 4 bytes = frame length (big-endian uint32)
-  // Check for non-printable chars in first 100 bytes (common in binary protocols)
-  const sample = buffer.slice(0, Math.min(100, buffer.length));
-  let nonPrintable = 0;
-  for (let i = 0; i < sample.length; i++) {
-    const byte = sample[i];
-    // Count non-ASCII printable chars (excluding whitespace)
-    if (byte < 0x20 && byte !== 0x09 && byte !== 0x0A && byte !== 0x0D) {
-      nonPrintable++;
-    }
-    if (byte > 0x7E) nonPrintable++;
-  }
-  // If >30% non-printable, treat as binary
-  return (nonPrintable / sample.length) > 0.3;
 }
 
 
@@ -404,39 +326,14 @@ const server = https.createServer(sslOptions, async (req, res) => {
       return passthrough(req, res, bodyBuffer);
     }
 
-    const tool = getToolForHost(req.headers.host);
-    if (!tool) return passthrough(req, res, bodyBuffer);
+    // One decision, shared with the proxy capture mode -- see dispatch.js for why
+    // this is not inlined here. Note `route.body` is the DECODED body for the
+    // handler; passthrough keeps the original bytes, because it forwards the
+    // client's own headers and those still say gzip.
+    const route = decideRoute(req, bodyBuffer);
+    if (route.action === "passthrough") return passthrough(req, res, bodyBuffer);
 
-    // Kiro IDE 1.0.228+ posts chat to `/` with an x-amz-target header rather than
-    // the /generateAssistantResponse path, so match on headers too (config.js).
-    if (!isChatRequest(tool, req)) return passthrough(req, res, bodyBuffer);
-
-    // Cursor uses binary proto — model extraction not possible at this layer.
-    // Delegate directly to handler which decodes proto internally.
-    if (tool === "cursor") {
-      return handlers[tool].intercept(req, res, bodyBuffer, null, passthrough);
-    }
-
-    // Claude Desktop / Claude Code gzip their request bodies. Decode before
-    // reading the model, or isBinaryData() rejects the body and every request
-    // falls through to passthrough() on the vendor's own quota. passthrough()
-    // below still sends the original bytes with the original headers.
-    const decodedBody = decodeRequestBody(bodyBuffer, req.headers);
-    const model = extractModel(req.url, decodedBody);
-
-    // Intentional passthrough: some models must never be re-routed (e.g. Antigravity
-    // tab-autocomplete) so latency-critical inline completion stays native. Silent — this
-    // is by design, not a leak, and fires per keystroke. See MODEL_NO_MAP in config.js.
-    if (model && (MODEL_NO_MAP[tool] || []).some((re) => re.test(model))) {
-      return passthrough(req, res, bodyBuffer);
-    }
-
-    const mappedModel = getMappedModel(tool, model);
-    if (!mappedModel) {
-      return passthrough(req, res, bodyBuffer);
-    }
-
-    return handlers[tool].intercept(req, res, decodedBody, mappedModel, passthrough);
+    return handlers[route.tool].intercept(req, res, route.body, route.mappedModel, passthrough);
   } catch (e) {
     err(`Unhandled error: ${e.message}`);
     if (!res.headersSent) res.writeHead(500, { "Content-Type": "application/json" });

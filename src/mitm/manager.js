@@ -409,6 +409,169 @@ function isPortAccepting(port, timeoutMs = 400) {
   });
 }
 
+// ── Proxy capture mode ───────────────────────────────────────
+// 0.5.175 — The second capture transport (src/mitm/proxy.js). Everything here
+// is deliberately simpler than the :443 path because nothing is privileged:
+// no sudo, no /etc/hosts, no port 443 to wrestle away from another process, and
+// nothing left behind to heal if the process dies. Stopping it cannot leave a
+// domain unreachable, which is the failure mode the DNS transport has.
+
+const PROXY_DEFAULT_PORT = 20129;
+const PROXY_PID_FILE = path.join(MITM_DIR, ".proxy.pid");
+const PROXY_LOG_FILE = path.join(MITM_DIR, "proxy.log");
+let proxyProcess = null;
+let proxyPid = null;
+
+function proxyPort() {
+  const n = Number(process.env.MITM_PROXY_PORT || PROXY_DEFAULT_PORT);
+  return Number.isInteger(n) && n > 0 && n < 65536 ? n : PROXY_DEFAULT_PORT;
+}
+
+/** Last line the proxy wrote, so a failed start says why. */
+function lastProxyLogLine() {
+  try {
+    const lines = fs.readFileSync(PROXY_LOG_FILE, "utf-8").trim().split("\n");
+    return lines[lines.length - 1] || "";
+  } catch {
+    return "";
+  }
+}
+
+function resolveBundledProxyPath() {
+  if (process.env.MITM_PROXY_PATH) return process.env.MITM_PROXY_PATH;
+  const sibling = path.join(__dirname, "proxy.js");
+  if (fs.existsSync(sibling)) return sibling;
+  const fromCwd = path.join(process.cwd(), "src", "mitm", "proxy.js");
+  if (fs.existsSync(fromCwd)) return fromCwd;
+  const fromNext = path.join(process.cwd(), "..", "src", "mitm", "proxy.js");
+  if (fs.existsSync(fromNext)) return fromNext;
+  return fromCwd;
+}
+
+/**
+ * Is the proxy accepting? The PORT decides, never the process handle.
+ *
+ * Holding a live child handle is not evidence that anything is listening: a
+ * child that spawned and then failed to bind leaves the handle intact, and
+ * reporting "running" for it is how 0.5.171 came to delete working DNS
+ * redirects -- status that disagrees with reality is worse than status that
+ * says nothing. Asking the port also credits a proxy that outlived this app.
+ */
+async function getProxyCaptureStatus() {
+  const port = proxyPort();
+  const alive = await isPortAccepting(port);
+  let pid = proxyPid;
+  if (!pid) {
+    try { pid = Number(fs.readFileSync(PROXY_PID_FILE, "utf-8").trim()) || null; } catch { pid = null; }
+  }
+  return {
+    running: alive,
+    port,
+    pid: alive ? pid : null,
+    // What the user has to put in front of the client. Nothing can set this for
+    // an already-running app, so it is surfaced rather than applied.
+    proxyUrl: `http://127.0.0.1:${port}`,
+  };
+}
+
+/** Start the proxy. Never asks for a password -- that is the point of the mode. */
+async function startProxyCapture(apiKey) {
+  const port = proxyPort();
+  if (await isPortAccepting(port)) return { ...(await getProxyCaptureStatus()), alreadyRunning: true };
+
+  const proxyPath = resolveBundledProxyPath();
+  if (!fs.existsSync(proxyPath)) throw new Error(`Proxy not found at ${proxyPath}`);
+
+  const mitmRouterBase = await resolveMitmRouterBaseUrl();
+
+  // Detached, with output to a file rather than a pipe. Piped stdio ties the
+  // child's lifetime to a reader: once this app exits, the read end closes and
+  // the child's next log write hits a dead pipe, which in testing killed the
+  // request it was serving while the port stayed open -- a proxy that accepts
+  // connections and answers nothing. A file also means a failed start is still
+  // diagnosable after the parent has gone.
+  let logFd = null;
+  try {
+    logFd = fs.openSync(PROXY_LOG_FILE, "a");
+  } catch { /* fall back to discarding output rather than failing to start */ }
+
+  proxyProcess = spawn(process.execPath, [proxyPath], {
+    detached: true,
+    windowsHide: true,
+    cwd: os.tmpdir(),
+    stdio: ["ignore", logFd ?? "ignore", logFd ?? "ignore"],
+    env: {
+      ...process.env,
+      ROUTER_API_KEY: apiKey,
+      MITM_ROUTER_BASE: mitmRouterBase,
+      MITM_PROXY_PORT: String(port),
+    },
+  });
+  proxyProcess.unref();
+  if (logFd !== null) { try { fs.closeSync(logFd); } catch { /* ignore */ } }
+  proxyPid = proxyProcess.pid;
+  try { fs.writeFileSync(PROXY_PID_FILE, String(proxyPid)); } catch { /* best effort */ }
+  proxyProcess.on("exit", () => {
+    proxyProcess = null;
+    proxyPid = null;
+    try { fs.rmSync(PROXY_PID_FILE, { force: true }); } catch { /* ignore */ }
+  });
+
+  // Wait for it to actually accept. A refused connect returns instantly, so
+  // this needs its own delay -- without one the whole loop finishes in
+  // microseconds and reports a port that is not listening yet.
+  for (let i = 0; i < 50; i++) {
+    if (await isPortAccepting(port, 200)) break;
+    if (proxyProcess === null) break; // exited; the exit handler cleared it
+    await new Promise((r) => setTimeout(r, 100));
+  }
+
+  const status = await getProxyCaptureStatus();
+  if (!status.running) {
+    throw new Error(`Proxy did not start on port ${port}: ${lastProxyLogLine() || "no output"}`);
+  }
+  return status;
+}
+
+async function stopProxyCapture() {
+  const port = proxyPort();
+
+  // The pid file is the only thing a proxy from a previous app run leaves
+  // behind -- there is no system state to undo, which is the whole advantage
+  // of this transport over the DNS one.
+  let filePid = null;
+  try { filePid = Number(fs.readFileSync(PROXY_PID_FILE, "utf-8").trim()) || null; } catch { /* none */ }
+
+  const signal = (sig) => {
+    if (proxyProcess && !proxyProcess.killed) {
+      try { proxyProcess.kill(sig); } catch { /* ignore */ }
+    }
+    if (filePid && isProcessAlive(filePid)) killProcess(filePid, sig === "SIGKILL");
+  };
+
+  // Signals are asynchronous: checking the port immediately after kill() reports
+  // "still running" for a process that is about to exit. Wait for the port to
+  // actually stop accepting, then escalate rather than reporting a lie.
+  signal("SIGTERM");
+  let closed = false;
+  for (let i = 0; i < 30; i++) {
+    if (!(await isPortAccepting(port, 150))) { closed = true; break; }
+    await new Promise((r) => setTimeout(r, 100));
+  }
+  if (!closed) {
+    signal("SIGKILL");
+    for (let i = 0; i < 20; i++) {
+      if (!(await isPortAccepting(port, 150))) break;
+      await new Promise((r) => setTimeout(r, 100));
+    }
+  }
+
+  proxyProcess = null;
+  proxyPid = null;
+  try { fs.rmSync(PROXY_PID_FILE, { force: true }); } catch { /* ignore */ }
+  return getProxyCaptureStatus();
+}
+
 async function getMitmStatus() {
   let running = serverProcess !== null && !serverProcess.killed;
   let pid = serverPid;
@@ -962,6 +1125,10 @@ const stopMitm = stopServer;
 
 module.exports = {
   getMitmStatus,
+  startProxyCapture,
+  stopProxyCapture,
+  getProxyCaptureStatus,
+  PROXY_DEFAULT_PORT,
   startServer,
   stopServer,
   enableToolDNS,

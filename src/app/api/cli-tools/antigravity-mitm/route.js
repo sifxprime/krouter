@@ -11,6 +11,9 @@ import {
   loadEncryptedPassword,
   isSudoPasswordRequired,
   initDbHooks,
+  startProxyCapture,
+  stopProxyCapture,
+  getProxyCaptureStatus,
 } from "@/mitm/manager";
 import { getSettings, updateSettings } from "@/lib/localDb";
 
@@ -70,7 +73,12 @@ export async function GET() {
     const status = await getMitmStatus();
     const settings = await getSettings();
     const hasCachedPassword = !!getCachedPassword() || !!(await loadEncryptedPassword());
+    // 0.5.175 — The second capture transport, reported independently: it is a
+    // different port, a different lifecycle, and needs no privilege, so it can
+    // be up while the :443 server is down and vice versa.
+    const proxy = await getProxyCaptureStatus();
     return NextResponse.json({
+      proxyCapture: proxy,
       running: status.running,
       pid: status.pid || null,
       certExists: status.certExists || false,
@@ -174,7 +182,7 @@ export async function DELETE(request) {
 // PATCH - Toggle DNS for a specific tool (enable/disable)
 export async function PATCH(request) {
   try {
-    const { tool, action, sudoPassword } = await request.json();
+    const { tool, action, sudoPassword, apiKey } = await request.json();
     const pwd = getPassword(sudoPassword) || await loadEncryptedPassword() || "";
 
     // trust-cert is a global action with no tool, so requiring `tool` here made
@@ -184,8 +192,21 @@ export async function PATCH(request) {
     if (!action) {
       return NextResponse.json({ error: "action required" }, { status: 400 });
     }
-    if (action !== "trust-cert" && !tool) {
+    if (action !== "trust-cert" && !action.startsWith("proxy-") && !tool) {
       return NextResponse.json({ error: "tool required for enable/disable" }, { status: 400 });
+    }
+
+    // 0.5.175 — Handled before the privilege checks below, deliberately: the
+    // proxy capture mode binds an ordinary port and touches no system state, so
+    // asking for a password here would throw away the reason the mode exists.
+    if (action === "proxy-start" || action === "proxy-stop") {
+      // Same source as the :443 server's start: the client sends it. Optional --
+      // kRouter accepts loopback without one, and the proxy only ever talks to
+      // kRouter over loopback.
+      const proxyCapture = action === "proxy-start"
+        ? await startProxyCapture(apiKey || process.env.ROUTER_API_KEY || "")
+        : await stopProxyCapture();
+      return NextResponse.json({ success: true, proxyCapture });
     }
     if (requiresSudoPassword(pwd)) {
       return NextResponse.json({ error: "Missing sudoPassword" }, { status: 400 });
@@ -207,7 +228,7 @@ export async function PATCH(request) {
       const status = await getMitmStatus();
       return NextResponse.json({ success: true, certTrusted: status.certTrusted });
     } else {
-      return NextResponse.json({ error: "action must be enable, disable, or trust-cert" }, { status: 400 });
+      return NextResponse.json({ error: "action must be enable, disable, trust-cert, proxy-start, or proxy-stop" }, { status: 400 });
     }
 
     if (!isWin && sudoPassword) setCachedPassword(sudoPassword);

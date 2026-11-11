@@ -17,7 +17,12 @@ const cliMitmDir = path.join(cliDir, "app", "src", "mitm");
 // it can be copied to DATA_DIR/runtime/ and spawned from there (escapes
 // node_modules file locks that block `npm i -g 9router@latest` on Windows).
 const EXTERNALS = [];
-const ENTRIES = ["server.js"];
+// Every spawnable MITM entrypoint must be listed here. cleanPlainFiles below
+// deletes every file in the CLI bundle dir that is NOT an entry, so an
+// entrypoint left out of this list is not merely unbundled -- it is removed
+// from the published package and the feature is silently missing at runtime.
+// Modules required BY an entry are inlined into its bundle and need no entry.
+const ENTRIES = ["server.js", "proxy.js"];
 
 async function buildEntry(entry) {
   const mitmSrc = path.join(appDir, "src", "mitm");

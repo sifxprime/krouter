@@ -26,9 +26,17 @@ export default function MitmToolCard({
   modelAliases = {},
   cloudEnabled,
   onDnsChange,
+  proxyCapture,
+  onProxyChange,
 }) {
   const [loading, setLoading] = useState(false);
   const [warning, setWarning] = useState(null);
+  // 0.5.175 — Proxy capture mode. One process serves every intercepted host, so
+  // its state is global: it comes from the page's existing status fetch rather
+  // than one fetch per expanded card.
+  const [proxyBusy, setProxyBusy] = useState(false);
+  const [proxyError, setProxyError] = useState(null);
+  const supportsProxy = (tool.captureModes || ["dns"]).includes("proxy");
   const [showPasswordModal, setShowPasswordModal] = useState(false);
   const [sudoPassword, setSudoPassword] = useState("");
   const [pendingDnsAction, setPendingDnsAction] = useState(null);
@@ -109,6 +117,27 @@ export default function MitmToolCard({
       setPendingDnsAction(action);
       setShowPasswordModal(true);
       setModalError(null);
+    }
+  };
+
+  const toggleProxy = async () => {
+    setProxyBusy(true);
+    setProxyError(null);
+    try {
+      // No sudoPassword: this transport binds an ordinary port and touches no
+      // system state, which is the reason it exists.
+      const res = await fetch("/api/cli-tools/antigravity-mitm", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: proxyCapture?.running ? "proxy-stop" : "proxy-start" }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to toggle proxy capture");
+      onProxyChange?.(data.proxyCapture || null);
+    } catch (error) {
+      setProxyError(error.message);
+    } finally {
+      setProxyBusy(false);
     }
   };
 
@@ -216,6 +245,36 @@ export default function MitmToolCard({
                   than letting the user conclude their setup is broken. */}
               {tool.mitmLimitation && (
                 <p className="text-amber-600 text-[10px] mt-1">⚠️ {tool.mitmLimitation}</p>
+              )}
+              {/* 0.5.175 — The second capture transport. Unlike DNS it needs no
+                  password and leaves nothing behind, but nothing can point an
+                  already-running app at it, so the address is shown to copy. */}
+              {supportsProxy && (
+                <div className="mt-2 rounded-md border border-border/60 p-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-[11px] font-medium text-text">
+                      Proxy capture {proxyCapture?.running ? "· running" : "· stopped"}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={toggleProxy}
+                      disabled={proxyBusy}
+                      className="rounded border border-border px-2 py-0.5 text-[10px] hover:bg-surface-hover disabled:opacity-50"
+                    >
+                      {proxyBusy ? "…" : proxyCapture?.running ? "Stop" : "Start"}
+                    </button>
+                  </div>
+                  <p className="mt-1 text-[10px]">
+                    No password, no /etc/hosts, and only the app you point at it. Stopping it
+                    cannot leave {tool.mitmDomain || "the vendor"} unreachable.
+                  </p>
+                  {proxyCapture?.running && (
+                    <code className="mt-1 block break-all rounded bg-surface px-1.5 py-1 text-[10px]">
+                      HTTPS_PROXY={proxyCapture.proxyUrl} {tool.id === "claude" ? "claude" : tool.name.toLowerCase()}
+                    </code>
+                  )}
+                  {proxyError && <p className="mt-1 text-[10px] text-red-500">{proxyError}</p>}
+                </div>
               )}
               {!dnsActive && (
                 <p className="text-amber-600 text-[10px] mt-1">

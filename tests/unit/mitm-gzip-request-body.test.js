@@ -37,7 +37,7 @@ import zlib from "node:zlib";
 const SRC = path.join(path.dirname(new URL(import.meta.url).pathname), "..", "..", "src", "mitm");
 const read = (...p) => fs.readFileSync(path.join(SRC, ...p), "utf-8");
 
-let tmpDir, savedDataDir, decodeRequestBody, getMappedModel;
+let tmpDir, savedDataDir, decodeRequestBody, getMappedModel, decideRoute;
 
 beforeAll(async () => {
   tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "krouter-gzipbody-"));
@@ -50,6 +50,7 @@ beforeAll(async () => {
   );
   ({ decodeRequestBody } = await import("../../src/mitm/bodyCodec.js"));
   ({ getMappedModel } = await import("../../src/mitm/modelMap.js"));
+  ({ decideRoute } = await import("../../src/mitm/dispatch.js"));
 });
 
 afterAll(() => {
@@ -130,29 +131,59 @@ describe("the gzip body now reaches a mapping decision", () => {
   });
 });
 
-describe("server.js uses the decoded body", () => {
-  const server = read("server.js");
-
-  it("wires the decoder in", () => {
-    expect(server).toMatch(/require\("\.\/bodyCodec"\)/);
-    expect(server).toMatch(/decodeRequestBody\(bodyBuffer,\s*req\.headers\)/);
+describe("decideRoute reaches intercept on a gzip Claude Desktop request", () => {
+  // The real end-to-end verdict, not a source match: this is the single decision
+  // that made the difference between "routed" and "billed to Anthropic".
+  const gzipReq = () => ({
+    url: "/v1/messages",
+    headers: { host: "api.anthropic.com", "content-encoding": "gzip" },
   });
 
-  // The whole bug was one argument. Reading the raw buffer here leaked 33 of 34
-  // requests, and it reads as perfectly correct code.
-  it("gives extractModel the decoded body, not the raw one", () => {
-    expect(server).toMatch(/extractModel\(req\.url,\s*decodedBody\)/);
-    expect(server).not.toMatch(/extractModel\(req\.url,\s*bodyBuffer\)/);
+  it("intercepts, and hands the handler a body it can JSON.parse", () => {
+    const route = decideRoute(gzipReq(), zlib.gzipSync(Buffer.from(CLAUDE_BODY)));
+    expect(route.action).toBe("intercept");
+    expect(route.model).toBe("claude-opus-5");
+    expect(route.mappedModel).toBe("cc/claude-fable-5");
+    // handlers/claude.js does JSON.parse(bodyBuffer.toString()) -- it must not throw.
+    expect(JSON.parse(route.body.toString()).model).toBe("claude-opus-5");
+  });
+
+  it("passes through with reason no-mapping when the model is unmapped", () => {
+    const body = JSON.stringify({ model: "claude-not-a-real-model", messages: [] });
+    const route = decideRoute(gzipReq(), zlib.gzipSync(Buffer.from(body)));
+    expect(route.action).toBe("passthrough");
+    expect(route.reason).toBe("no-mapping");
+    // The model was still READ -- the pre-fix bug was failing one step earlier.
+    expect(route.model).toBe("claude-not-a-real-model");
+  });
+
+  it("an undecodable gzip body degrades to passthrough rather than throwing", () => {
+    const truncated = zlib.gzipSync(Buffer.from(CLAUDE_BODY)).subarray(0, 12);
+    const route = decideRoute(gzipReq(), truncated);
+    expect(route.action).toBe("passthrough");
+    expect(route.model).toBeNull();
+  });
+});
+
+describe("server.js wires the shared decision in", () => {
+  const server = read("server.js");
+
+  it("uses decideRoute rather than its own copy of the logic", () => {
+    expect(server).toMatch(/require\("\.\/dispatch"\)/);
+    expect(server).toMatch(/decideRoute\(req,\s*bodyBuffer\)/);
+    // The local copies were deleted, not left behind to drift.
+    expect(server).not.toMatch(/^function extractModel/m);
+    expect(server).not.toMatch(/^function isBinaryData/m);
   });
 
   it("gives the handler the decoded body, so its JSON.parse works", () => {
-    expect(server).toMatch(/intercept\(req,\s*res,\s*decodedBody,\s*mappedModel/);
+    expect(server).toMatch(/intercept\(req,\s*res,\s*route\.body,\s*route\.mappedModel/);
   });
 
   // passthrough forwards to the real vendor with the client's own headers, which
   // still say gzip -- so it has to keep sending the original bytes.
   it("keeps sending the original compressed bytes on passthrough", () => {
-    const calls = server.match(/[^a-zA-Z]passthrough\(req,\s*res,\s*[A-Za-z]+/g) || [];
+    const calls = server.match(/[^a-zA-Z]passthrough\(req,\s*res,\s*[A-Za-z.]+/g) || [];
     expect(calls.length).toBeGreaterThan(0);
     for (const call of calls) expect(call).toMatch(/bodyBuffer$/);
   });
