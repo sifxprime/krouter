@@ -9,6 +9,9 @@ export default defineConfig({
     environment: "node",
     globals: true,
     include: ["**/*.test.js"],
+    // Same ambient-proxy scrub the root config installs — this config is the
+    // one in play when the suite is run from tests/.
+    setupFiles: [resolve(__dirname, "setup/no-ambient-proxy.js")],
     // Allow many it.concurrent cases (real provider smoke runs ~50 providers in parallel)
     maxConcurrency: 60,
     // Suppress noisy console output from handlers under test

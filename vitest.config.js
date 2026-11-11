@@ -19,5 +19,10 @@ export default defineConfig({
     // and executes another branch's tests against THIS checkout's source -- which
     // showed up as nine failures that belonged to neither tree.
     exclude: ['**/node_modules/**', '**/dist/**', '**/.next/**', '**/.claude/**'],
+    // Drops the developer's HTTP_PROXY / HTTPS_PROXY / ALL_PROXY / NO_PROXY
+    // before every test file. Without it, a shell running kRouter's proxy
+    // capture mode supplies a resolvable proxy to every request, and the
+    // strict-proxy tests pass or fail by machine state. See the file header.
+    setupFiles: ['./tests/setup/no-ambient-proxy.js'],
   }
 });

@@ -57,7 +57,10 @@ vi.mock("https", () => {
 });
 
 // proxyFetch captures globalThis.fetch at import time as its "direct" fetch.
-// Stub it first so a direct connection is observable instead of real.
+// Stub it first so a direct connection is observable instead of real. The other
+// half of that boundary is the environment: HTTP_PROXY / HTTPS_PROXY / ALL_PROXY
+// resolve a proxy for any request that carries none, which satisfies strict and
+// skips every refusal below. tests/setup/no-ambient-proxy.js scrubs them.
 const realFetch = globalThis.fetch;
 const directFetch = vi.fn(async () => new Response("{}", { status: 200 }));
 globalThis.fetch = directFetch;

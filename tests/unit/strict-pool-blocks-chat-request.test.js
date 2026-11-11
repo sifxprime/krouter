@@ -54,7 +54,9 @@ const CHAT_SSE = [
 ].map((c) => `data: ${JSON.stringify(c)}\n\n`).join("") + "data: [DONE]\n\n";
 
 // proxyFetch captures globalThis.fetch at import time as its direct fetch. Stub
-// it first so a direct connection is observable instead of real.
+// it first so a direct connection is observable instead of real. An ambient
+// HTTP_PROXY / HTTPS_PROXY / ALL_PROXY would resolve a proxy on its own and
+// satisfy strict; tests/setup/no-ambient-proxy.js scrubs them before this runs.
 const realFetch = globalThis.fetch;
 const directFetch = vi.fn(async () => new Response(CHAT_SSE, { status: 200, headers: { "Content-Type": "text/event-stream" } }));
 globalThis.fetch = directFetch;

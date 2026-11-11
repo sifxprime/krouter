@@ -9,15 +9,38 @@ const originalDataDir = process.env.DATA_DIR;
 let tempDir;
 let sqliteDb;
 
+// updatedAt is an ISO string, so it only distinguishes writes a whole
+// millisecond apart. reorderInTx breaks a priority tie by updatedAt DESC with a
+// stable sort, so two rows written inside the same millisecond keep their
+// insertion order instead. Measured here: 53 of 60 create-then-set-priority
+// cycles complete inside one millisecond, which is why "the row I just moved to
+// priority 1 sorts first" is a coin flip rather than a fact. Waiting for the
+// clock to tick costs under a millisecond and makes the tie impossible.
+const awaitClockTick = () =>
+  new Promise((resolve) => {
+    const started = Date.now();
+    const poll = () => (Date.now() > started ? resolve() : setImmediate(poll));
+    poll();
+  });
+
 beforeAll(async () => {
   tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "9router-db-compare-"));
   process.env.DATA_DIR = tempDir;
+  // The adapter is cached on `global` to survive Next's hot reload, so a cached
+  // one would serve this file from whatever DATA_DIR opened it first. One fork
+  // per test file makes that unreachable today; it stops being unreachable the
+  // moment the pool is run with isolate:false, and the sibling DB tests all
+  // guard it (provider-insert-appends-without-renumber, db-driver-chain, ...).
+  try { global._dbAdapter?.instance?.close?.(); } catch { /* already closed */ }
+  delete global._dbAdapter;
   vi.resetModules();
   sqliteDb = await import("@/lib/db/index.js");
   await sqliteDb.initDb();
 });
 
 afterAll(() => {
+  try { global._dbAdapter?.instance?.close?.(); } catch { /* already closed */ }
+  delete global._dbAdapter;
   if (tempDir) fs.rmSync(tempDir, { recursive: true, force: true });
   if (originalDataDir === undefined) delete process.env.DATA_DIR;
   else process.env.DATA_DIR = originalDataDir;
@@ -76,7 +99,9 @@ describe("DB SQLite layer — public API parity", () => {
     expect(list[1].priority).toBe(2);
     expect(list[2].priority).toBe(3);
 
-    // Update priority and reorder
+    // Update priority and reorder. c1 keeps priority 1, so c3 ties with it and
+    // the winner is decided by updatedAt — see awaitClockTick above.
+    await awaitClockTick();
     await sqliteDb.updateProviderConnection(c3.id, { priority: 1 });
     const reordered = await sqliteDb.getProviderConnections({ provider: "test" });
     expect(reordered[0].name).toBe("c");
