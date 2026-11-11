@@ -81,6 +81,48 @@ const APP_DATA_DIR = process.env.AGY_APP_DATA_DIR || "antigravity";
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
+const DUMP_DIR = process.env.AGY_DUMP_DIR || path.join(LOG_DIR, "bodies");
+// A chat turn is ~190KB of request and the webview bundle is 3.7MB, so dumping is
+// off by default and never covers non-RPC assets.
+let dumpBodies = false;
+const DUMP_CAP = 16 * 1024 * 1024;
+
+let dumpSeq = 0;
+/** Write one captured body next to its sibling, or say why it could not be. */
+function writeBody(rpc, kind, chunks, bytes) {
+  if (!dumpBodies || !chunks) return null;
+  try {
+    fs.mkdirSync(DUMP_DIR, { recursive: true });
+    dumpSeq += 1;
+    const safe = String(rpc).replace(/[^A-Za-z0-9_.-]+/g, "_").slice(0, 60);
+    const file = path.join(DUMP_DIR, `${String(dumpSeq).padStart(4, "0")}-${safe}-${kind}.bin`);
+    fs.writeFileSync(file, Buffer.concat(chunks));
+    console.log(`     dumped ${kind} ${bytes}B -> ${file}`);
+    return file;
+  } catch (e) {
+    console.error(`     could not dump ${kind}: ${e.message}`);
+    return null;
+  }
+}
+
+/** Collect chunks for a dump, but stop at the cap instead of eating memory. */
+function makeCollector(isRpc) {
+  if (!dumpBodies || !isRpc) return null;
+  const chunks = [];
+  let total = 0;
+  let truncated = false;
+  return {
+    chunks,
+    push(c) {
+      if (truncated) return;
+      if (total + c.length > DUMP_CAP) { truncated = true; return; }
+      chunks.push(Buffer.from(c));
+      total += c.length;
+    },
+    get truncated() { return truncated; },
+  };
+}
+
 // The HTTP/2 cleartext connection preface. A client that sends this is speaking
 // h2c and would be rejected outright by an HTTP/1.1 server.
 const H2_PREFACE = Buffer.from("PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n", "ascii");
@@ -289,6 +331,7 @@ function parseArgs(argv) {
   const opts = { attach: false, addDirs: [] };
   for (const arg of argv) {
     if (arg === "--attach") opts.attach = true;
+    else if (arg === "--dump-bodies") opts.dump = true;
     else if (arg.startsWith("--add-dir=")) opts.addDirs.push(arg.slice("--add-dir=".length));
     else if (arg === "--help" || arg === "-h") opts.help = true;
     else throw new Error(`unknown argument ${arg} (try --help)`);
@@ -310,6 +353,8 @@ function createH1Server(upstream) {
     const { rpc, isRpc } = describePath(req.url);
     let bytesIn = 0;
     let bytesOut = 0;
+    const reqDump = makeCollector(isRpc);
+    const resDump = makeCollector(isRpc);
 
     // Forward the client's headers untouched -- except, when the hub is ours, the
     // csrf token, which the IDE cannot know. Without this swap every call 401s.
@@ -320,14 +365,17 @@ function createH1Server(upstream) {
       { host: upstream.host, port: upstream.port, method: req.method, path: req.url, headers },
       (up) => {
         res.writeHead(up.statusCode || 502, up.headers);
-        up.on("data", (c) => { bytesOut += c.length; });
+        up.on("data", (c) => { bytesOut += c.length; if (resDump) resDump.push(c); });
         up.pipe(res);
         up.on("end", () => {
           const ms = Date.now() - started;
+          const reqFile = writeBody(rpc, "req", reqDump && reqDump.chunks, bytesIn);
+          const resFile = writeBody(rpc, "res", resDump && resDump.chunks, bytesOut);
           const entry = {
             t: new Date().toISOString(), http: "1.1", method: req.method, rpc,
             isRpc, status: up.statusCode, bytesIn, bytesOut, ms,
             ct: req.headers["content-type"] || null,
+            reqFile, resFile,
           };
           logLine(entry);
           recordCall({ rpc, isRpc, httpVersion: "1.1", bytesIn, bytesOut, ms, status: up.statusCode });
@@ -348,7 +396,8 @@ function createH1Server(upstream) {
       res.end(`agy-shim: ${e.message}`);
     });
 
-    req.on("data", (c) => { bytesIn += c.length; });
+    // Tee, not buffer-then-forward: a streaming RPC must keep flowing while we copy.
+    req.on("data", (c) => { bytesIn += c.length; if (reqDump) reqDump.push(c); });
     req.pipe(fwd);
   });
 }
@@ -363,6 +412,8 @@ function createH2Server(upstream) {
     const { rpc, isRpc } = describePath(reqPath);
     let bytesIn = 0;
     let bytesOut = 0;
+    const reqDump = makeCollector(isRpc);
+    const resDump = makeCollector(isRpc);
 
     const client = http2.connect(`http://${upstream.host}:${upstream.port}`);
     client.on("error", (e) => {
@@ -392,13 +443,16 @@ function createH2Server(upstream) {
       delete clean["connection"];
       if (!stream.destroyed) stream.respond(clean);
     });
-    up.on("data", (c) => { bytesOut += c.length; });
+    up.on("data", (c) => { bytesOut += c.length; if (resDump) resDump.push(c); });
     up.pipe(stream);
     up.on("end", () => {
       const ms = Date.now() - started;
+      const reqFile = writeBody(rpc, "req", reqDump && reqDump.chunks, bytesIn);
+      const resFile = writeBody(rpc, "res", resDump && resDump.chunks, bytesOut);
       logLine({
         t: new Date().toISOString(), http: "2", method: headers[":method"], rpc, isRpc,
         status, bytesIn, bytesOut, ms, ct: headers["content-type"] || null,
+        reqFile, resFile,
       });
       recordCall({ rpc, isRpc, httpVersion: "2", bytesIn, bytesOut, ms, status });
       if (isRpc) {
@@ -410,7 +464,7 @@ function createH2Server(upstream) {
       client.close();
     });
 
-    stream.on("data", (c) => { bytesIn += c.length; });
+    stream.on("data", (c) => { bytesIn += c.length; if (reqDump) reqDump.push(c); });
     stream.pipe(up);
     stream.on("error", () => { try { client.close(); } catch { /* ignore */ } });
   });
@@ -430,6 +484,9 @@ const HELP = `agy-shim — sit between the Antigravity IDE and the agy hub.
                    passes the open folders this way.
   --attach         do not spawn; forward to a hub that is already running and
                    change nothing (pure observation, needs the IDE to have one).
+  --dump-bodies    write every RPC request/response body under
+                   ~/.krouter/logs/bodies. These contain your prompts and source,
+                   so it is off by default and stays on this machine.
   AGY_UPSTREAM     host:port of a hub to attach to; implies --attach.
   AGY_BIN          path to the agy binary (default ~/.gemini/bin/agy).
   AGY_SHIM_PORT    port to listen on (default 20130).
@@ -438,6 +495,7 @@ const HELP = `agy-shim — sit between the Antigravity IDE and the agy hub.
 async function start() {
   const opts = parseArgs(process.argv.slice(2));
   if (opts.help) { console.log(HELP); return; }
+  dumpBodies = Boolean(opts.dump);
 
   const upstream = await resolveUpstream(opts);
   const h1 = createH1Server(upstream);
@@ -473,6 +531,7 @@ async function start() {
     console.log(`agy-shim listening on http://127.0.0.1:${LISTEN_PORT}`);
     console.log(`  upstream hub: ${upstream.host}:${upstream.port} (${upstream.mode})`);
     console.log(`  log: ${LOG_FILE}`);
+    if (dumpBodies) console.log(`  BODIES: ${DUMP_DIR}  (prompts and source -- local only)`);
     if (upstream.mode === "spawned") {
       console.log(`  hub log: ${HUB_LOG_FILE}`);
       // Two hubs means the IDE kept its own, which means it is not asking us --
@@ -497,16 +556,39 @@ async function start() {
     console.log("");
   });
 
-  const stopHub = () => {
-    if (!upstream.child || upstream.child.exitCode !== null) return;
-    try { upstream.child.kill("SIGTERM"); } catch { /* already gone */ }
-    // If it ignores SIGTERM it still has to go -- an orphan holds the port and
-    // 200MB of RSS, and the next run would silently attach to the wrong hub.
-    setTimeout(() => { try { upstream.child.kill("SIGKILL"); } catch { /* gone */ } }, 2000).unref();
+  const hubAlive = () => {
+    const child = upstream.child;
+    if (!child || child.exitCode !== null || child.signalCode !== null) return false;
+    try { process.kill(child.pid, 0); return true; } catch { return false; }
   };
 
-  const summarise = () => {
-    stopHub();
+  /**
+   * Kill the hub and do not return until it is actually dead.
+   *
+   * The first version of this sent SIGTERM and scheduled SIGKILL on an unref'd
+   * timer -- which `process.exit()` then beat every single time, so agy (which
+   * does not die on SIGTERM) was orphaned to PID 1, still holding its port and
+   * ~200MB. Verified by checking the parent of the survivor, not by reading the
+   * code, which looked correct.
+   */
+  const reapHub = async () => {
+    if (!hubAlive()) return;
+    try { upstream.child.kill("SIGTERM"); } catch { /* raced us */ }
+    for (let i = 0; i < 10 && hubAlive(); i += 1) await sleep(100);
+    if (!hubAlive()) return;
+    try { upstream.child.kill("SIGKILL"); } catch { /* raced us */ }
+    for (let i = 0; i < 20 && hubAlive(); i += 1) await sleep(100);
+    if (hubAlive()) {
+      console.error(`agy-shim: hub pid ${upstream.child.pid} survived SIGKILL -- kill it by hand.`);
+    }
+  };
+
+  // The crash path cannot await anything, so it does not try to be polite.
+  const reapHubNow = () => {
+    if (hubAlive()) { try { upstream.child.kill("SIGKILL"); } catch { /* gone */ } }
+  };
+
+  const summarise = async () => {
     const all = [...stats.entries()];
     const rows = all.filter(([, s]) => s.isRpc);
     const assets = all.filter(([, s]) => !s.isRpc);
@@ -538,13 +620,25 @@ async function start() {
       console.log(`  non-RPC requests (webview assets, etc.): ${assets.length} path(s)`);
     }
     console.log(`\n  full detail: ${LOG_FILE}`);
+    await reapHub();
     process.exit(0);
   };
 
-  process.on("SIGINT", summarise);
-  process.on("SIGTERM", summarise);
+  // Guard against a second signal arriving mid-reap and re-entering the handler.
+  let stopping = false;
+  const onSignal = () => {
+    if (stopping) return;
+    stopping = true;
+    summarise().catch((e) => {
+      console.error(`agy-shim: ${e.message}`);
+      reapHubNow();
+      process.exit(1);
+    });
+  };
+  process.on("SIGINT", onSignal);
+  process.on("SIGTERM", onSignal);
   // A crash must not leave the hub behind either.
-  process.on("exit", stopHub);
+  process.on("exit", reapHubNow);
 }
 
 start().catch((e) => {
