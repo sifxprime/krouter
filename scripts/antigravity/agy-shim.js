@@ -225,6 +225,46 @@ function tailFile(file, lines = 14) {
   }
 }
 
+const KROUTER_CA = path.join(os.homedir(), ".krouter", "mitm", "rootCA.crt");
+const CA_BUNDLE = path.join(os.homedir(), ".krouter", "mitm", "ca-bundle.pem");
+
+/**
+ * Build a trust bundle the hub can use: the system roots PLUS kRouter's CA.
+ *
+ * This is the thing that was actually stopping Antigravity from routing through
+ * kRouter, and it is not a protobuf problem at all. agy is a Go binary, so it
+ * honours SSL_CERT_FILE -- and SSL_CERT_FILE *replaces* the system trust store
+ * rather than adding to it. The user's shell sets it to a Python certifi bundle
+ * (~/.zshrc: export SSL_CERT_FILE=$(python3 -c "import certifi; ...")), the IDE
+ * inherits it, agy inherits it from the IDE, and that bundle does not contain
+ * kRouter's CA -- even though the System keychain does trust it. So every call
+ * agy makes to cloudcode-pa.googleapis.com (already pointed at 127.0.0.1 in
+ * /etc/hosts) fails with "certificate signed by unknown authority".
+ *
+ * Claude Code and Kiro are Node, read NODE_EXTRA_CA_CERTS -- which kRouter does
+ * set -- and are unaffected. That asymmetry is the whole reason this one tool
+ * looked unfixable.
+ *
+ * Returns null on anything unexpected: trust is not somewhere to guess.
+ */
+function ensureCaBundle() {
+  if (process.platform !== "darwin") return null;
+  if (!fs.existsSync(KROUTER_CA)) return null;
+  try {
+    const roots = execSync(
+      "security find-certificate -a -p /System/Library/Keychains/SystemRootCertificates.keychain",
+      { encoding: "utf-8", maxBuffer: 32 * 1024 * 1024 }
+    );
+    const ca = fs.readFileSync(KROUTER_CA, "utf-8");
+    if (!roots.includes("BEGIN CERTIFICATE") || !ca.includes("BEGIN CERTIFICATE")) return null;
+    fs.writeFileSync(CA_BUNDLE, `${roots.trimEnd()}\n${ca.trimEnd()}\n`);
+    const count = (roots.match(/BEGIN CERTIFICATE/g) || []).length + 1;
+    return { file: CA_BUNDLE, count };
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Start our own hub and own it.
  *
@@ -271,10 +311,23 @@ async function spawnOwnHub(addDirs) {
   // (stdin=pipe) -- in both cases binding nothing, with the flag accepted and no
   // complaint. Read off the IDE's own agy process, which sets it alongside
   // ANTIGRAVITY_VSCODE_HOST=1.
+  const bundle = ensureCaBundle();
   const child = spawn(AGY_BIN, args, {
     stdio: ["pipe", hubLog, hubLog],
-    env: { ...process.env, AGY_ENABLE_HUB: "1", ANTIGRAVITY_VSCODE_HOST: "1" },
+    env: {
+      ...process.env,
+      AGY_ENABLE_HUB: "1",
+      ANTIGRAVITY_VSCODE_HOST: "1",
+      // Without this the hub cannot complete a single call to Google through
+      // kRouter's MITM. See ensureCaBundle().
+      ...(bundle ? { SSL_CERT_FILE: bundle.file } : {}),
+    },
   });
+  if (bundle) {
+    console.log(`  SSL_CERT_FILE=${bundle.file} (${bundle.count} roots incl. kRouter's CA)`);
+  } else {
+    console.log("  WARNING: no kRouter CA bundle -- the hub will reject kRouter's MITM cert");
+  }
 
   let exit = null;
   let serving = false;
