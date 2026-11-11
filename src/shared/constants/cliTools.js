@@ -8,6 +8,21 @@ export const MITM_TOOLS = {
     description: "Google Antigravity IDE with MITM",
     configType: "mitm",
     mitmDomain: "daily-cloudcode-pa.googleapis.com",
+    // 0.5.174 — MITM reaches Antigravity's Electron side only. The IDE's agent is a
+    // separate Go process (`agy`) which builds its own root pool (NewCertPool/RootCAs,
+    // 22 bundled PEM blocks) and reads no TLS, CA or proxy environment variables, so it
+    // rejects the kRouter CA however the machine is configured. `antigravity.caCertificates`
+    // lives only in @vscode/proxy-agent — the Electron side — which is why setting it
+    // fixes sign-in and never the chat.
+    //
+    // Measured with the DNS redirect verifiably held for a whole capture: in the same
+    // window on the same host, curl reached the MITM and produced request dumps while the
+    // agent produced none and logged 38 "x509: certificate signed by unknown authority".
+    // Seen on Antigravity IDE 2.6.0; the feature was built against 1.x, which is the most
+    // likely place the pinning appeared.
+    //
+    // The ag/ PROVIDER is unaffected and works normally — this is the IDE-via-MITM path.
+    mitmLimitation: "Chat is not intercepted on Antigravity 2.x: the IDE's agent pins its own CA. Sign-in and model listing route; chat does not. The ag/ provider is unaffected.",
     // 0.5.166 — Google retired the 3.5 Flash tiers, gemini-3-flash-agent and the
     // gemini-3-flash command model (upstream 24034f69). The mandatory Default slot
     // pointed at gemini-3.5-flash-low, so a fresh MITM setup mapped the IDE's

@@ -212,6 +212,11 @@ export default function MitmToolCard({
             {/* Info */}
             <div className="flex flex-col gap-0.5 text-[11px] text-text-muted px-1">
               <p>Toggle DNS to redirect {tool.name} traffic through kRouter via MITM.</p>
+              {/* 0.5.174 — a tool that cannot fully be intercepted says so here, rather
+                  than letting the user conclude their setup is broken. */}
+              {tool.mitmLimitation && (
+                <p className="text-amber-600 text-[10px] mt-1">⚠️ {tool.mitmLimitation}</p>
+              )}
               {!dnsActive && (
                 <p className="text-amber-600 text-[10px] mt-1">
                   ⚠️ Enable DNS to edit model mappings
