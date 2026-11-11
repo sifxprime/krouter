@@ -190,7 +190,14 @@ async function autoStartMitm() {
       // successful return proves NOTHING — /etc/hosts edits need root and quietly
       // no-op when sudo is password-gated. VERIFY by re-reading the DNS state and
       // only claim success when the redirects are actually gone.
-      try { await removeAllDNSEntries(); } catch { /* verified below */ }
+      // 0.5.171 — pass the stored sudo password. Without it this call needs a
+      // passwordless sudo, which most machines do not have, so the "cleanup" was a
+      // no-op on exactly the machines that get stuck: the entries stayed, every one
+      // of those hosts kept resolving to 127.0.0.1 with nothing listening, and the
+      // user was told to run a sed command by hand. The password is already on disk
+      // (the same one that started MITM in the first place).
+      const healPwd = await loadEncryptedPassword().catch(() => null);
+      try { await removeAllDNSEntries(healPwd || undefined); } catch { /* verified below */ }
       const after = await getMitmStatus();
       if (!after.staleDns) {
         console.warn("[InitApp] ✓ Stale MITM DNS entries removed — provider traffic restored.");
@@ -339,6 +346,41 @@ async function safeRestartTailscale(reason) {
   }
 }
 
+// ─── Stale MITM DNS: the blackhole that outlives the server ──────────────────
+//
+// 0.5.171 — the DNS redirects are what make MITM work, and they are also what breaks
+// the machine when the server is not there to answer them. A clean stop removes them
+// (server.js shutdown -> removeAllDNSEntriesSync, which can do it because the server
+// runs as root). A SIGKILL, a crash, a force-quit or a power cut does not, and then
+// every redirected host resolves to 127.0.0.1 with nothing on :443. Reproduced:
+//
+//   kill -9 <mitm pid>
+//   :443 listener        0
+//   hosts entries left   5
+//   curl daily-cloudcode-pa.googleapis.com -> Couldn't connect to server
+//   curl runtime.us-east-1.kiro.dev        -> Couldn't connect to server
+//
+// Until now the only repair ran at app startup, so a crash meant no provider traffic
+// until the user noticed and restarted kRouter. This runs it on the watchdog tick as
+// well, so the window is one tick instead of unbounded.
+async function healStaleMitmDns(where) {
+  const status = await getMitmStatus();
+  if (status.running || !status.staleDns) return false;
+  console.warn(
+    `[${where}] MITM is down but DNS redirects are still active for: ${status.staleDnsTools.join(", ")}. ` +
+    "Those hosts resolve to 127.0.0.1 with nothing listening — removing the redirects.",
+  );
+  const pwd = await loadEncryptedPassword().catch(() => null);
+  try { await removeAllDNSEntries(pwd || undefined); } catch { /* verified below */ }
+  const after = await getMitmStatus();
+  if (after.staleDns) {
+    console.warn(`[${where}] Could NOT remove them (needs root): ${after.staleDnsTools.join(", ")}`);
+    return false;
+  }
+  console.warn(`[${where}] Stale MITM DNS removed — provider traffic restored.`);
+  return true;
+}
+
 // ─── Watchdog: 60s tick check both services ──────────────────────────────────
 
 function startWatchdog() {
@@ -346,6 +388,7 @@ function startWatchdog() {
   g.watchdogInterval = setInterval(() => {
     safeRestartTunnel("watchdog").catch(() => {});
     safeRestartTailscale("watchdog").catch(() => {});
+    healStaleMitmDns("watchdog").catch(() => {});
   }, WATCHDOG_INTERVAL_MS);
   if (g.watchdogInterval.unref) g.watchdogInterval.unref();
 }
