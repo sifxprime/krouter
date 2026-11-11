@@ -249,6 +249,19 @@ function start() {
     socket.on("error", () => socket.destroy());
   });
 
+  // Without this, a port already in use crashes with a raw unhandled 'error'
+  // stack trace that says nothing about what to do.
+  front.on("error", (e) => {
+    if (e.code === "EADDRINUSE") {
+      console.error(`agy-shim: port ${LISTEN_PORT} is already in use.`);
+      console.error(`  Another shim is probably still running: pkill -f agy-shim.js`);
+      console.error(`  Or pick a different one: AGY_SHIM_PORT=20131 node ${process.argv[1]}`);
+    } else {
+      console.error(`agy-shim: ${e.message}`);
+    }
+    process.exit(1);
+  });
+
   front.listen(LISTEN_PORT, "127.0.0.1", () => {
     console.log(`agy-shim listening on http://127.0.0.1:${LISTEN_PORT}`);
     console.log(`  forwarding to the real agy hub at ${upstream.host}:${upstream.port}`);
