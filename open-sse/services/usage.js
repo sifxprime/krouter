@@ -3,6 +3,7 @@
  */
 
 import { CLIENT_METADATA, getPlatformUserAgent } from "../config/appConstants.js";
+import { PROVIDER_MODELS } from "../config/providerModels.js";
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
 import { resolveDefaultProfileArn } from "../config/kiroConstants.js";
 
@@ -407,49 +408,26 @@ async function getAntigravityUsage(accessToken, providerSpecificData, proxyOptio
 
     // Parse model quotas (inspired by vscode-antigravity-cockpit)
     if (data.models) {
-      // Filter only recommended/important models (must match PROVIDER_MODELS ag ids)
-      const importantModels = [
-        // 0.5.166 — Gemini 4 Argon. Upstream's own quota list omits it even
-        // though its registry routes the model, which is the same drift that
-        // lost gemini-3.1-flash-image below. kRouter charts every ag catalog id
-        // instead; the entry is inert until Google reports the bucket.
-        // (upstream 29fc880e)
-        'gemini-4-argon-high',
-        // 0.5.166 — Gemini Flash tiers Google serves today. Without these the
-        // quota bars simply did not render. (upstream 70f15aa5, 86694ed8, 42c691b3)
-        'gemini-3.8-flash-high',
-        'gemini-3.8-flash-medium',
-        'gemini-3.8-flash-low',
-        'gemini-3.7-flash-high',
-        'gemini-3.7-flash-medium',
-        'gemini-3.7-flash-low',
-        'gemini-3.6-flash-high',
-        'gemini-3.6-flash-medium',
-        'gemini-3.6-flash-low',
-        'gemini-3-flash-agent',
-        'gemini-3.5-flash-low',
-        'gemini-3.5-flash-extra-low',
-        // 0.5.166 — gemini-3.1-pro-high (upstream 24034f69)
-        'gemini-3.1-pro-high',
-        'gemini-pro-agent',
-        'gemini-3.1-pro-low',
-        // 0.5.166 — Claude 5.5 tiers on Antigravity (upstream a07ed95b)
-        'claude-sonnet-5-5-high',
-        'claude-sonnet-5-5-medium',
-        'claude-sonnet-5-5-low',
-        'claude-sonnet-5-5',
-        'claude-opus-5-5-high',
-        'claude-opus-5-5-medium',
-        'claude-opus-5-5-low',
-        'claude-opus-5-5',
-        'claude-sonnet-4-6',
-        'claude-opus-4-6-thinking',
-        'gpt-oss-120b-medium',
-        'gemini-3-flash',
-        // 0.5.166 — in the ag catalog since 0.5.107 but never added here, so
-        // its quota bar never rendered. (upstream 5306bd90)
-        'gemini-3.1-flash-image',
-      ];
+      // 0.5.169 — derived from the ag catalog instead of hand-listed.
+      //
+      // The comment this replaces said the list "must match PROVIDER_MODELS ag ids", and
+      // it did not: it carried `gemini-3.8-flash-high` and friends, which a live
+      // v1internal:fetchAvailableModels for a real account does not serve at all (the
+      // family is one `gemini-3.8-flash-tiered` id), while omitting ids Google does serve.
+      // Measured on that account: of 25 ag ids kRouter advertised, 15 were not served, and
+      // 12 served ids were advertised to nobody — so the quota bars for the real models
+      // never rendered and bars were reserved for models that do not exist.
+      //
+      // Two hand-maintained lists that both had to agree with Google is one too many. The
+      // catalog is the single place a model is declared; this follows it, under both the
+      // published id and the wire id, so a catalog edit can no longer silently lose a bar.
+      // Google's internal and experimental buckets are still excluded, because they are
+      // not in the catalog (and `isInternal` is checked below regardless).
+      const importantModels = [];
+      for (const m of PROVIDER_MODELS.ag || []) {
+        importantModels.push(m.id);
+        if (m.upstreamModelId) importantModels.push(m.upstreamModelId);
+      }
 
       for (const [modelKey, info] of Object.entries(data.models)) {
         // Skip models without quota info

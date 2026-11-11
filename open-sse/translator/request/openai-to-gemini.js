@@ -2,6 +2,7 @@ import { register } from "../index.js";
 import { FORMATS } from "../formats.js";
 import { DEFAULT_THINKING_AG_SIGNATURE, DEFAULT_THINKING_GEMINI_CLI_SIGNATURE } from "../../config/defaultThinkingSignature.js";
 import { ANTIGRAVITY_DEFAULT_SYSTEM } from "../../config/appConstants.js";
+import { getModelUpstreamId, getModelThinkingLevel } from "../../config/providerModels.js";
 import { openaiToClaudeRequestForAntigravity } from "./openai-to-claude.js";
 
 function generateUUID() {
@@ -338,9 +339,25 @@ export function openaiToGeminiCLIRequest(model, body, stream) {
 function wrapInCloudCodeEnvelope(model, geminiCLI, credentials = null, isAntigravity = false) {
   const projectId = credentials?.projectId || generateProjectId();
 
+  // 0.5.169 — send the id the backend serves, and carry the tier the id encoded.
+  // Antigravity collapses each flash family to one `-tiered` id; without this the
+  // catalog id went upstream verbatim and every Gemini chat model 404'd.
+  let upstreamModel = model;
+  if (isAntigravity) {
+    upstreamModel = getModelUpstreamId("ag", model);
+    const tier = getModelThinkingLevel("ag", model);
+    if (tier && !geminiCLI?.generationConfig?.thinkingConfig) {
+      geminiCLI.generationConfig = geminiCLI.generationConfig || {};
+      geminiCLI.generationConfig.thinkingConfig = {
+        thinkingLevel: tier,
+        includeThoughts: tier !== "minimal",
+      };
+    }
+  }
+
   const envelope = {
     project: projectId,
-    model: model,
+    model: upstreamModel,
     userAgent: isAntigravity ? "antigravity" : "gemini-cli",
     requestId: isAntigravity ? `agent-${generateUUID()}` : generateRequestId(),
     request: {
@@ -389,10 +406,13 @@ function wrapInCloudCodeEnvelope(model, geminiCLI, credentials = null, isAntigra
 // Wrap Claude format in Cloud Code envelope for Antigravity
 function wrapInCloudCodeEnvelopeForClaude(model, claudeRequest, credentials = null) {
   const projectId = credentials?.projectId || generateProjectId();
+  // Antigravity serves its Claude tiers as distinct ids, so this resolves to the same
+  // value today; it is here so a future collapse to a `-tiered` id needs no new code.
+  const upstreamModel = getModelUpstreamId("ag", model);
 
   const envelope = {
     project: projectId,
-    model: model,
+    model: upstreamModel,
     userAgent: "antigravity",
     requestId: `agent-${generateUUID()}`,
     // 0.5.166 — no `requestType` on the agent (chat) path; see the note in

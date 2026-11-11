@@ -1,4 +1,5 @@
 import crypto from "crypto";
+import { getModelUpstreamId, getModelThinkingLevel } from "../config/providerModels.js";
 import { BaseExecutor } from "./base.js";
 import { PROVIDERS } from "../config/providers.js";
 import { OAUTH_ENDPOINTS, ANTIGRAVITY_HEADERS, INTERNAL_REQUEST_HEADER, AG_DEFAULT_TOOLS, AG_TOOL_SUFFIX, ANTIGRAVITY_PROMPT_REWRITES } from "../config/appConstants.js";
@@ -241,6 +242,17 @@ export class AntigravityExecutor extends BaseExecutor {
     }
     // Apply the extracted thinking config to generationConfig — only if the
     // request didn't already specify thinkingConfig itself (don't clobber).
+    // 0.5.169 — a tiered catalog id carries its tier in the NAME, and the name is about to
+    // be replaced by the id Google serves (see the model: line below), so the tier has to
+    // move into thinkingConfig or it is simply lost. Ranks below an explicit request
+    // (extractedThinkingConfig) and below one the translator already set.
+    if (!extractedThinkingConfig) {
+      const catalogTier = getModelThinkingLevel("ag", model);
+      if (catalogTier) {
+        extractedThinkingConfig = { thinkingLevel: catalogTier, includeThoughts: catalogTier !== "minimal" };
+      }
+    }
+
     if (extractedThinkingConfig && !generationConfig.thinkingConfig) {
       generationConfig.thinkingConfig = extractedThinkingConfig;
     }
@@ -290,7 +302,15 @@ export class AntigravityExecutor extends BaseExecutor {
     return {
       ...body,
       project: projectId,
-      model: model,
+      // 0.5.169 — the id Google serves, not the one we advertise. Antigravity collapses
+      // each flash family to ONE `-tiered` id; proven against a real account:
+      //   model=gemini-3.8-flash-tiered -> 200
+      //   model=gemini-3.8-flash-high   -> 404 NOT_FOUND
+      // chatCore resolves an upstream id of its own (chatCore.js:95) but this envelope is
+      // built from the catalog id, so the mapping has to happen here too; measured before
+      // and after on a live account, this line is what turns the 404 into a 200. An id
+      // that is not a catalog id — anything arriving through MITM — passes through.
+      model: getModelUpstreamId("ag", model),
       userAgent: envelopeUA,
       // 0.5.29 — request id format matches native ("agent/<ts>/<8-hex>")
       // instead of UUID. Reduces fingerprint surface.

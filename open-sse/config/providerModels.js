@@ -137,9 +137,14 @@ export const PROVIDER_MODELS = {
     // wire verbatim. The 3.8 family has one wire model per tier, 3.7 and 3.6 share a
     // single "-tiered" wire model.
     { id: "gemini-4-argon-high", name: "Gemini 4 Argon (High)", thinkingLevel: "high" },
-    { id: "gemini-3.8-flash-high", name: "Gemini 3.8 Flash (High)", thinkingLevel: "high" },
-    { id: "gemini-3.8-flash-medium", name: "Gemini 3.8 Flash (Medium)", thinkingLevel: "medium" },
-    { id: "gemini-3.8-flash-low", name: "Gemini 3.8 Flash (Low)", thinkingLevel: "low" },
+    // 0.5.169 — the 3.8 tiers had NO upstreamModelId while 3.7 and 3.6 right below did,
+    // so they were sent to Google verbatim and every one 404'd. A live
+    // v1internal:fetchAvailableModels for a real account serves ONE id for this family,
+    // `gemini-3.8-flash-tiered`, with remainingFraction 1.0 — the tier is carried by
+    // thinkingLevel, which is exactly the shape the 3.7 entries already use.
+    { id: "gemini-3.8-flash-high", name: "Gemini 3.8 Flash (High)", upstreamModelId: "gemini-3.8-flash-tiered", thinkingLevel: "high" },
+    { id: "gemini-3.8-flash-medium", name: "Gemini 3.8 Flash (Medium)", upstreamModelId: "gemini-3.8-flash-tiered", thinkingLevel: "medium" },
+    { id: "gemini-3.8-flash-low", name: "Gemini 3.8 Flash (Low)", upstreamModelId: "gemini-3.8-flash-tiered", thinkingLevel: "low" },
     { id: "gemini-3.7-flash-high", name: "Gemini 3.7 Flash (High)", upstreamModelId: "gemini-3.7-flash-tiered", thinkingLevel: "high" },
     { id: "gemini-3.7-flash-medium", name: "Gemini 3.7 Flash (Medium)", upstreamModelId: "gemini-3.7-flash-tiered", thinkingLevel: "medium" },
     { id: "gemini-3.7-flash-low", name: "Gemini 3.7 Flash (Low)", upstreamModelId: "gemini-3.7-flash-tiered", thinkingLevel: "low" },
@@ -149,6 +154,18 @@ export const PROVIDER_MODELS = {
     { id: "gemini-3.1-pro-high", name: "Gemini 3.1 Pro (High)", upstreamModelId: "gemini-pro-agent" },
     { id: "gemini-pro-agent", name: "Gemini 3.1 Pro (High) / Legacy" },
     { id: "gemini-3.1-pro-low", name: "Gemini 3.1 Pro (Low)", thinkingLevel: "low" },
+    // 0.5.169 — ids the live roster serves at full quota that kRouter published to nobody.
+    // Measured against v1internal:fetchAvailableModels for a real account: of 25 ag ids
+    // we advertised, 15 were not served, and 12 served ids were not advertised. These are
+    // the chat models among them (chat_*/tab_* are the tab-completion lanes, and
+    // gemini-3.8-flash-tiered is the upstream for the 3.8 tiers above, not a user choice).
+    { id: "gemini-3.5-flash-lite", name: "Gemini 3.5 Flash Lite" },
+    { id: "gemini-3.1-flash-lite", name: "Gemini 3.1 Flash Lite" },
+    { id: "gemini-3-flash", name: "Gemini 3 Flash" },
+    { id: "gemini-2.5-pro", name: "Gemini 2.5 Pro" },
+    { id: "gemini-2.5-flash", name: "Gemini 2.5 Flash" },
+    { id: "gemini-2.5-flash-thinking", name: "Gemini 2.5 Flash (Thinking)" },
+    { id: "gemini-2.5-flash-lite", name: "Gemini 2.5 Flash Lite" },
     { id: "claude-sonnet-5-5", name: "Claude Sonnet 5.5 (Thinking)", upstreamModelId: "claude-sonnet-5-5-high", thinkingLevel: "high" },
     { id: "claude-sonnet-5-5-high", name: "Claude Sonnet 5.5 (High)", thinkingLevel: "high" },
     { id: "claude-sonnet-5-5-medium", name: "Claude Sonnet 5.5 (Medium)", thinkingLevel: "medium" },

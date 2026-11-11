@@ -1,0 +1,38 @@
+{
+  "_note": "Captured live from v1internal:fetchAvailableModels for a real Antigravity account on 2026-11-11. The roster is server-side dynamic and flips with experimentIds, so this is a snapshot of ONE arm, not a contract. Its job is to make catalog drift fail a test instead of reaching users as a 404.",
+  "capturedAt": "2026-11-11",
+  "experimentIdCount": 61,
+  "defaultAgentModelId": "claude-opus-5-5-low",
+  "commandModelIds": [
+    "gemini-3-flash"
+  ],
+  "tabModelIds": [
+    "chat_20706",
+    "chat_23310"
+  ],
+  "imageGenerationModelIds": [
+    "gemini-3.1-flash-image"
+  ],
+  "servedModelIds": [
+    "chat_20706",
+    "chat_23310",
+    "claude-opus-5-5-high",
+    "claude-opus-5-5-low",
+    "claude-opus-5-5-medium",
+    "claude-sonnet-5-5-high",
+    "claude-sonnet-5-5-low",
+    "claude-sonnet-5-5-medium",
+    "gemini-2.5-flash",
+    "gemini-2.5-flash-lite",
+    "gemini-2.5-flash-thinking",
+    "gemini-2.5-pro",
+    "gemini-3-flash",
+    "gemini-3.1-flash-image",
+    "gemini-3.1-flash-lite",
+    "gemini-3.5-flash-lite",
+    "gemini-3.8-flash-tiered",
+    "gpt-oss-120b-medium",
+    "tab_flash_lite_preview",
+    "tab_jump_flash_lite_preview"
+  ]
+}

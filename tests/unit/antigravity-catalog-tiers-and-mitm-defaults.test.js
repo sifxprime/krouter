@@ -12,8 +12,24 @@
 // Each tier also needs its wire model: upstream encodes it as
 // `upstreamModelId: "<wire>(level)"` and splits the level off in its loader.
 // kRouter has no such parser, so the catalog stores the bare wire id in
-// `upstreamModelId` (valid on its own today) and the level in `thinkingLevel`,
-// which the Antigravity executor reads through getModelThinkingLevel.
+// `upstreamModelId` and the level in `thinkingLevel`.
+//
+// 0.5.169 — two corrections, both from measurement rather than from upstream commits.
+//
+// This file used to claim the level was "read by the Antigravity executor through
+// getModelThinkingLevel". It was not: that helper was called from nowhere, and the 3.8
+// entries carried no upstreamModelId at all, so the whole family went to Google verbatim
+// and every one 404'd. The assertions below passed throughout, because they checked the
+// catalog's data against itself and never that anything consumed it. The executor now
+// reads both (open-sse/executors/antigravity.js), so the claim is finally true.
+//
+// A live v1internal:fetchAvailableModels for a real account also contradicts two beliefs
+// harvested from upstream commits:
+//   - the 3.8 family is ONE tiered id, `gemini-3.8-flash-tiered`, not one wire id per
+//     tier. Direct to Google: model=gemini-3.8-flash-tiered -> 200,
+//     model=gemini-3.8-flash-high -> 404 NOT_FOUND.
+//   - `gemini-3-flash` is NOT retired. It is served at remainingFraction 1.0 and is this
+//     account's commandModelIds entry; a chat through kRouter returns 200.
 import { describe, expect, it } from "vitest";
 import { createRequire } from "module";
 import { PROVIDER_MODELS, getModelUpstreamId, getModelThinkingLevel } from "../../open-sse/config/providerModels.js";
@@ -56,9 +72,16 @@ describe("Antigravity (ag) catalog", () => {
   });
 
   it("drops the ids Google retired on 2026-10-08", () => {
-    for (const id of ["gemini-3.5-flash-low", "gemini-3.5-flash-extra-low", "gemini-3.5-flash-high", "gemini-3-flash-agent", "gemini-3-flash"]) {
+    // 0.5.169 — gemini-3-flash left this list. It is not retired: a live roster for a real
+    // account serves it at remainingFraction 1.0 and names it in commandModelIds, and a
+    // chat through kRouter returns 200. Only the -agent variant went away.
+    for (const id of ["gemini-3.5-flash-low", "gemini-3.5-flash-extra-low", "gemini-3.5-flash-high", "gemini-3-flash-agent"]) {
       expect(ids, `${id} was removed upstream`).not.toContain(id);
     }
+  });
+
+  it("publishes gemini-3-flash, which the live roster serves", () => {
+    expect(ids).toContain("gemini-3-flash");
   });
 
   it("keeps the image model", () => {
@@ -71,12 +94,12 @@ describe("Antigravity (ag) catalog", () => {
 });
 
 describe("tier wire ids and thinking levels", () => {
-  // The 3.8 family has one wire model per tier; 3.7 and 3.6 share a single
-  // "-tiered" wire model and differ only by level.
+  // 3.8, 3.7 and 3.6 each collapse to a single "-tiered" wire model and differ only by
+  // level. 3.8 was wrong here until 0.5.169 — see the header.
   it.each([
-    ["gemini-3.8-flash-high", "gemini-3.8-flash-high", "high"],
-    ["gemini-3.8-flash-medium", "gemini-3.8-flash-medium", "medium"],
-    ["gemini-3.8-flash-low", "gemini-3.8-flash-low", "low"],
+    ["gemini-3.8-flash-high", "gemini-3.8-flash-tiered", "high"],
+    ["gemini-3.8-flash-medium", "gemini-3.8-flash-tiered", "medium"],
+    ["gemini-3.8-flash-low", "gemini-3.8-flash-tiered", "low"],
     ["gemini-3.7-flash-high", "gemini-3.7-flash-tiered", "high"],
     ["gemini-3.7-flash-medium", "gemini-3.7-flash-tiered", "medium"],
     ["gemini-3.7-flash-low", "gemini-3.7-flash-tiered", "low"],
