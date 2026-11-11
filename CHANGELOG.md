@@ -1,3 +1,55 @@
+# v0.5.172 (2026-11-11) — a 200 that is a retirement notice is not an answer
+
+**Upgrade if you use combos, or any model a vendor has retired.** A provider answering
+"that model is gone, use this other one" was being billed, logged as a success, and shown
+to you as the model's own reply.
+
+## Fixed
+
+- **An HTTP 200 whose entire body is a vendor retirement notice counted as a completion.**
+  Measured live against `ag/claude-sonnet-4-6`, an id still in the catalogue:
+
+  ```
+  HTTP 200
+  {"object":"chat.completion","model":"gemini","choices":[{"message":{
+    "content":"Claude Sonnet 4.6 is no longer available. Please switch to Claude Sonnet 5.5."},
+    "finish_reason":"stop"}]}
+  ```
+
+  Nothing in the tree saw a problem: `finish_reason` is a clean `stop` and there *is*
+  text, so it was billed, written to the request log as `200 OK`, rendered to the user as
+  if the model had said it, and a combo did **not** advance to its next entry —
+  `isZeroContentResponse` rejects anything whose finish reason is not
+  `in_progress`/`incomplete`, and a notice is neither.
+
+  Detecting this risks the opposite error, which would be worse: a model legitimately
+  *answering* a question about a retired model says much the same words. So the gate is a
+  conjunction and every part must hold — no tool calls, a short message, it says the thing
+  is gone **and** names a replacement, and when the caller supplies the requested model the
+  text must name *that* model. A vendor notice always names the model you asked for; a user
+  asking about some other retired model does not match.
+
+  Verified end to end on a live account: a combo whose first entry returns the notice used
+  to return the notice, and now advances and answers from the next entry, filing the
+  attempt as `empty` instead of `success`.
+
+- **Zero-content 200s were filed as ordinary successes.** `EMPTY_COMPLETION_STATUS` exists
+  so these are "not filed alongside real 200s" — and was called from nowhere, so every
+  empty completion, and every retirement notice, went into the request log as `200 OK`.
+  That is what kept this invisible.
+
+- **A handler's two records disagreed about the same call.** `sseToJsonHandler` wrote its
+  request-log line *before* computing its diagnosis, so the log said `200 OK` while
+  `saveRequestDetail` correctly filed the same request as `empty`.
+
+## Notes
+
+- One new test file, 20 tests, pinning both directions — what must be caught and what must
+  be left alone. The suite is 3,650.
+- v0.5.171 was accepted by npm with a signed provenance statement but had not been served
+  by the registry at the time of writing. This release supersedes it and contains
+  everything it carried.
+
 # v0.5.171 (2026-11-11) — when MITM dies, it must not take the network with it
 
 **Upgrade if you use MITM.** A crash, force-quit or power cut left the DNS redirects
