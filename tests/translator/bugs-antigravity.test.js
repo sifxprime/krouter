@@ -4,6 +4,7 @@ import "./registerAll.js";
 import { translateRequest } from "../../open-sse/translator/index.js";
 import { FORMATS } from "../../open-sse/translator/formats.js";
 import { AntigravityExecutor } from "../../open-sse/executors/antigravity.js";
+import { openaiToAntigravityResponse } from "../../open-sse/translator/response/openai-to-antigravity.js";
 
 const AG2O = (req) =>
   translateRequest(FORMATS.ANTIGRAVITY, FORMATS.OPENAI, "m", { request: req }, true, null, null);
@@ -145,5 +146,29 @@ describe("Antigravity tool schemas → valid JSON Schema", () => {
     expect(p.properties.list.maxItems).toBe(5);
     expect(p.properties.choice.anyOf[0].type).toBe("string");
     expect(p.properties.choice.anyOf[0].minLength).toBe(3);
+  });
+});
+
+// openai-to-antigravity.js — the accumulator stores `accum.id = tc.id` and then
+// emits { name, args } without it. Antigravity's FunctionCall carries an id, and
+// the IDE uses it to attach a command's output to the call that asked for it.
+// Without it `run_command` came back as {"output": ""} every time, and the model
+// kept retrying: "my shell commands are returning empty output".
+describe("Antigravity functionCall keeps its id", () => {
+  it("emits the OpenAI tool_call id on the functionCall part", () => {
+    const state = {};
+    const emit = (chunk) => openaiToAntigravityResponse(chunk, state);
+
+    emit({ id: "c1", model: "m", choices: [{ index: 0, delta: { tool_calls: [{
+      index: 0, id: "call_abc123", function: { name: "run_command", arguments: '{"CommandLine":' } }] } }] });
+    emit({ id: "c1", model: "m", choices: [{ index: 0, delta: { tool_calls: [{
+      index: 0, function: { arguments: '"ls -la"}' } }] } }] });
+    const out = emit({ id: "c1", model: "m", choices: [{ index: 0, delta: {}, finish_reason: "tool_calls" }] });
+
+    const call = out.response.candidates[0].content.parts.find((p) => p.functionCall)?.functionCall;
+    expect(call, "a functionCall part must be emitted").toBeTruthy();
+    expect(call.name).toBe("run_command");
+    expect(call.args).toEqual({ CommandLine: "ls -la" });
+    expect(call.id, "the IDE cannot route output without the id").toBe("call_abc123");
   });
 });

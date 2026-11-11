@@ -61,8 +61,14 @@ export function openaiToAntigravityResponse(chunk, state) {
       try { args = JSON.parse(accum.arguments); } catch { /* empty */ }
       // Restore original tool name if it was prefixed during cloaking
       const originalName = state.toolNameMap?.get(accum.name) || accum.name;
+      // The id is what the IDE uses to attach a tool's output to the call that
+      // asked for it. Dropping it made every run_command come back as
+      // {"output": ""} -- the model could see its own calls but never a result,
+      // and kept retrying. Omit the key entirely when the provider gave no id,
+      // rather than sending id: undefined.
       parts.push({
         functionCall: {
+          ...(accum.id ? { id: accum.id } : {}),
           name: originalName,
           args
         }
