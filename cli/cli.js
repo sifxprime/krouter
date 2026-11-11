@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-const { spawn, exec, execSync } = require("child_process");
+const { spawn, exec, execSync, execFileSync } = require("child_process");
 const path = require("path");
 const fs = require("fs");
 const https = require("https");
@@ -504,6 +504,58 @@ function isOwnServerPid(pid) {
   return false;
 }
 
+// Ask the port who it is, rather than inferring from process metadata.
+//
+// isOwnServerPid() compares the holder's cwd against standaloneDir. That breaks
+// permanently the moment the directory is renamed -- which npm does on every
+// upgrade (it stages into .krouter-XXXX and renames it into place) and which the
+// auto-updater does too. A server still running across an upgrade then has a cwd
+// pointing at a name that no longer exists, the compare fails, and kRouter tells
+// the user their own server is a foreign process and refuses to start. Observed
+// on a real `npm install -g @sifxprime/krouter@latest` with 0.5.174 running:
+//   holder cwd    : .../@sifxprime/.krouter-rqcc3q2I/app   (dir since deleted)
+//   standaloneDir : .../@sifxprime/krouter/app
+//   message       : "Port 20128 is held by next-server (pid 47515) - not kRouter"
+//
+// /api/version is unauthenticated and names the package, so one request settles
+// it wherever the binary now lives. Same lesson as the MITM liveness probe in
+// 0.5.173: ask the thing, do not deduce it from how it looks.
+const PORT_IDENTITY_PROBE = `
+  const http = require("http");
+  const req = http.get(
+    { host: "127.0.0.1", port: Number(process.argv[1]), path: "/api/version", timeout: 2500 },
+    (res) => {
+      let d = "";
+      res.on("data", (c) => (d += c));
+      res.on("end", () => {
+        try {
+          process.stdout.write(JSON.parse(d).packageName === "@sifxprime/krouter" ? "yes" : "no");
+        } catch { process.stdout.write("no"); }
+      });
+    }
+  );
+  req.on("timeout", () => { req.destroy(); process.stdout.write("no"); });
+  req.on("error", () => process.stdout.write("no"));
+`;
+
+function portServesKrouter(port) {
+  try {
+    // execFileSync, not execSync: a shell would mangle the script. Passing it
+    // through `sh -c` means JSON-escaping it, and the two characters \\n then
+    // reach node where real newlines belong -- a SyntaxError that this catch
+    // would swallow, returning false and silently restoring the very bug this
+    // function exists to fix.
+    const out = execFileSync(
+      process.execPath,
+      ["-e", PORT_IDENTITY_PROBE, String(port)],
+      { encoding: "utf8", timeout: 6000, stdio: ["pipe", "pipe", "ignore"] }
+    ).trim();
+    return out === "yes";
+  } catch {
+    return false;
+  }
+}
+
 // Kill ALL processes listening on the given port. Returns true if any were killed.
 // Previous version: on Windows only killed the first PID from netstat, missing
 // parent/child pairs (next-server has a watcher + worker). Now sweeps all PIDs.
@@ -514,6 +566,12 @@ function killProcessOnPort(port) {
       const platform = process.platform;
       const pidsToKill = new Set();
       const foreign = [];
+      // One request, before the pid loop: does the port answer as kRouter?
+      // On its own that is NOT a licence to kill every pid lsof returns --
+      // `lsof -ti:PORT` also lists processes merely CONNECTED to the port, so
+      // trusting it alone would kill the browser tab on the dashboard, or an
+      // IDE mid-request. It is combined below with "is actually listening".
+      const portIsOurs = portServesKrouter(port);
 
       if (platform === "win32") {
         try {
@@ -526,7 +584,9 @@ function killProcessOnPort(port) {
           output.split('\n').filter(l => l.includes('LISTENING')).forEach(line => {
             const pid = line.trim().split(/\s+/).pop();
             if (!pid || !/^\d+$/.test(pid) || pid === String(process.pid)) return;
-            if (isOwnServerPid(pid)) pidsToKill.add(pid);
+            // Safe to trust portIsOurs here without a listener check of its own:
+            // the netstat filter above already kept only LISTENING rows.
+            if (portIsOurs || isOwnServerPid(pid)) pidsToKill.add(pid);
             else foreign.push(pid);
           });
           for (const pid of pidsToKill) {
@@ -545,12 +605,23 @@ function killProcessOnPort(port) {
             encoding: 'utf8',
             stdio: ['pipe', 'pipe', 'ignore']
           }).trim();
+          // Only the listener owns the port; everything else in that list is a
+          // client of it. Reclaiming the port never requires killing a client.
+          let listeners = new Set();
+          try {
+            listeners = new Set(
+              execSync(`lsof -ti:${port} -sTCP:LISTEN`, {
+                encoding: 'utf8', stdio: ['pipe', 'pipe', 'ignore'],
+              }).trim().split('\n').filter(Boolean)
+            );
+          } catch { /* none listening */ }
           pidOutput.split('\n').filter(Boolean).forEach(pid => {
             if (pid === String(process.pid)) return;
             // Only ever kill our own server. Anything else holding the port is the
             // user's — say so and let them choose the port, rather than killing it.
-            if (isOwnServerPid(pid)) pidsToKill.add(pid);
-            else foreign.push(pid);
+            const ours = (portIsOurs && listeners.has(pid)) || isOwnServerPid(pid);
+            if (ours) pidsToKill.add(pid);
+            else if (listeners.has(pid)) foreign.push(pid);
           });
           for (const pid of pidsToKill) {
             try {

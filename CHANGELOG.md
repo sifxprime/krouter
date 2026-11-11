@@ -1,3 +1,39 @@
+# v0.5.176 (2026-11-11) — kRouter told you its own server was a stranger
+
+**Upgrade if you ever run `npm install -g` while kRouter is running.** After an upgrade
+the CLI could refuse to start, naming its own server as a foreign process.
+
+## Fixed
+
+- **"Port 20128 is held by next-server (pid NNNNN) — not kRouter."** Printed with
+  kRouter, and nothing else, on that port. `isOwnServerPid()` identifies the holder by
+  comparing its working directory against the package's `app` directory. npm upgrades by
+  staging into `.krouter-XXXX` and renaming that into place, so a server still running
+  across `npm install -g` holds a cwd whose path no longer exists under that name.
+  Measured on the upgrade that produced the report:
+
+  ```
+  holder cwd    : .../@sifxprime/.krouter-rqcc3q2I/app   (directory since deleted)
+  standaloneDir : .../@sifxprime/krouter/app
+  ```
+
+  The comparison can never succeed again, so the running server is classed as foreign,
+  the CLI exits rather than take the port, and the user is left with a stale version
+  serving and no way to start the new one short of finding the pid themselves. The
+  auto-updater renames the same directory, so it is not only npm that triggers it.
+
+  The holder is now identified by asking the port: `/api/version` is unauthenticated and
+  names the package, so one request settles it wherever the binary has moved to. The
+  refusal itself is unchanged -- kRouter still will not kill a port that is genuinely
+  someone else's; the fix widens what counts as its own, it does not widen what it kills.
+
+  The probe is launched with `execFileSync` and an argument array rather than through a
+  shell. That detail is load-bearing and is pinned by a test: a shell requires
+  JSON-escaping the script, which turns every newline into the two characters `\n`, and
+  node then fails to parse it. The surrounding `catch` swallows that, the function
+  returns false, and the original bug is restored with no symptom at all. It passes every
+  static check and fails only against a live port.
+
 # v0.5.175 (2026-11-11) — Proxy capture mode: interception without sudo, and without a black hole
 
 **New capture transport.** The DNS mode stays; this adds a second way to route an IDE

@@ -79,8 +79,26 @@ describe("port reclamation", () => {
   it("only kills a process it has identified as its own server", () => {
     // Previously: lsof -ti:PORT then kill -9 on everything returned, so
     // `krouter --port 5432` killed the user's Postgres before printing anything.
+    //
+    // 0.5.176 added a second way to recognise our own server (asking the port),
+    // because the cwd check breaks across an upgrade that renames the install
+    // directory. The identification must stay the gate -- this asserts the shape
+    // rather than one expression, so widening HOW we identify cannot silently
+    // widen WHAT gets killed.
     expect(cli).toContain("isOwnServerPid");
-    expect(cli).toMatch(/if \(isOwnServerPid\(pid\)\) pidsToKill\.add\(pid\);/);
+    const addCalls = cli.match(/pidsToKill\.add\(pid\)/g) || [];
+    expect(addCalls.length).toBeGreaterThan(0);
+    for (const m of cli.matchAll(/^.*pidsToKill\.add\(pid\).*$/gm)) {
+      expect(m[0]).toMatch(/isOwnServerPid\(pid\)|\bours\b/);
+    }
+  });
+
+  it("never kills a mere client of the port, only the listener", () => {
+    // `lsof -ti:PORT` lists processes CONNECTED to the port as well as the one
+    // listening on it. Identifying the port as kRouter is not licence to kill
+    // its clients -- that would take out the browser tab on the dashboard.
+    expect(cli).toMatch(/lsof -ti:\$\{port\} -sTCP:LISTEN/);
+    expect(cli).toMatch(/portIsOurs && listeners\.has\(pid\)/);
   });
 
   it("identifies its own server by working directory, which survives orphaning", () => {
