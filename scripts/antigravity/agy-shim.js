@@ -1,6 +1,5 @@
-#!/usr/bin/env node
 /**
- * agy-shim — a logging pass-through for the Antigravity IDE <-> agy hub hop.
+ * agy-shim — sit between the Antigravity IDE and the agy hub, and watch the hop.
  *
  * WHY THIS EXISTS
  *
@@ -20,26 +19,44 @@
  *     ?? workspace.getConfiguration("antigravity").get("serverUrl")
  *     ?? this.serverUrl
  *
- * WHAT THIS DOES, AND DELIBERATELY DOES NOT DO
+ * WHY IT SPAWNS ITS OWN HUB
  *
- * It forwards every byte in both directions, unchanged, and writes down what went
- * past. It rewrites nothing. The point is to answer three questions before any
- * real interception is written:
+ * Setting that override stops the IDE spawning `agy` at all. The first version of
+ * this tool only forwarded to "the hub that is already running", so with the
+ * override in place there was no hub to forward to and the run printed
+ * NOTHING ARRIVED -- which looked like the override being ignored, and was not.
  *
- *   1. Is the override actually honoured for the chat, or does the JetskiWeb
- *      webview learn the hub port some other way?  -> does anything arrive at all
+ * If we are the server URL, we have to be the one that brings a hub up. So by
+ * default this starts its own `agy --hub` on a private port and fronts it. Two
+ * consequences:
+ *
+ *   - The hub's csrf token is ours, and the IDE cannot know it, so the token on
+ *     each request is swapped on the way through. That is the only byte this
+ *     changes, and every call is logged.
+ *   - The hub is ours to clean up. It is not detached, and it is killed on the way
+ *     out, including on a crash -- an orphan would hold its port and ~200MB.
+ *
+ * `--attach` keeps the original behaviour: forward to a hub somebody else started
+ * and change nothing at all.
+ *
+ * WHAT IT IS FOR
+ *
+ * Answering three questions before any real interception is written:
+ *
+ *   1. Is the override honoured for the chat, or does the JetskiWeb webview learn
+ *      the hub port some other way?                 -> does anything arrive at all
  *   2. Do the streaming Cascade RPCs need HTTP/2?   -> the `http` column
  *   3. How much of the 347-RPC surface must be served before the IDE works?
  *                                                   -> the summary on exit
  *
  * USAGE
  *
- *   node scripts/antigravity/agy-shim.js
+ *   node scripts/antigravity/agy-shim.js --add-dir="$PWD"
  *
- * It finds the running agy hub port by itself. Then, in Antigravity, set
+ * Then, in Antigravity, set
  *   "antigravity.serverUrl": "http://127.0.0.1:20130"
- * and reload the window (or relaunch with ANTIGRAVITY_SERVER_URL set to it).
- * Ctrl-C prints a per-RPC summary. Remove the setting to go back to normal.
+ * in settings.json and reload the window. Ctrl-C prints a per-RPC summary and
+ * stops the hub. Remove the setting to go back to normal. `--help` for the rest.
  *
  * Both HTTP/1.1 and h2c arrive on the same port, so the first bytes of each
  * connection are sniffed for the HTTP/2 preface and the socket is handed to
@@ -52,11 +69,17 @@ const http2 = require("http2");
 const fs = require("fs");
 const path = require("path");
 const os = require("os");
-const { execSync } = require("child_process");
+const { execSync, spawn } = require("child_process");
+const crypto = require("crypto");
 
 const LISTEN_PORT = Number(process.env.AGY_SHIM_PORT || 20130);
 const LOG_DIR = process.env.AGY_SHIM_LOG_DIR || path.join(os.homedir(), ".krouter", "logs");
 const LOG_FILE = path.join(LOG_DIR, "agy-shim.jsonl");
+const HUB_LOG_FILE = path.join(LOG_DIR, "agy-hub.log");
+const AGY_BIN = process.env.AGY_BIN || path.join(os.homedir(), ".gemini", "bin", "agy");
+const APP_DATA_DIR = process.env.AGY_APP_DATA_DIR || "antigravity";
+
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 // The HTTP/2 cleartext connection preface. A client that sends this is speaking
 // h2c and would be rejected outright by an HTTP/1.1 server.
@@ -93,27 +116,190 @@ function describePath(url) {
   return m ? { rpc: `${m[1].split(".").pop()}/${m[2]}`, isRpc: true } : { rpc: p, isRpc: false };
 }
 
-/** Find the agy hub the IDE already spawned, so there is nothing to look up by hand. */
-function discoverUpstream() {
-  if (process.env.AGY_UPSTREAM) {
-    const [host, port] = process.env.AGY_UPSTREAM.split(":");
-    return { host: host || "127.0.0.1", port: Number(port) };
-  }
+/**
+ * Ports of every running `agy --hub`, excluding ones this process started.
+ *
+ * The exclusion is the point: without it the first match is usually our own child,
+ * the "the IDE still has its own hub" warning never fires, and a run where the IDE
+ * ignored serverUrl looks identical to one where it obeyed and said nothing.
+ */
+function findRunningHubPorts(excludePort = null) {
   let out = "";
   try {
     out = execSync("ps -Ao command=", { encoding: "utf-8", maxBuffer: 8 * 1024 * 1024 });
   } catch {
-    throw new Error("could not list processes to find the agy hub");
+    return [];
   }
-  const line = out.split("\n").find((l) => l.includes("/agy") && l.includes("--hub-port="));
-  if (!line) {
+  return out
+    .split("\n")
+    .filter((l) => l.includes("/agy") && l.includes("--hub-port="))
+    .map((l) => Number((l.match(/--hub-port=(\d+)/) || [])[1]))
+    .filter((port) => port && port !== excludePort);
+}
+
+/** Ask the OS for a port nobody is using, then let go of it. */
+function pickFreePort() {
+  return new Promise((resolve, reject) => {
+    const probe = net.createServer();
+    probe.unref();
+    probe.on("error", reject);
+    probe.listen(0, "127.0.0.1", () => {
+      const { port } = probe.address();
+      probe.close(() => resolve(port));
+    });
+  });
+}
+
+/**
+ * Poll until something accepts on `port`.
+ *
+ * The delay is not optional. ECONNREFUSED comes back in microseconds, so a loop
+ * without a sleep burns all its attempts before the thing it is waiting for has
+ * finished starting -- the exact bug that made proxy-capture mode report ready
+ * when nothing was listening.
+ */
+async function waitForPort(port, { tries = 80, delayMs = 250 } = {}) {
+  for (let i = 0; i < tries; i += 1) {
+    const open = await new Promise((resolve) => {
+      const probe = net.connect({ host: "127.0.0.1", port });
+      const settle = (value) => { probe.destroy(); resolve(value); };
+      probe.setTimeout(1000, () => settle(false));
+      probe.once("connect", () => settle(true));
+      probe.once("error", () => settle(false));
+    });
+    if (open) return true;
+    await sleep(delayMs);
+  }
+  return false;
+}
+
+function tailFile(file, lines = 14) {
+  try {
+    const text = fs.readFileSync(file, "utf-8").trimEnd();
+    if (!text) return "(the hub wrote nothing)";
+    return text.split("\n").slice(-lines).map((l) => `    ${l}`).join("\n");
+  } catch {
+    return "(no hub log)";
+  }
+}
+
+/**
+ * Start our own hub and own it.
+ *
+ * This is the whole reason the shim was rewritten. Setting `antigravity.serverUrl`
+ * stops the IDE spawning `agy` at all -- so a pass-through shim pointed at "the
+ * running hub" has no upstream to point at, and the first run of this tool printed
+ * NOTHING ARRIVED for exactly that reason. If we are the server URL, we have to be
+ * the one that brings up a hub.
+ *
+ * Because the hub is ours, its csrf token is ours too, and the IDE's token will not
+ * match it. So this mode rewrites `x-codeium-csrf-token` on the way through. That
+ * is the one byte-level change the shim makes, and it is logged.
+ */
+async function spawnOwnHub(addDirs) {
+  if (!fs.existsSync(AGY_BIN)) {
+    throw new Error(`no agy binary at ${AGY_BIN} -- set AGY_BIN=/path/to/agy`);
+  }
+  const port = await pickFreePort();
+  const csrfToken = crypto.randomUUID();
+  const args = [
+    "--hub",
+    `--hub-port=${port}`,
+    `--app_data_dir=${APP_DATA_DIR}`,
+    `--csrf_token=${csrfToken}`,
+    ...addDirs.map((dir) => `--add-dir=${dir}`),
+  ];
+
+  fs.mkdirSync(LOG_DIR, { recursive: true });
+  const hubLog = fs.openSync(HUB_LOG_FILE, "a");
+  fs.writeSync(hubLog, `\n=== agy hub spawned by agy-shim at ${new Date().toISOString()} on port ${port} ===\n`);
+
+  // stdin MUST be a pipe. With "ignore" it is /dev/null, and agy then goes looking
+  // for a controlling terminal and dies with
+  //   bubbletea: could not open TTY: open /dev/tty: device not configured
+  // after it has already bound the hub port -- so readiness passes and every
+  // request afterwards is ECONNREFUSED. The IDE spawns it with a pipe; so do we.
+  //
+  // Deliberately NOT detached: when the shim goes away the hub goes with it. An
+  // orphaned 200MB hub sitting on a port is the failure mode the proxy-capture
+  // work already paid for once.
+  // AGY_ENABLE_HUB=1 is load-bearing and undocumented. Without it `--hub` is
+  // simply ignored: agy runs its interactive CLI instead, which either dies
+  // hunting for a TTY (stdin=/dev/null) or sits forever waiting on stdin
+  // (stdin=pipe) -- in both cases binding nothing, with the flag accepted and no
+  // complaint. Read off the IDE's own agy process, which sets it alongside
+  // ANTIGRAVITY_VSCODE_HOST=1.
+  const child = spawn(AGY_BIN, args, {
+    stdio: ["pipe", hubLog, hubLog],
+    env: { ...process.env, AGY_ENABLE_HUB: "1", ANTIGRAVITY_VSCODE_HOST: "1" },
+  });
+
+  let exit = null;
+  let serving = false;
+  const onGone = (why) => {
+    exit = why;
+    if (!serving) return;
+    // Before this, a hub that died after startup left the shim cheerfully
+    // answering `502 ECONNREFUSED` forever, with the reason only in a log file
+    // nobody had been told to read.
+    console.error("");
+    console.error(`agy-shim: the hub exited (${why.message || `code=${why.code} signal=${why.signal}`}).`);
+    console.error(`  Nothing can be forwarded now. Hub log: ${HUB_LOG_FILE}`);
+    console.error(tailFile(HUB_LOG_FILE));
+    process.exit(1);
+  };
+  child.on("exit", (code, signal) => onGone({ code, signal }));
+  child.on("error", (e) => onGone({ code: null, signal: null, message: e.message }));
+
+  console.log(`agy-shim: starting our own hub -- ${AGY_BIN}`);
+  console.log(`  --hub-port=${port} --app_data_dir=${APP_DATA_DIR}${addDirs.length ? ` (+${addDirs.length} --add-dir)` : ""}`);
+
+  const ready = await waitForPort(port);
+  if (!ready || exit) {
+    try { child.kill("SIGKILL"); } catch { /* already gone */ }
+    const why = exit
+      ? `it exited (${exit.message || `code=${exit.code} signal=${exit.signal}`})`
+      : "it never accepted a connection";
     throw new Error(
-      "no running `agy --hub` found. Start Antigravity first, or set AGY_UPSTREAM=127.0.0.1:<port>"
+      `the hub did not come up on port ${port} -- ${why}\n  hub log: ${HUB_LOG_FILE}\n${tailFile(HUB_LOG_FILE)}`
     );
   }
-  const port = Number((line.match(/--hub-port=(\d+)/) || [])[1]);
-  if (!port) throw new Error("found agy but could not read --hub-port");
-  return { host: "127.0.0.1", port };
+
+  serving = true;
+  return { host: "127.0.0.1", port, csrfToken, child, mode: "spawned" };
+}
+
+/** Attach to a hub somebody else started, and change nothing at all. */
+function attachToHub(explicit) {
+  if (explicit) {
+    const [host, port] = explicit.split(":");
+    return { host: host || "127.0.0.1", port: Number(port), csrfToken: null, child: null, mode: "attached" };
+  }
+  const [port] = findRunningHubPorts();
+  if (!port) {
+    throw new Error(
+      "no running `agy --hub` to attach to. Start Antigravity first, pass AGY_UPSTREAM=127.0.0.1:<port>,\n" +
+      "  or drop --attach and let the shim start its own hub."
+    );
+  }
+  return { host: "127.0.0.1", port, csrfToken: null, child: null, mode: "attached" };
+}
+
+function parseArgs(argv) {
+  const opts = { attach: false, addDirs: [] };
+  for (const arg of argv) {
+    if (arg === "--attach") opts.attach = true;
+    else if (arg.startsWith("--add-dir=")) opts.addDirs.push(arg.slice("--add-dir=".length));
+    else if (arg === "--help" || arg === "-h") opts.help = true;
+    else throw new Error(`unknown argument ${arg} (try --help)`);
+  }
+  return opts;
+}
+
+async function resolveUpstream(opts) {
+  if (process.env.AGY_UPSTREAM) return attachToHub(process.env.AGY_UPSTREAM);
+  if (opts.attach) return attachToHub(null);
+  return spawnOwnHub(opts.addDirs);
 }
 
 // ── HTTP/1.1 ─────────────────────────────────────────────────
@@ -125,9 +311,10 @@ function createH1Server(upstream) {
     let bytesIn = 0;
     let bytesOut = 0;
 
-    // Forward the client's headers untouched -- including x-codeium-csrf-token,
-    // without which the hub rejects the call.
+    // Forward the client's headers untouched -- except, when the hub is ours, the
+    // csrf token, which the IDE cannot know. Without this swap every call 401s.
     const headers = { ...req.headers, host: `${upstream.host}:${upstream.port}` };
+    if (upstream.csrfToken) headers["x-codeium-csrf-token"] = upstream.csrfToken;
 
     const fwd = http.request(
       { host: upstream.host, port: upstream.port, method: req.method, path: req.url, headers },
@@ -193,6 +380,7 @@ function createH2Server(upstream) {
       fwdHeaders[k] = v;
     }
     fwdHeaders[":authority"] = `${upstream.host}:${upstream.port}`;
+    if (upstream.csrfToken) fwdHeaders["x-codeium-csrf-token"] = upstream.csrfToken;
 
     const up = client.request(fwdHeaders);
     let status = null;
@@ -231,8 +419,27 @@ function createH2Server(upstream) {
 
 // ── Front door: sniff the preface, hand the socket to the right server ──
 
-function start() {
-  const upstream = discoverUpstream();
+const HELP = `agy-shim — sit between the Antigravity IDE and the agy hub.
+
+  node scripts/antigravity/agy-shim.js [--add-dir=<path> ...] [--attach]
+
+  (default)        start our own \`agy --hub\` and front it. Use this one:
+                   setting antigravity.serverUrl stops the IDE spawning a hub,
+                   so the shim has to supply it.
+  --add-dir=<p>    workspace folder to give the hub; repeatable. The IDE normally
+                   passes the open folders this way.
+  --attach         do not spawn; forward to a hub that is already running and
+                   change nothing (pure observation, needs the IDE to have one).
+  AGY_UPSTREAM     host:port of a hub to attach to; implies --attach.
+  AGY_BIN          path to the agy binary (default ~/.gemini/bin/agy).
+  AGY_SHIM_PORT    port to listen on (default 20130).
+`;
+
+async function start() {
+  const opts = parseArgs(process.argv.slice(2));
+  if (opts.help) { console.log(HELP); return; }
+
+  const upstream = await resolveUpstream(opts);
   const h1 = createH1Server(upstream);
   const h2 = createH2Server(upstream);
 
@@ -264,17 +471,42 @@ function start() {
 
   front.listen(LISTEN_PORT, "127.0.0.1", () => {
     console.log(`agy-shim listening on http://127.0.0.1:${LISTEN_PORT}`);
-    console.log(`  forwarding to the real agy hub at ${upstream.host}:${upstream.port}`);
+    console.log(`  upstream hub: ${upstream.host}:${upstream.port} (${upstream.mode})`);
     console.log(`  log: ${LOG_FILE}`);
+    if (upstream.mode === "spawned") {
+      console.log(`  hub log: ${HUB_LOG_FILE}`);
+      // Two hubs means the IDE kept its own, which means it is not asking us --
+      // and any silence that follows is that, not a broken shim.
+      const theirs = findRunningHubPorts(upstream.port);
+      if (theirs.length) {
+        console.log("");
+        console.log(`  NOTE: another agy hub is running on ${theirs.join(", ")} (the IDE's own).`);
+        console.log("  If it is talking to that one, nothing will reach this shim. Reload the");
+        console.log("  Antigravity window after setting serverUrl, and check this note again.");
+      }
+    }
     console.log("");
     console.log("In Antigravity, set this and reload the window:");
     console.log(`  "antigravity.serverUrl": "http://127.0.0.1:${LISTEN_PORT}"`);
     console.log("");
-    console.log("Ctrl-C for a per-RPC summary. Nothing is modified -- this only watches.");
+    console.log(
+      upstream.mode === "spawned"
+        ? "Ctrl-C for a per-RPC summary, and the hub is stopped with it."
+        : "Ctrl-C for a per-RPC summary. Nothing is modified -- this only watches."
+    );
     console.log("");
   });
 
+  const stopHub = () => {
+    if (!upstream.child || upstream.child.exitCode !== null) return;
+    try { upstream.child.kill("SIGTERM"); } catch { /* already gone */ }
+    // If it ignores SIGTERM it still has to go -- an orphan holds the port and
+    // 200MB of RSS, and the next run would silently attach to the wrong hub.
+    setTimeout(() => { try { upstream.child.kill("SIGKILL"); } catch { /* gone */ } }, 2000).unref();
+  };
+
   const summarise = () => {
+    stopHub();
     const all = [...stats.entries()];
     const rows = all.filter(([, s]) => s.isRpc);
     const assets = all.filter(([, s]) => !s.isRpc);
@@ -284,6 +516,9 @@ function start() {
       console.log("  Either the setting was not applied (reload the window after setting it),");
       console.log("  or the IDE reaches the hub without consulting antigravity.serverUrl --");
       console.log("  which is exactly the thing this shim exists to find out.");
+      if (upstream.mode === "spawned") {
+        console.log(`  The hub itself did come up on ${upstream.port}; see ${HUB_LOG_FILE}.`);
+      }
     } else {
       rows.sort((a, b) => b[1].count - a[1].count);
       console.log(
@@ -308,11 +543,11 @@ function start() {
 
   process.on("SIGINT", summarise);
   process.on("SIGTERM", summarise);
+  // A crash must not leave the hub behind either.
+  process.on("exit", stopHub);
 }
 
-try {
-  start();
-} catch (e) {
+start().catch((e) => {
   console.error(`agy-shim: ${e.message}`);
   process.exit(1);
-}
+});
