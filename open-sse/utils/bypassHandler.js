@@ -1,4 +1,5 @@
 import { detectFormat } from "../services/provider.js";
+import { clientWantsDoneSentinel } from "./sseConstants.js";
 import { translateResponse, initState } from "../translator/index.js";
 import { FORMATS } from "../translator/formats.js";
 import { SKIP_PATTERNS } from "../config/runtimeConfig.js";
@@ -207,8 +208,9 @@ function createStreamingResponse(sourceFormat, model, text) {
     }
   }
 
-  // Add [DONE]
-  translatedChunks.push("data: [DONE]\n\n");
+  // Add [DONE] -- unless the client is one that has no sentinel. `sourceFormat`
+  // is the CLIENT format here, despite the name.
+  if (clientWantsDoneSentinel(sourceFormat)) translatedChunks.push("data: [DONE]\n\n");
 
   return {
     success: true,

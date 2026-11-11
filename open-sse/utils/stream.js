@@ -1,4 +1,5 @@
 import { translateResponse, initState } from "../translator/index.js";
+import { clientWantsDoneSentinel } from "./sseConstants.js";
 import { FORMATS } from "../translator/formats.js";
 import { trackPendingRequest, appendRequestLog } from "@/lib/usageDb.js";
 import { extractUsage, hasValidUsage, estimateUsage, logUsage, addBufferToUsage, filterUsageForFormat, COLORS } from "./usageTracking.js";
@@ -90,7 +91,12 @@ export function createSSEStream(options = {}) {
   // ends. Antigravity's `agy` parses every data: line as JSON, so the OpenAI-style
   // sentinel makes it fail AFTER it has already rendered the answer, surfacing as
   // "Agent execution terminated due to error" on a turn that visibly worked.
-  const omitsDoneSentinel = targetFormat === FORMATS.ANTIGRAVITY;
+  // sourceFormat is the CLIENT here, not targetFormat. translateResponse is called
+  // as (targetFormat, sourceFormat) against register(from, to), so an antigravity
+  // client registers OPENAI -> ANTIGRAVITY: from=targetFormat, to=sourceFormat.
+  // Guarding on targetFormat looked right, passed a test that repeated the same
+  // inversion, shipped, and changed nothing -- the sentinel kept going out.
+  const omitsDoneSentinel = !clientWantsDoneSentinel(sourceFormat);
 
   // The Responses API has no [DONE] sentinel. Codex closes the socket the moment it
   // sees the terminal event, which cancels the reader -- so flush() never runs and the

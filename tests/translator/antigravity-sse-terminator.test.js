@@ -23,9 +23,13 @@ const CHUNKS = [
   { id: "c1", model: "m", choices: [{ index: 0, delta: {}, finish_reason: "stop" }] },
 ];
 
-async function collect(targetFormat) {
+async function collect(clientFormat) {
+  // Argument order matters and is counter-intuitive: the signature is
+  // (targetFormat, sourceFormat) where sourceFormat is the CLIENT. Passing the
+  // client as targetFormat is what made the first version of this test pass
+  // against code that was still emitting the sentinel.
   const out = openaiStream(CHUNKS).pipeThrough(
-    createSSETransformStreamWithLogger(targetFormat, FORMATS.OPENAI, null, null, null, "m")
+    createSSETransformStreamWithLogger(FORMATS.OPENAI, clientFormat, null, null, null, "m")
   );
   const reader = out.getReader();
   const dec = new TextDecoder();
@@ -50,5 +54,26 @@ describe("SSE terminator per client format", () => {
   it("still sends [DONE] to OpenAI clients", async () => {
     const text = await collect(FORMATS.OPENAI);
     expect(text).toContain("[DONE]");
+  });
+});
+
+// The guard first went into stream.js only, and the bypass path kept emitting
+// the sentinel -- same bug, second file, one client. Both now ask the same
+// predicate, and this pins it so a third emitter has to opt in deliberately.
+describe("the done-sentinel rule is shared, not per-file", () => {
+  it("says Antigravity wants no sentinel and OpenAI does", async () => {
+    const { clientWantsDoneSentinel } = await import("../../open-sse/utils/sseConstants.js");
+    expect(clientWantsDoneSentinel(FORMATS.ANTIGRAVITY)).toBe(false);
+    expect(clientWantsDoneSentinel(FORMATS.OPENAI)).toBe(true);
+    expect(clientWantsDoneSentinel(FORMATS.CLAUDE)).toBe(true);
+  });
+
+  it("every client-facing emitter consults it", async () => {
+    const fs = await import("node:fs");
+    for (const f of ["open-sse/utils/stream.js", "open-sse/utils/bypassHandler.js"]) {
+      const src = fs.readFileSync(f, "utf8");
+      expect(src, `${f} must gate its [DONE] on the shared predicate`)
+        .toContain("clientWantsDoneSentinel");
+    }
   });
 });
