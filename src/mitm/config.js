@@ -16,7 +16,6 @@ const LSOF_BIN = (() => {
 const TARGET_HOSTS = [
   "daily-cloudcode-pa.googleapis.com",
   "cloudcode-pa.googleapis.com",
-  "api.individual.githubcopilot.com",
   "q.us-east-1.amazonaws.com",
   "codewhisperer.us-east-1.amazonaws.com",
   "runtime.us-east-1.kiro.dev",
@@ -26,7 +25,6 @@ const TARGET_HOSTS = [
 
 const URL_PATTERNS = {
   antigravity: [":generateContent", ":streamGenerateContent"],
-  copilot: ["/chat/completions", "/v1/messages", "/responses"],
   // Kiro has moved its chat endpoint twice. 1.0.228+ posts to `/` with an
   // x-amz-target header instead of the /generateAssistantResponse path (see
   // isChatRequest). 1.4.x moved again, to POST /v1/responses with an OpenAI
@@ -165,7 +163,6 @@ const LOG_BLACKLIST_URL_PARTS = [
 
 function getToolForHost(host) {
   const h = (host || "").split(":")[0];
-  if (h === "api.individual.githubcopilot.com") return "copilot";
   if (h === "daily-cloudcode-pa.googleapis.com" || h === "cloudcode-pa.googleapis.com") return "antigravity";
   if (h === "q.us-east-1.amazonaws.com" || h === "codewhisperer.us-east-1.amazonaws.com" || h === "runtime.us-east-1.kiro.dev") return "kiro";
   if (h === "api2.cursor.sh") return "cursor";

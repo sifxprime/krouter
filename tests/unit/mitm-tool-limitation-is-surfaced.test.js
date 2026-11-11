@@ -42,7 +42,7 @@ describe("Antigravity declares what MITM cannot do", () => {
 });
 
 describe("tools that DO intercept carry no note", () => {
-  it.each(["kiro", "claude", "copilot"])("%s has no limitation", (id) => {
+  it.each(["kiro", "claude"])("%s has no limitation", (id) => {
     expect(MITM_TOOLS[id].mitmLimitation).toBeUndefined();
   });
 });

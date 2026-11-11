@@ -87,7 +87,7 @@ describe("MITM is not hardcoded off anywhere", () => {
   it("every intercepted tool is driven by config, not a constant", () => {
     const { MITM_TOOLS } = require("../../src/shared/constants/cliTools.js");
     const tools = Object.keys(MITM_TOOLS);
-    expect(tools).toEqual(expect.arrayContaining(["antigravity", "claude", "kiro", "copilot"]));
+    expect(tools).toEqual(expect.arrayContaining(["antigravity", "claude", "kiro"]));
     for (const t of tools) {
       expect(typeof MITM_TOOLS[t].mitmDomain).toBe("string");
       expect(MITM_TOOLS[t].mitmDomain.length).toBeGreaterThan(0);

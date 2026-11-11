@@ -29,7 +29,6 @@ const HOST_REWRITE = {
 
 const handlers = {
   antigravity: require("./handlers/antigravity"),
-  copilot: require("./handlers/copilot"),
   kiro: require("./handlers/kiro"),
   cursor: require("./handlers/cursor"),
   claude: require("./handlers/claude"),

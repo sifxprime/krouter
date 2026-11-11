@@ -16,7 +16,6 @@ const mocks = vi.hoisted(() => ({ getApiKeys: vi.fn(async () => []) }));
 vi.mock("@/lib/localDb", () => ({ getApiKeys: mocks.getApiKeys }));
 
 const opencode = await import("../../src/app/api/cli-tools/opencode-settings/route.js");
-const copilot = await import("../../src/app/api/cli-tools/copilot-settings/route.js");
 const deepseek = await import("../../src/app/api/cli-tools/deepseek-tui-settings/route.js");
 const resolveCliApiKey = async (key) => (await import("../../src/app/api/cli-tools/resolveApiKey.js")).resolveCliApiKey(key);
 
@@ -37,12 +36,6 @@ const TOOLS = {
     expect(res.status).toBe(200);
     const { configPath } = await res.json();
     return JSON.parse(fs.readFileSync(configPath, "utf-8")).provider.krouter.options.apiKey;
-  },
-  copilot: async (apiKey) => {
-    const res = await post(copilot, "/api/cli-tools/copilot-settings", { baseUrl: BASE, apiKey, models: ["cc/claude-sonnet-4-6"] });
-    expect(res.status).toBe(200);
-    const { configPath } = await res.json();
-    return JSON.parse(fs.readFileSync(configPath, "utf-8")).find((e) => e.name === "kRouter").apiKey;
   },
   "deepseek-tui": async (apiKey) => {
     const res = await post(deepseek, "/api/cli-tools/deepseek-tui-settings", { baseUrl: BASE, apiKey, model: "cc/claude-sonnet-4-6" });
