@@ -84,9 +84,12 @@ const ROUTER_BASE = String(process.env.MITM_ROUTER_BASE || DEFAULT_LOCAL_ROUTER)
 const API_KEY = process.env.ROUTER_API_KEY;
 
 // Headers that must not be forwarded to kRouter
+// fetchRouter re-serializes the body with JSON.stringify, so a forwarded
+// `content-encoding: gzip` from the client would tell kRouter to gunzip plain
+// JSON and the request would fail to parse.
 const STRIP_HEADERS = new Set([
   "host", "content-length", "connection", "transfer-encoding",
-  "content-type", "authorization"
+  "content-type", "content-encoding", "authorization"
 ]);
 
 /**

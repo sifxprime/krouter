@@ -12,6 +12,7 @@ const { DATA_DIR, MITM_DIR } = require("./paths");
 const { getCertForDomain } = require("./cert/generate");
 const { applyAntigravityIdeVersionOverride } = require("./antigravityIdeVersion");
 const { getMappedModel } = require("./modelMap");
+const { decodeRequestBody } = require("./bodyCodec");
 const LOCAL_PORT = 443;
 const IS_WIN = process.platform === "win32";
 // 0.5.120 — Raw request/response dumps to ~/.krouter/logs/mitm. OFF by default.
@@ -416,7 +417,12 @@ const server = https.createServer(sslOptions, async (req, res) => {
       return handlers[tool].intercept(req, res, bodyBuffer, null, passthrough);
     }
 
-    const model = extractModel(req.url, bodyBuffer);
+    // Claude Desktop / Claude Code gzip their request bodies. Decode before
+    // reading the model, or isBinaryData() rejects the body and every request
+    // falls through to passthrough() on the vendor's own quota. passthrough()
+    // below still sends the original bytes with the original headers.
+    const decodedBody = decodeRequestBody(bodyBuffer, req.headers);
+    const model = extractModel(req.url, decodedBody);
 
     // Intentional passthrough: some models must never be re-routed (e.g. Antigravity
     // tab-autocomplete) so latency-critical inline completion stays native. Silent — this
@@ -430,7 +436,7 @@ const server = https.createServer(sslOptions, async (req, res) => {
       return passthrough(req, res, bodyBuffer);
     }
 
-    return handlers[tool].intercept(req, res, bodyBuffer, mappedModel, passthrough);
+    return handlers[tool].intercept(req, res, decodedBody, mappedModel, passthrough);
   } catch (e) {
     err(`Unhandled error: ${e.message}`);
     if (!res.headersSent) res.writeHead(500, { "Content-Type": "application/json" });
