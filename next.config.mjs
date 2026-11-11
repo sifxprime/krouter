@@ -64,6 +64,27 @@ const nextConfig = {
         source: "/codex/:path*",
         destination: "/api/v1/responses"
       },
+      // 0.5.169 — /v1beta had NO rewrite, so every Gemini-protocol client 404'd. The
+      // route exists at /api/v1beta/models/[...path] and works; nothing routed the
+      // root-level path to it. dashboardGuard already listed "/v1beta" in
+      // PUBLIC_PREFIXES, which is what the intent was, and the Antigravity MITM handler
+      // forwards Gemini bodies, so the format is supported end to end — the public
+      // address for it simply did not resolve. Verified on a dev server:
+      //   GET /v1beta/models      -> 404   GET /api/v1beta/models      -> 200
+      // The doubled form mirrors the /v1/v1 rule above, for a client that appends the
+      // version to a base URL that already carries it.
+      {
+        source: "/v1beta/v1beta/:path*",
+        destination: "/api/v1beta/:path*"
+      },
+      {
+        source: "/v1beta/:path*",
+        destination: "/api/v1beta/:path*"
+      },
+      {
+        source: "/v1beta",
+        destination: "/api/v1beta"
+      },
       {
         source: "/v1/:path*",
         destination: "/api/v1/:path*"

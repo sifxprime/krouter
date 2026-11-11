@@ -193,6 +193,17 @@ async function uninstallCert(sudoPassword, certPath) {
   } else {
     await uninstallCertLinux(sudoPassword);
   }
+
+  // 0.5.169 — the per-IDE trust settings point at a cert that no longer exists, so
+  // they go with it. MITM stop deliberately leaves them alone; only this removes them.
+  try {
+    const { removeIdeCaTrust } = require("../ideCaTrust");
+    const { removed, failed } = removeIdeCaTrust();
+    for (const r of removed) log(`🔐 Cert: removed ${r}`);
+    for (const x of failed) log(`🔐 Cert: ${x}`);
+  } catch (e) {
+    log(`🔐 Cert: failed to remove IDE trust settings: ${e.message}`);
+  }
 }
 
 async function uninstallCertMac(sudoPassword, certPath) {

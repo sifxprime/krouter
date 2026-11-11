@@ -9,6 +9,7 @@ import { getSettings } from "@/lib/localDb";
 import { getModelInfo } from "../services/model.js";
 import { handleEmbeddingsCore } from "open-sse/handlers/embeddingsCore.js";
 import { errorResponse, unavailableResponse } from "open-sse/utils/error.js";
+import { parkedAccountStatus } from "open-sse/services/accountFallback.js";
 import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
 import * as log from "../utils/logger.js";
 import { updateProviderCredentials, checkAndRefreshToken } from "../services/tokenRefresh.js";
@@ -105,7 +106,9 @@ export async function handleEmbeddings(request) {
       if (credentials?.allRateLimited) {
         const errorMsg = lastError || credentials.lastError || "Unavailable";
         // 0.5.166 — every account is parked: 503 + Retry-After, never a stale 401/400 (upstream 15687d19).
-        const status = HTTP_STATUS.SERVICE_UNAVAILABLE;
+        // 0.5.169 — see parkedAccountStatus: a 404 lock is request-scoped, so report it
+        // rather than parking the client on a 503 + Retry-After it cannot act on.
+        const status = parkedAccountStatus(credentials.lastErrorCode, HTTP_STATUS.SERVICE_UNAVAILABLE);
         log.warn("EMBEDDINGS", `[${provider}/${model}] ${errorMsg} (${credentials.retryAfterHuman})`);
         return unavailableResponse(status, `[${provider}/${model}] ${errorMsg}`, credentials.retryAfter, credentials.retryAfterHuman);
       }

@@ -7,11 +7,11 @@ const dns = require("dns");
 const { promisify } = require("util");
 const { execSync } = require("child_process");
 const { log, err, dumpRequest, createResponseDumper, clearDumpDir } = require("./logger");
-const { IS_DEV, LSOF_BIN, TARGET_HOSTS, URL_PATTERNS, MODEL_SYNONYMS, MODEL_PATTERNS, MODEL_NO_MAP, getToolForHost, isChatRequest } = require("./config");
+const { IS_DEV, LSOF_BIN, TARGET_HOSTS, URL_PATTERNS, MODEL_NO_MAP, getToolForHost, isChatRequest } = require("./config");
 const { DATA_DIR, MITM_DIR } = require("./paths");
 const { getCertForDomain } = require("./cert/generate");
-const { getMitmAlias } = require("./dbReader");
 const { applyAntigravityIdeVersionOverride } = require("./antigravityIdeVersion");
+const { getMappedModel } = require("./modelMap");
 const LOCAL_PORT = 443;
 const IS_WIN = process.platform === "win32";
 // 0.5.120 — Raw request/response dumps to ~/.krouter/logs/mitm. OFF by default.
@@ -136,26 +136,6 @@ function isBinaryData(buffer) {
   return (nonPrintable / sample.length) > 0.3;
 }
 
-function getMappedModel(tool, model) {
-  if (!model) return null;
-  try {
-    const aliases = getMitmAlias(tool);
-    if (!aliases) return null;
-    // Normalize via synonym map (e.g., public AG names -> backend model ids)
-    const normalizedModel = String(model).replace(/^models\//, "");
-    const lookup = MODEL_SYNONYMS?.[tool]?.[normalizedModel] || normalizedModel;
-    if (aliases[lookup]) return aliases[lookup];
-    // Prefix match fallback
-    const prefixKey = Object.keys(aliases).find(k => k && aliases[k] && (lookup.startsWith(k) || k.startsWith(lookup)));
-    if (prefixKey) return aliases[prefixKey];
-    // Pattern fallback: catches AG renamed variants (e.g. deprecated pro IDs → gemini-pro-agent)
-    const patterns = MODEL_PATTERNS?.[tool] || [];
-    for (const { match, alias } of patterns) {
-      if (match.test(lookup) && aliases[alias]) return aliases[alias];
-    }
-    return null;
-  } catch { return null; }
-}
 
 /**
  * Forward request to real upstream.

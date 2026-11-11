@@ -96,6 +96,43 @@ export function convertOpenAIContentToParts(content) {
 }
 
 // Extract text content from OpenAI content
+// 0.5.169 — convert a Claude media block to a Gemini part.
+//
+// The Antigravity Claude path (wrapInCloudCodeEnvelopeForClaude) converted Claude blocks
+// to Gemini parts with an explicit branch list — text, tool_use, tool_result — and no
+// image branch, so an image block was dropped on the floor. The request then succeeded
+// with HTTP 200 and the model answered as if no image had been sent, which is billed and
+// looks like a normal reply. Reproduced on a live install with a 96x96 solid-red PNG and
+// the prompt "What colour is this image?":
+//   cc/claude-opus-5           -> "Red"
+//   kr/claude-sonnet-4.5       -> "Red"
+//   ag/claude-sonnet-5-5-high  -> "I can't answer that because no image came through."
+//
+// Claude's block carries the payload under `source`; Gemini wants inlineData for bytes
+// and fileData for a URL. Kept here rather than inline so the Gemini-family translators
+// share one definition.
+const CLAUDE_MEDIA_BLOCK_TYPES = new Set(["image", "document", "audio", "video"]);
+
+export function isClaudeMediaBlock(block) {
+  return !!block && CLAUDE_MEDIA_BLOCK_TYPES.has(block.type) && !!block.source;
+}
+
+export function claudeMediaBlockToGeminiPart(block) {
+  if (!isClaudeMediaBlock(block)) return null;
+  const src = block.source;
+  // Anthropic calls it media_type; accept mimeType too, which some clients send.
+  const mimeType = src.media_type || src.mimeType || (block.type === "image" ? "image/png" : undefined);
+  if (src.type === "base64" && src.data) {
+    return { inlineData: { mime_type: mimeType || "application/octet-stream", data: src.data } };
+  }
+  if ((src.type === "url" || src.url) && src.url) {
+    return { fileData: { fileUri: src.url, mimeType: mimeType || `${block.type}/*` } };
+  }
+  // A shape we do not recognise is better dropped than sent as junk, but the caller
+  // logs nothing today, so returning null keeps the previous behaviour for those.
+  return null;
+}
+
 export function extractTextContent(content) {
   if (typeof content === "string") return content;
   if (Array.isArray(content)) {

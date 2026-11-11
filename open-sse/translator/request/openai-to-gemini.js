@@ -11,6 +11,8 @@ function generateUUID() {
 import {
   DEFAULT_SAFETY_SETTINGS,
   convertOpenAIContentToParts,
+  isClaudeMediaBlock,
+  claudeMediaBlockToGeminiPart,
   extractTextContent,
   tryParseJSON,
   generateRequestId,
@@ -428,6 +430,12 @@ function wrapInCloudCodeEnvelopeForClaude(model, claudeRequest, credentials = nu
         for (const block of msg.content) {
           if (block.type === "text") {
             parts.push({ text: block.text });
+          } else if (isClaudeMediaBlock(block)) {
+            // 0.5.169 — without this an image block fell through every branch and was
+            // dropped, and the request still returned 200 with the model answering as
+            // though nothing was attached. See claudeMediaBlockToGeminiPart.
+            const mediaPart = claudeMediaBlockToGeminiPart(block);
+            if (mediaPart) parts.push(mediaPart);
           } else if (block.type === "tool_use") {
             parts.push({
               functionCall: {

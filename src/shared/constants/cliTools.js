@@ -97,7 +97,18 @@ export const MITM_TOOLS = {
     description: "Anthropic Claude Desktop app (Electron). Intercepts api.anthropic.com so the desktop app routes through kRouter to whichever provider you've mapped (your Claude OAuth, Antigravity, etc.). The Claude Code CLI does NOT need this — use ANTHROPIC_BASE_URL instead.",
     configType: "mitm",
     mitmDomain: "api.anthropic.com",
+    // 0.5.169 — the list stopped at Opus 4.7 while the Antigravity tool moved to the
+    // 5.5 family in 0.5.166, so Claude Desktop's current models had no slot to map and
+    // fell through to passthrough: they reached Anthropic directly instead of the
+    // provider mapped here. Older ids stay - saved mappings and older Desktop builds
+    // still use them. Guarded by mitm-claude-desktop-offers-current-models.test.js.
     defaultModels: [
+      { id: "claude-opus-5-5", name: "Claude Opus 5.5", alias: "claude-opus-5-5" },
+      { id: "claude-sonnet-5-5", name: "Claude Sonnet 5.5", alias: "claude-sonnet-5-5" },
+      { id: "claude-fable-5-1", name: "Claude Fable 5.1", alias: "claude-fable-5-1" },
+      { id: "claude-opus-5", name: "Claude Opus 5", alias: "claude-opus-5" },
+      { id: "claude-sonnet-5", name: "Claude Sonnet 5", alias: "claude-sonnet-5" },
+      { id: "claude-opus-4-8", name: "Claude Opus 4.8", alias: "claude-opus-4-8" },
       { id: "claude-opus-4-7", name: "Claude Opus 4.7", alias: "claude-opus-4-7" },
       { id: "claude-opus-4-6", name: "Claude Opus 4.6", alias: "claude-opus-4-6" },
       { id: "claude-sonnet-4-6", name: "Claude Sonnet 4.6", alias: "claude-sonnet-4-6" },

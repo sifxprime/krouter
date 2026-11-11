@@ -17,7 +17,8 @@ const { isCertExpired } = require("./cert/rootCA");
 const { DATA_DIR, MITM_DIR } = require("./paths");
 const { log, err } = require("./logger");
 const { LSOF_BIN } = require("./config");
-const { setLinuxNodeExtraCaCerts, unsetLinuxNodeExtraCaCerts } = require("./linuxNodeCaCerts");
+const { setLinuxNodeExtraCaCerts } = require("./linuxNodeCaCerts");
+const { configureIdeCaTrust } = require("./ideCaTrust");
 
 const IS_LINUX = process.platform === "linux";
 
@@ -687,6 +688,17 @@ async function startServer(apiKey, sudoPassword, forceKillPort443 = false) {
   // MITM cert. Node ignores the OS trust store and reads its own bundled
   // Mozilla CA list — without this, system curl works but Node-based apps
   // reject our cert with 'x509: certificate signed by unknown authority'.
+  // 0.5.169 — NODE_EXTRA_CA_CERTS covers Node/Electron only. Antigravity's language
+  // server is Go: it reads neither the OS store nor that variable, and fails sign-in
+  // with "x509: certificate signed by unknown authority" the moment DNS points at us.
+  // Write its own setting too, on every platform.
+  try {
+    const caPath = path.join(MITM_DIR, "rootCA.crt");
+    const ide = configureIdeCaTrust(caPath);
+    for (const w of ide.written) log(`[ide-ca] ${w} -> kRouter root CA`);
+    for (const x of ide.failed) log(`[ide-ca] ${x}`);
+  } catch (e) { log(`[ide-ca] Failed: ${e.message}`); }
+
   if (IS_MAC) {
     const rootCAPath = path.join(MITM_DIR, "rootCA.crt");
     if (fs.existsSync(rootCAPath)) {
@@ -841,27 +853,12 @@ async function stopServer(sudoPassword) {
     await removeAllDNSEntries(sudoPassword);
   }
 
-  // Unset NODE_EXTRA_CA_CERTS so apps don't keep trusting stale MITM cert
-  if (IS_MAC) {
-    exec(`launchctl unsetenv NODE_EXTRA_CA_CERTS`, { windowsHide: true }, (e) => {
-      if (e) log(`[launchctl] Failed to unset NODE_EXTRA_CA_CERTS: ${e.message}`);
-      else log(`[launchctl] NODE_EXTRA_CA_CERTS unset`);
-    });
-  } else if (IS_WIN) {
-    exec(`reg delete HKCU\\Environment /F /V NODE_EXTRA_CA_CERTS`, { windowsHide: true }, (e) => {
-      if (e) log(`[reg] Failed to unset NODE_EXTRA_CA_CERTS: ${e.message}`);
-      else log(`[reg] NODE_EXTRA_CA_CERTS unset`);
-    });
-  } else if (IS_LINUX) {
-    try {
-      const removed = unsetLinuxNodeExtraCaCerts();
-      if (removed.length > 0) {
-        log(`[linux-node-ca] NODE_EXTRA_CA_CERTS removed from ${removed.length} shell rc file(s)`);
-      }
-    } catch (e) {
-      log(`[linux-node-ca] Failed to unset NODE_EXTRA_CA_CERTS: ${e.message}`);
-    }
-  }
+  // 0.5.169 — CA trust is deliberately NOT torn down here. It used to be, and that is
+  // what forced the "restart every IDE" dance: a tool launched while MITM was off had
+  // no NODE_EXTRA_CA_CERTS and no antigravity.caCertificates, so the next time MITM
+  // came up its TLS failed until the user restarted it. Trust is inert while MITM is
+  // off - nothing resolves to us, so our cert is never presented - and it is removed
+  // when the root CA itself is uninstalled.
 
   try { fs.unlinkSync(PID_FILE); } catch { /* ignore */ }
   try { fs.unlinkSync(LOCK_FILE); } catch { /* ignore */ }

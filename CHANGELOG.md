@@ -1,3 +1,146 @@
+# v0.5.169 (2026-11-11) — four ways a request succeeded without doing what you asked
+
+**Upgrade if you use MITM, a Gemini-protocol client, a Codex-style client, or send images to
+Antigravity.** Every fix here is a case where kRouter returned a plausible answer while
+quietly not doing the thing: a Claude Desktop request intercepted and then forwarded to
+Anthropic on your own bill, an image dropped on the way to the model with a 200 and a
+confident reply, a 404 reported as "service unavailable, retry in 30 minutes", and a
+Responses-API client handed an envelope it cannot parse.
+
+Found by running this build as a second server on a spare port against a copy of a real
+install's database, so each one has a measured before and after against live paid providers
+rather than only a unit test.
+
+## Fixed
+
+- **Claude Desktop was intercepted and then forwarded to Anthropic anyway.** With MITM on, the
+  hosts entry in place and the CA trusted, a request for a current model id left the machine and
+  billed the user's own Anthropic account, while the dashboard still showed MITM as working.
+  Measured against a running install, `api.anthropic.com` redirected to kRouter:
+
+  ```
+  claude-opus-4-7   -> routed, served as cc/claude-opus-5
+  claude-opus-5-5   -> 401 "invalid x-api-key" FROM ANTHROPIC (request_id req_011CgvsLCqYZ...)
+  ```
+
+  `MODEL_PATTERNS` had a hand-ordered family ladder for `antigravity` and **no entry at all for
+  `claude`**, so any id outside the five slots a user could map fell past every lookup and
+  `getMappedModel` returned null — which on an intercepted vendor host means passthrough. Each
+  Claude family now has a ladder, newest alias first, and `getMappedModel` skips an entry whose
+  alias the user has not mapped. The upshot is that **no re-mapping is needed**: the five slots
+  already saved in 0.5.168 now cover Opus/Sonnet/Haiku/Fable 5.x and dated variants of them.
+
+- **The mapper preferred an accident to the ladder.** The prefix step is incidental string overlap;
+  `MODEL_PATTERNS` is ordered most-specific-first on purpose. Running the accident first made the
+  ladder unreachable for the ids it exists for: with `{claude-opus-5-5, claude-opus-5-5-low}` mapped,
+  `claude-opus-5-5-extra-low` returned the **bare** slot, because `claude-opus-5-5-low` is not a
+  prefix of it and so was never even a candidate. Specific patterns now run before the prefix step,
+  and family-wide catch-alls (tagged `fallback: true`) run after it, so a dated id like
+  `claude-opus-5-20261001` still wins its own slot instead of being swallowed by `/opus/i`.
+
+- **The same config gave two different answers depending on the order you clicked.** The prefix
+  step used `.find()` over `Object.keys()`, which is insertion order — and for this map that is the
+  order rows were saved in the UI. `claude-opus-5-5-20261122` over `{claude-opus-5, claude-opus-5-5}`
+  resolved to the Opus 5 target or the Opus 5.5 target purely by which was saved first. The longest
+  matching key now wins, with ties broken by name, so the result is reproducible. This starts to
+  matter in this release, which adds the colliding `claude-opus-5` / `claude-opus-5-5` pair.
+
+- **Antigravity sign-in broke when MITM came on.** Antigravity's language server is Go: it reads
+  neither the OS trust store nor `NODE_EXTRA_CA_CERTS`, so with DNS redirecting
+  `daily-cloudcode-pa.googleapis.com` to kRouter it rejected our certificate with
+  `x509: certificate signed by unknown authority` and dropped the user back to the login screen.
+  kRouter now writes `antigravity.caCertificates` itself when MITM starts. It is idempotent, keeps
+  the rest of the file, replaces a stale path from an earlier install, tolerates VS Code comments
+  and trailing commas, and leaves a `settings.json` it cannot parse untouched rather than risk it.
+
+- **Stopping MITM removed the trust that tools needed in order to start.** Teardown ran on MITM
+  stop, so any tool launched while MITM was off had no trust, and the next time MITM came up its
+  TLS failed until that tool was restarted — which is the "restart every IDE" dance. Trust now
+  persists; it is inert while MITM is off because nothing resolves to kRouter, and it is removed
+  only when the root CA is uninstalled.
+
+- **Claude Desktop's MITM slot list was three generations behind.** It offered Opus 4.7/4.6,
+  Sonnet 4.6/4.5 and Haiku 4.5 and nothing newer, so the models a current build actually sends
+  could not be mapped at all. Older ids are kept, because a saved mapping may point at one and
+  older builds in the field still send them.
+
+- **A Codex-style client got a `chat.completion` instead of a Responses envelope.** Every
+  provider branch in `translateNonStreamingResponse` ends by building an OpenAI completion,
+  and only the OpenAI-provider branch converted that to the Responses shape. So a client
+  speaking the Responses API got `{object:"chat.completion", choices:[…]}` with no `output[]`
+  from every other provider. Measured on a dev server against three live connections:
+
+  ```
+  POST /v1/responses {"stream":false}   cc/claude-opus-5           object=chat.completion
+                                        ag/claude-sonnet-5-5-high  object=chat.completion
+                                        kr/claude-sonnet-4.5       object=chat.completion
+  the same request {"stream":true}      all three                  9-10 response.* events
+  ```
+
+  Streaming was already right; only non-streaming leaked — the same shape of gap fixed for
+  Claude clients in 0.5.109, 0.5.117 and 0.5.146. Converted once at the end of the function
+  rather than per branch, so a provider added later cannot reopen it.
+
+- **Every Gemini-protocol client got a 404.** `/v1beta` had no rewrite. The route exists at
+  `/api/v1beta/models/[...path]` and serves real data; nothing routed the public path to it.
+  `dashboardGuard` had listed `/v1beta` in `PUBLIC_PREFIXES` from the start, which is what the
+  intent was, so the test meant to prevent this passed throughout — it only ever checked that
+  rewrites are guarded, never that a guarded prefix is routed. Both directions are asserted
+  now. The new prefix was verified to still demand an API key from a remote caller, since an
+  unguarded rewrite is exactly how `/codex` became exploitable.
+
+- **A model that returned 404 once then answered 503 "retry after 30m" for half an hour.**
+  When every account for a model is parked, 0.5.166 pinned the reply to 503 + `Retry-After`
+  so a stale 401 could not make Claude Code think the key was bad. Correct for a credential
+  or rate-limit status. Wrong for 404: the model id is simply not there, no wait changes
+  that, and the client was parked on something that would never resolve while an actionable
+  error ("pick another model") was replaced by an unactionable one. Reproduced against
+  `ag/gemini-3.8-flash-high`, an id kRouter's own `/v1/models` advertises:
+
+  ```
+  before   attempt 1  404 model_not_found    1.71s      after   404  0.63s
+           attempt 2  503 "reset after 30m"  0.04s              404  0.22s
+           attempt 3  503 "reset after 30m"  0.04s              404  0.04s
+  ```
+
+  The cooldown's fast skip is kept, and no `Retry-After` is sent for a status that waiting
+  cannot fix. The connection row held `errorCode: 404` and `modelLock_*` keys for nine
+  models, two of which serve fine, so healthy models reach this path too. `imageGeneration`,
+  `tts` and `videoGeneration` already reported the recorded code; `chat` and `embeddings`
+  hardcoded 503 and now agree with them.
+
+- **An image sent to a Claude model on Antigravity was silently dropped.**
+  `wrapInCloudCodeEnvelopeForClaude` converts Claude blocks to Gemini parts through an
+  explicit branch list — text, `tool_use`, `tool_result` — with no image branch, so the
+  bytes went nowhere. The request still returned **200** and the model answered as though
+  nothing had been attached: billed, logged as a success, and indistinguishable from a real
+  reply unless you knew what the picture contained. With a 96x96 solid-red PNG and "What
+  colour is this image?":
+
+  ```
+  cc/claude-opus-5           "Red"
+  kr/claude-sonnet-4.5       "Red"
+  ag/claude-sonnet-5-5-high  "I can't answer that because no image came through."   -> "Red"
+  ```
+
+  Fixed for image, document, audio and video blocks, base64 and url, over both the OpenAI
+  and the Anthropic protocol. Tool calling on the same path is unchanged.
+
+## Changed
+
+- `getMappedModel` moved out of `src/mitm/server.js` into `src/mitm/modelMap.js`. `server.js`
+  starts a TLS listener on require and therefore cannot be imported, so every previous test of
+  this logic re-implemented the function and could pass while the real one drifted. Tests now
+  drive the shipped function. The MITM bundle is esbuild-traced, so nothing needs listing.
+
+## Notes
+
+- The three mapping fixes take effect when the MITM server restarts and reloads its bundle.
+- Seven new test files, 97 new tests; the suite is 3,598.
+- Found by running the repo build as a second server on a spare port against a copy of a
+  real install's database, so every fix above has a before and an after against live paid
+  providers (Claude Code, Antigravity and Kiro) rather than only a unit test.
+
 # v0.5.168 (2026-11-02) — Haiku 5.5 thinking, images inside tool results, and the OpenCode Free session id that was a 1-in-100 lottery
 
 **Upgrade if you use Claude Haiku 5.5 with thinking, send images back from a tool, or run the

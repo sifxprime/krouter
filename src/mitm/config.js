@@ -94,9 +94,45 @@ const MODEL_PATTERNS = {
     { match: /sonnet.*5[.-]5.*medium|5[.-]5.*sonnet.*medium/i,     alias: "claude-sonnet-5-5-medium" },
     { match: /sonnet.*5[.-]5.*low|5[.-]5.*sonnet.*low/i,           alias: "claude-sonnet-5-5-low" },
     { match: /sonnet.*5[.-]5|5[.-]5.*sonnet/i,                     alias: "claude-sonnet-5-5" },
-    { match: /opus/i,                                              alias: "claude-opus-4-6-thinking" },
-    { match: /sonnet|claude/i,                                     alias: "claude-sonnet-4-6" },
-    { match: /gpt.*oss|oss/i,                                      alias: "gpt-oss-120b-medium" },
+    // fallback: a bare family word is a last resort, so it must not outrank a precise
+    // prefix match on the model id the IDE actually sent (see modelMap.js).
+    { match: /opus/i,                                              alias: "claude-opus-4-6-thinking", fallback: true },
+    { match: /sonnet|claude/i,                                     alias: "claude-sonnet-4-6", fallback: true },
+    { match: /gpt.*oss|oss/i,                                      alias: "gpt-oss-120b-medium", fallback: true },
+  ],
+  // 0.5.169 — Claude Desktop had NO ladder at all, so a model id outside the alias
+  // map fell past the exact and prefix lookups and PASSED THROUGH to real Anthropic.
+  // Verified live: with MITM on and api.anthropic.com redirected to us,
+  //   claude-opus-4-7 -> routed through kRouter (served as cc/claude-opus-5)
+  //   claude-opus-5-5 -> 401 "invalid x-api-key" FROM ANTHROPIC, request_id req_011Cgvs...
+  // The request left the machine and billed the user's own Anthropic account instead
+  // of the provider they mapped. Desktop ships a new flagship, the slot list lags, and
+  // MITM silently stops intercepting the only models the app actually sends.
+  //
+  // Each family lists its newest alias key FIRST and older ones after: getMappedModel
+  // skips an entry whose alias is absent from the user's map, so someone who mapped
+  // only "claude-opus-4-7" still catches Opus 5.5 on that entry, and someone who has
+  // mapped the 5.5 slot gets it exactly. Haiku precedes sonnet so "haiku" is not eaten
+  // by a broader rule, and the bare /claude/ catch-all is last.
+  claude: [
+    { match: /opus.*5[.-]5|5[.-]5.*opus/i, alias: "claude-opus-5-5" },
+    { match: /opus.*5[.-]5|5[.-]5.*opus/i, alias: "claude-opus-4-7" },
+    { match: /opus.*5[.-]5|5[.-]5.*opus/i, alias: "claude-opus-4-6" },
+    { match: /sonnet.*5[.-]5|5[.-]5.*sonnet/i, alias: "claude-sonnet-5-5" },
+    { match: /sonnet.*5[.-]5|5[.-]5.*sonnet/i, alias: "claude-sonnet-4-6" },
+    { match: /sonnet.*5[.-]5|5[.-]5.*sonnet/i, alias: "claude-sonnet-4-5" },
+    { match: /haiku/i, alias: "claude-haiku-5-5" },
+    { match: /haiku/i, alias: "claude-haiku-4-5" },
+    { match: /fable/i, alias: "claude-fable-5-1" },
+    { match: /fable/i, alias: "claude-sonnet-4-6" },
+    { match: /opus/i, alias: "claude-opus-5-5", fallback: true },
+    { match: /opus/i, alias: "claude-opus-4-7", fallback: true },
+    { match: /opus/i, alias: "claude-opus-4-6", fallback: true },
+    { match: /sonnet/i, alias: "claude-sonnet-5-5", fallback: true },
+    { match: /sonnet/i, alias: "claude-sonnet-4-6", fallback: true },
+    { match: /sonnet/i, alias: "claude-sonnet-4-5", fallback: true },
+    { match: /claude/i, alias: "claude-opus-4-7", fallback: true },
+    { match: /claude/i, alias: "claude-sonnet-4-6", fallback: true },
   ],
 };
 

@@ -12,6 +12,7 @@ import { getModelInfo, getComboModels } from "../services/model.js";
 import { handleChatCore } from "open-sse/handlers/chatCore.js";
 import { stripModelContextMarker } from "open-sse/utils/modelMarkers.js";
 import { errorResponse, unavailableResponse } from "open-sse/utils/error.js";
+import { parkedAccountStatus } from "open-sse/services/accountFallback.js";
 import { getRetiredModelError } from "open-sse/config/retiredModels.js";
 import { getEffectiveFallbackStrategy } from "open-sse/config/providerStrategy.js";
 import { handleComboChat, handleFusionChat, detectRequiredCapabilities } from "open-sse/services/combo.js";
@@ -346,8 +347,15 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
         // 0.5.166 — every account is parked: always 503 + Retry-After, never the last
         // upstream status. A stale 401/400 here made Claude Code treat a cooldown as a
         // bad key (upstream 15687d19).
-        const status = HTTP_STATUS.SERVICE_UNAVAILABLE;
-        log.warn("CHAT", `[${provider}/${model}] ${errorMsg} (${credentials.retryAfterHuman})`);
+        // 0.5.169 — with one carve-out. A 404 is request-scoped: the model id is wrong,
+        // and no wait fixes it, so answering 503 + "retry after 30m" parks the client on
+        // something that will never change. Report the 404 and send no Retry-After, so
+        // the client picks another model instead of sleeping. See parkedAccountStatus.
+        const status = parkedAccountStatus(credentials.lastErrorCode, HTTP_STATUS.SERVICE_UNAVAILABLE);
+        log.warn("CHAT", `[${provider}/${model}] ${errorMsg} (${status === HTTP_STATUS.SERVICE_UNAVAILABLE ? credentials.retryAfterHuman : `reported as ${status}`})`);
+        if (status !== HTTP_STATUS.SERVICE_UNAVAILABLE) {
+          return errorResponse(status, `[${provider}/${model}] ${errorMsg}`);
+        }
         return unavailableResponse(status, `[${provider}/${model}] ${errorMsg}`, credentials.retryAfter, credentials.retryAfterHuman);
       }
       if (excludeConnectionIds.size === 0) {

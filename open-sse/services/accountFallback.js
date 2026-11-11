@@ -114,6 +114,35 @@ export function getEarliestRateLimitedUntil(accounts) {
 }
 
 /**
+ * 0.5.169 — which recorded status a "every account is parked" reply may report as-is.
+ *
+ * 0.5.166 pinned this reply to 503 + Retry-After because a stale 401 made Claude Code
+ * treat a cooldown as a bad key (upstream 15687d19). That is right for a credential or
+ * rate-limit status: the account really may recover, and 503 + Retry-After is what a
+ * client should back off on.
+ *
+ * It is wrong for 404. A 404 says the thing asked for is not there, which no amount of
+ * waiting changes, so "503, retry after 30m" sends the client to sleep over something
+ * that will still be missing. Reproduced on a live install against a model kRouter's own
+ * /v1/models advertises:
+ *   attempt 1  404 model_not_found  1.71s   (the honest upstream answer)
+ *   attempt 2  503 "reset after 30m" 0.04s  (locked)
+ *   attempt 3  503 "reset after 30m" 0.04s
+ * The user picked the id from our list, and after one request got half an hour of 503 on
+ * it. The connection row had errorCode 404 and modelLock_* keys for nine models, two of
+ * which serve fine, so healthy models reach this path too.
+ *
+ * imageGeneration, tts and videoGeneration already report the recorded code; chat and
+ * embeddings hardcoded 503. This keeps them consistent without reopening 0.5.166.
+ */
+const PARKED_REPORTABLE_STATUSES = new Set([404]);
+
+export function parkedAccountStatus(lastErrorCode, defaultStatus) {
+  const code = Number(lastErrorCode);
+  return PARKED_REPORTABLE_STATUSES.has(code) ? code : defaultStatus;
+}
+
+/**
  * Format rateLimitedUntil to human-readable "reset after Xm Ys"
  * @param {string} rateLimitedUntil - ISO timestamp
  * @returns {string} e.g. "reset after 2m 30s"

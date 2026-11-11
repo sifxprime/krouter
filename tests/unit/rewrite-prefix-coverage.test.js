@@ -63,3 +63,43 @@ describe("rewrite prefixes are reachable by the guard", () => {
     }
   });
 });
+
+/**
+ * 0.5.169 — the converse invariant, which the direction above cannot see.
+ *
+ * Listing a prefix in PUBLIC_PREFIXES only says "a remote caller needs an API key here".
+ * It does not create a route. /v1beta was listed from the start and had no rewrite, so
+ * every Gemini-protocol client got a 404 from the dashboard's not-found page while
+ * /api/v1beta/models served real data. The test above passed throughout, and so did the
+ * assertion naming /v1beta, because both only ever checked the guard list.
+ *
+ * A root-level LLM prefix is a promise that the path works. Assert it is routed.
+ */
+describe("every public LLM prefix is actually routed", () => {
+  const rewriteSources = (() => {
+    const out = [];
+    const re = /source:\s*["'`]([^"'`]+)["'`]/g;
+    let m;
+    while ((m = re.exec(config))) out.push(m[1]);
+    return out;
+  })();
+
+  // /api/* paths are served by route files directly and need no rewrite.
+  const rootLevel = publicPrefixes.filter((p) => !p.startsWith("/api"));
+
+  it("has root-level prefixes to check", () => {
+    expect(rootLevel.length).toBeGreaterThan(0);
+  });
+
+  it.each(rootLevel)("%s has a rewrite that routes it", (prefix) => {
+    const routed = rewriteSources.some(
+      (src) => src === prefix || src.startsWith(`${prefix}/`),
+    );
+    expect(routed).toBe(true);
+  });
+
+  it("routes /v1beta to the v1beta API, not somewhere else", () => {
+    const m = config.match(/source:\s*["'`]\/v1beta\/:path\*["'`],\s*\n?\s*destination:\s*["'`]([^"'`]+)["'`]/);
+    expect(m?.[1]).toBe("/api/v1beta/:path*");
+  });
+});

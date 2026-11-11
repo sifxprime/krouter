@@ -40,7 +40,33 @@ function summarizeResponsesObject(r) {
   return { content: text, thinking, finish_reason: finish };
 }
 
+// 0.5.169 — every provider branch below ends by building an OpenAI `chat.completion`,
+// and only the OpenAI-provider branch ever converted that to the Responses envelope. A
+// Codex-style client (client format OPENAI_RESPONSES) therefore got
+// {object:"chat.completion", choices:[...]} with no `output[]` to read, from EVERY other
+// provider. Verified live on the dev server against all three configured connections:
+//
+//   POST /v1/responses {"stream":false}      cc/claude-opus-5           object=chat.completion
+//                                            ag/claude-sonnet-5-5-high  object=chat.completion
+//                                            kr/claude-sonnet-4.5       object=chat.completion
+//   the same request with {"stream":true}    all three                  9-10 response.* SSE events
+//
+// so the streaming path was right and only non-streaming leaked — the same shape of gap
+// fixed for Claude clients in 0.5.109 (openai), 0.5.117 (kiro) and 0.5.146 (antigravity).
+// Doing it once here rather than per branch means a provider added later cannot reopen it.
+// sseToJsonHandler.js already applies this converter on its own path.
 export function translateNonStreamingResponse(responseBody, targetFormat, sourceFormat) {
+  const translated = translateForClientFormat(responseBody, targetFormat, sourceFormat);
+  // Guard on the envelope, not the branch: a body that is already a Responses object
+  // (the OPENAI/OPENAI_RESPONSES branch, or a provider that natively speaks Responses)
+  // has object:"response" and is left alone, so this never double-converts.
+  if (sourceFormat === FORMATS.OPENAI_RESPONSES && translated?.object === "chat.completion") {
+    return openAICompletionToResponsesObject(translated);
+  }
+  return translated;
+}
+
+function translateForClientFormat(responseBody, targetFormat, sourceFormat) {
   if (targetFormat === sourceFormat) return responseBody;
 
   // 0.5.109 (upstream 8a664d61) — provider speaks OpenAI, client speaks Claude.
