@@ -15,6 +15,59 @@
  * testable without a live provider.
  */
 
+// 0.5.172 — a 200 whose entire "answer" is the vendor telling you the model is gone.
+//
+// Measured live, requesting ag/claude-sonnet-4-6, an id still in the catalogue:
+//   HTTP 200
+//   {"object":"chat.completion","model":"gemini","choices":[{"message":{
+//     "content":"Claude Sonnet 4.6 is no longer available. Please switch to Claude Sonnet 5.5."},
+//     "finish_reason":"stop"}]}
+//
+// Nothing in the tree saw a problem: finish_reason is a clean "stop", there is text, so
+// it counted as a success. It was billed, recorded in usage as ok, rendered to the user
+// as if the model had said it, and a combo did not fall through to its next entry —
+// isZeroContentResponse rejects anything whose finish_reason is not in/incomplete.
+//
+// The risk in detecting this is a false positive: a model legitimately ANSWERING a
+// question about a retired model would say much the same words, and eating that reply
+// would be worse than the bug. So the gate is a conjunction, and every part must hold:
+//   - no tool calls (a notice never calls tools)
+//   - the whole message is short — a notice, not an explanation
+//   - it says the thing is gone, AND it names a replacement; vendors always do both
+//   - when the caller tells us which model was requested, the text must NAME that model
+// The last one is what makes it safe in practice: a user asking "is Sonnet 4.6 still
+// around?" while calling a DIFFERENT model does not match, and a vendor notice always
+// names the model you asked for.
+const RETIREMENT_MAX_CHARS = 200;
+const RETIREMENT_GONE = /\b(no longer (available|supported|offered)|has been (retired|deprecated|discontinued|removed|sunset)|is (retired|deprecated|discontinued|unavailable))\b/i;
+const RETIREMENT_REPLACEMENT = /\b(switch|migrate|upgrade|move|update|change)\s+to\b|\bplease use\b|\binstead\b/i;
+
+/** Normalised for comparison: "ag/claude-sonnet-4-6" and "Claude Sonnet 4.6" both -> claudesonnet46 */
+function normaliseModelToken(v) {
+  return String(v || "").replace(/^[^/]*\//, "").toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+
+export function detectVendorRetirementNotice({ text, toolCalls, model } = {}) {
+  if (Array.isArray(toolCalls) && toolCalls.length > 0) return null;
+  if (typeof text !== "string") return null;
+  const t = text.trim();
+  if (!t || t.length > RETIREMENT_MAX_CHARS) return null;
+  if (!RETIREMENT_GONE.test(t) || !RETIREMENT_REPLACEMENT.test(t)) return null;
+  if (model) {
+    const want = normaliseModelToken(model);
+    // A bare or very short id would match almost anything; require something substantial.
+    if (want.length >= 6 && !normaliseModelToken(t).includes(want)) return null;
+  }
+  return {
+    code: "vendor_retirement_notice",
+    message: `The provider answered 200 with a retirement notice instead of a completion: "${t}"`,
+    notice: t,
+    reasoningTokens: 0,
+    completionTokens: 0,
+    finishReason: null,
+  };
+}
+
 // finish_reason values that mean "the token budget ran out", across formats.
 const TRUNCATED = new Set(["max_tokens", "length", "MAX_TOKENS"]);
 
@@ -38,7 +91,12 @@ function readCompletionTokens(usage) {
  * @returns {null|{code:string,message:string,reasoningTokens:number,completionTokens:number,finishReason:string|null}}
  *   null when the response carried real output; a diagnosis otherwise.
  */
-export function detectEmptyCompletion({ finishReason, text, toolCalls, usage, maxTokens } = {}) {
+export function detectEmptyCompletion({ finishReason, text, toolCalls, usage, maxTokens, model } = {}) {
+  // 0.5.172 — a retirement notice IS text, so it has to be judged before the
+  // "there is text, therefore there was output" early return below.
+  const retirement = detectVendorRetirementNotice({ text, toolCalls, model });
+  if (retirement) return retirement;
+
   // Tool calls are output. So is any non-whitespace text.
   if (Array.isArray(toolCalls) && toolCalls.length > 0) return null;
   if (typeof text === "string" && text.trim() !== "") return null;
@@ -177,5 +235,6 @@ export function EMPTY_COMPLETION_STATUS(diagnosis) {
   if (!diagnosis) return "200 OK";
   if (diagnosis.code === "empty_completion_reasoning_budget") return "200 EMPTY (reasoning budget)";
   if (diagnosis.code === "empty_completion_truncated") return "200 EMPTY (truncated)";
+  if (diagnosis.code === "vendor_retirement_notice") return "200 RETIREMENT NOTICE (not an answer)";
   return "200 EMPTY (no output)";
 }

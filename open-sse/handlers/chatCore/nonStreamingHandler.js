@@ -281,11 +281,19 @@ export async function handleNonStreamingResponse({ providerResponse, provider, m
   const emptyDiagnosis = detectEmptyCompletion({
     ...readCompletionShape(responseBody),
     maxTokens: finalBody?.max_tokens ?? translatedBody?.max_tokens ?? body?.max_tokens,
+    // 0.5.172 — the requested model, so a vendor retirement notice can be told apart
+    // from a real answer that happens to discuss a retired model.
+    model,
   });
   if (emptyDiagnosis) {
     reqLogger.logConvertedResponse({ warning: emptyDiagnosis.code, detail: emptyDiagnosis.message });
   }
-  appendLog({ tokens: usage, status: "200 OK" });
+  // 0.5.172 — record what actually happened. EMPTY_COMPLETION_STATUS exists for exactly
+  // this ("so it is not filed alongside real 200s") and was called from nowhere, so every
+  // zero-content 200 — and every vendor retirement notice — went into the request log as
+  // a clean "200 OK". That is what made the retirement case invisible: billed, logged as
+  // a success, and shown to the user as the model's own words.
+  appendLog({ tokens: usage, status: EMPTY_COMPLETION_STATUS(emptyDiagnosis) });
   saveUsageStats({ provider, model, tokens: usage, connectionId, apiKey, endpoint: clientRawRequest?.endpoint });
 
   const translatedResponse = needsTranslation(targetFormat, sourceFormat)

@@ -13,7 +13,7 @@ import { getCapabilitiesForModel } from "../providers/capabilities.js";
 import { bestScoreForProviderModel } from "./quotaPreflight.js";
 import { parseModel } from "./model.js";
 import { getNextFamilyFallback, isModelUnavailableError } from "./modelFamilyFallback.js";
-import { detectEmptyCompletion, readCompletionShape } from "../utils/emptyCompletion.js";
+import { detectEmptyCompletion, readCompletionShape, detectVendorRetirementNotice } from "../utils/emptyCompletion.js";
 
 // Quota-aware combo ordering (0.5.27).
 // Sort combo entries so the model with the highest remaining quota across
@@ -323,21 +323,29 @@ function hasReasoning(json) {
     && json.content.some((b) => b && (b.type === "thinking" || b.type === "redacted_thinking"));
 }
 
-export function isZeroContentResponse(json) {
+export function isZeroContentResponse(json, model) {
   if (!json || typeof json !== "object") return false;
   if (!Array.isArray(json.choices) && !Array.isArray(json.content)) return false;
   if (hasReasoning(json)) return false;
   const shape = readCompletionShape(json);
+
+  // 0.5.172 — a vendor retirement notice is checked BEFORE the finish_reason gate.
+  // The gate exists because a truncated or in-progress answer is the only way a real
+  // completion ends up empty; a notice is neither — it arrives as a clean
+  // finish_reason "stop" with text in it, so the gate below rejected it and the combo
+  // served the notice as the model's answer instead of trying the next entry.
+  if (detectVendorRetirementNotice({ ...shape, model })) return true;
+
   if (shape.finishReason && !ZERO_CONTENT_FINISH.has(String(shape.finishReason))) return false;
-  return detectEmptyCompletion(shape) !== null;
+  return detectEmptyCompletion({ ...shape, model }) !== null;
 }
 
 // Peek a 2xx Response without consuming it. Streams and non-JSON are never judged.
-async function isZeroContentResult(result) {
+async function isZeroContentResult(result, model) {
   const contentType = result.headers?.get?.("content-type") || "";
   if (!contentType.includes("application/json")) return false;
   try {
-    return isZeroContentResponse(await result.clone().json());
+    return isZeroContentResponse(await result.clone().json(), model);
   } catch {
     return false;
   }
@@ -411,7 +419,10 @@ export async function handleComboChat({ body, models, handleSingleModel, log, co
         // 0.5.166 (upstream 8f4e3800) — a non-final seat that answered 200 with
         // nothing usable falls through: a later member may answer for real. Only
         // non-streaming JSON is peeked; the final seat is always returned as-is.
-        if (i < rotatedModels.length - 1 && await isZeroContentResult(result)) {
+        // 0.5.172 — modelStr lets the retirement check confirm the notice names the
+        // model that was actually requested, which is what keeps it from eating a real
+        // answer about some other retired model.
+        if (i < rotatedModels.length - 1 && await isZeroContentResult(result, modelStr)) {
           log.warn("COMBO", `Model ${modelStr} returned HTTP 200 with zero usable content, trying next`);
           break; // exit family-fallback inner loop, advance to next combo entry
         }
