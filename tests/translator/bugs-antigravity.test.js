@@ -84,3 +84,66 @@ describe("Antigravity executor", () => {
     expect(query).toEqual({ type: "string", description: "Search query" });
   });
 });
+
+// Gemini serialises its Schema from protobuf, so int64 keywords arrive as STRINGS
+// ("minLength": "1") and the type enum arrives UPPERCASE. Anthropic validates tool
+// schemas strictly against JSON Schema draft 2020-12 and rejects both, with
+//   tools.4.custom.input_schema: JSON schema is invalid
+// Captured from a real Antigravity chat turn (the `send_message` tool).
+describe("Antigravity tool schemas → valid JSON Schema", () => {
+  const SEND_MESSAGE = {
+    tools: [{
+      functionDeclarations: [{
+        name: "send_message",
+        description: "Send a message.",
+        parameters: {
+          type: "OBJECT",
+          properties: {
+            Message: { type: "STRING", description: "Content of the message.", minLength: "1" },
+            Recipient: { type: "STRING", description: "Conversation ID.", minLength: "1" },
+          },
+          required: ["Recipient", "Message"],
+        },
+      }],
+    }],
+    contents: [{ role: "user", parts: [{ text: "hi" }] }],
+  };
+
+  const paramsOf = (out) => out.tools[0].function.parameters;
+
+  it("lowercases the protobuf type enum", () => {
+    const p = paramsOf(AG2O(SEND_MESSAGE));
+    expect(p.type).toBe("object");
+    expect(p.properties.Message.type).toBe("string");
+  });
+
+  it("coerces string-encoded numeric keywords to numbers", () => {
+    const p = paramsOf(AG2O(SEND_MESSAGE));
+    expect(p.properties.Message.minLength, "minLength must be a number").toBe(1);
+    expect(typeof p.properties.Recipient.minLength).toBe("number");
+  });
+
+  it("normalises schemas nested in anyOf / items / $defs", () => {
+    const out = AG2O({
+      tools: [{
+        functionDeclarations: [{
+          name: "nested",
+          parameters: {
+            type: "OBJECT",
+            properties: {
+              list: { type: "ARRAY", items: { type: "STRING", minLength: "2" }, maxItems: "5" },
+              choice: { anyOf: [{ type: "STRING", minLength: "3" }, { type: "NUMBER" }] },
+            },
+          },
+        }],
+      }],
+      contents: [{ role: "user", parts: [{ text: "hi" }] }],
+    });
+    const p = paramsOf(out);
+    expect(p.properties.list.items.type).toBe("string");
+    expect(p.properties.list.items.minLength).toBe(2);
+    expect(p.properties.list.maxItems).toBe(5);
+    expect(p.properties.choice.anyOf[0].type).toBe("string");
+    expect(p.properties.choice.anyOf[0].minLength).toBe(3);
+  });
+});

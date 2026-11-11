@@ -88,32 +88,70 @@ export function antigravityToOpenAIRequest(model, body, stream) {
   return result;
 }
 
-// Recursively convert Antigravity schema types (OBJECT, STRING, etc.) to lowercase
-// and strip unsupported fields like enumDescriptions
+// JSON Schema keywords whose value must be a NUMBER. Gemini's Schema comes off the
+// wire from protobuf, where these are int64 — and protobuf JSON encodes int64 as a
+// STRING. So a real Antigravity turn sends `"minLength": "1"`, which Anthropic
+// rejects outright:
+//   tools.4.custom.input_schema: JSON schema is invalid. It must match JSON Schema
+//   draft 2020-12
+// The whole chat fails on one malformed tool out of eighteen.
+const NUMERIC_SCHEMA_KEYWORDS = [
+  "minLength", "maxLength", "minItems", "maxItems", "minProperties", "maxProperties",
+  "minimum", "maximum", "exclusiveMinimum", "exclusiveMaximum", "multipleOf",
+  "minContains", "maxContains",
+];
+
+// Subschemas live under more than properties/items. Missing one leaves an uppercase
+// type or a string-encoded bound buried where it is hard to see and fails the same way.
+const SCHEMA_VALUE_KEYS = ["items", "not", "propertyNames", "contains", "if", "then", "else"];
+const SCHEMA_LIST_KEYS = ["anyOf", "oneOf", "allOf", "prefixItems"];
+const SCHEMA_MAP_KEYS = ["properties", "$defs", "definitions", "patternProperties"];
+
+// Recursively convert Antigravity schema types (OBJECT, STRING, etc.) to lowercase,
+// coerce string-encoded numeric keywords, and strip fields upstream APIs reject.
 function normalizeSchemaTypes(schema) {
   if (!schema || typeof schema !== "object") return schema;
+  if (Array.isArray(schema)) return schema.map(normalizeSchemaTypes);
 
-  const result = Array.isArray(schema) ? [...schema] : { ...schema };
-
+  const result = { ...schema };
 
   if (typeof result.type === "string") {
     result.type = result.type.toLowerCase();
+  } else if (Array.isArray(result.type)) {
+    result.type = result.type.map((t) => (typeof t === "string" ? t.toLowerCase() : t));
+  }
+
+  for (const key of NUMERIC_SCHEMA_KEYWORDS) {
+    const value = result[key];
+    // Only a string that is wholly a finite number — never coerce "" (→0) or junk,
+    // which would invent a constraint the tool never declared.
+    if (typeof value === "string" && value.trim() !== "" && Number.isFinite(Number(value))) {
+      result[key] = Number(value);
+    }
   }
 
   // Strip enumDescriptions — not supported by upstream APIs
   delete result.enumDescriptions;
 
-
-  if (result.properties) {
-    const normalized = {};
-    for (const [key, val] of Object.entries(result.properties)) {
-      normalized[key] = normalizeSchemaTypes(val);
+  for (const key of SCHEMA_MAP_KEYS) {
+    if (result[key] && typeof result[key] === "object" && !Array.isArray(result[key])) {
+      const normalized = {};
+      for (const [k, v] of Object.entries(result[key])) normalized[k] = normalizeSchemaTypes(v);
+      result[key] = normalized;
     }
-    result.properties = normalized;
   }
 
-  if (result.items) {
-    result.items = normalizeSchemaTypes(result.items);
+  for (const key of SCHEMA_LIST_KEYS) {
+    if (Array.isArray(result[key])) result[key] = result[key].map(normalizeSchemaTypes);
+  }
+
+  for (const key of SCHEMA_VALUE_KEYS) {
+    if (result[key] && typeof result[key] === "object") result[key] = normalizeSchemaTypes(result[key]);
+  }
+
+  // additionalProperties is a schema OR a boolean; only recurse into the schema form.
+  if (result.additionalProperties && typeof result.additionalProperties === "object") {
+    result.additionalProperties = normalizeSchemaTypes(result.additionalProperties);
   }
 
   return result;
