@@ -1,3 +1,70 @@
+# v0.5.173 (2026-11-11) — Kiro moved its endpoint again, and a watchdog that deleted the redirects it was meant to protect
+
+**Upgrade if you use MITM at all.** One of these was billing your IDE vendor instead of
+your providers; the other was quietly switching MITM off underneath you every minute.
+
+## Fixed
+
+- **Kiro IDE 1.4.x chat was never intercepted, and its own credits were spent.** Captured
+  from a real client with MITM file logging:
+
+  ```
+  user-agent: KiroIDE 1.4.154
+  POST /v1/responses
+  {"model":"auto","input":[...42...],"tools":[...25...],"stream":true,
+   "origin":"AI_EDITOR","profileArn":"...","metadata":{"kiro:agent_mode":"vibe",...}}
+  ```
+
+  Kiro moved its chat endpoint to `/v1/responses` with an OpenAI Responses body.
+  `URL_PATTERNS.kiro` listed only `/generateAssistantResponse`, and the header fallback
+  only matches `x-amz-target`, which this request does not send — so `isChatRequest`
+  returned false and every turn went to passthrough. MITM showed as enabled, kRouter
+  recorded no request at all, and the IDE's own quota paid for it. The dump file was
+  written as `passthrough`, which is exactly what the user saw: Kiro credits consumed,
+  kRouter usage zero.
+
+  This is the second time. `config.js` already carried the note for 1.0.228, which moved
+  from the path to `POST /` plus a header and broke it identically. A missed endpoint does
+  not error — it bills the vendor.
+
+  kRouter already serves `/v1/responses` natively, so the body is forwarded untouched with
+  only the model swapped, the same way `handlers/antigravity.js` forwards Gemini bodies.
+  Translating into CodeWhisperer and back would have dropped the 25 tool definitions and
+  the `kiro:*` metadata the IDE round-trips. `model: "auto"` is already an alias key, so
+  existing mappings keep working.
+
+- **The 0.5.171 watchdog deleted live DNS redirects every 60 seconds.** That release added
+  a repair for redirects left behind by a crashed MITM. The repair was right; the liveness
+  check feeding it was not.
+
+  `getMitmStatus` decided `running` from an in-process handle plus the PID file. Both are
+  blind to a MITM server that outlives the app that spawned it: restart the app and
+  `serverProcess` is null while the real server — spawned through sudo, owned by root — is
+  still listening. `lsof` as an ordinary user cannot see a root-owned listener either.
+
+  So the watchdog read "DNS present + not running" as the blackhole state and removed
+  working redirects. Observed on a real machine: antigravity and kiro confirmed
+  intercepting (TLS issuer `9Router MITM Root CA`) at 12:02; minutes later `/etc/hosts`
+  held no entries, both hosts resolved to the vendor again, and the IDEs were back on the
+  vendor's billing with the UI still showing MITM enabled. It also explains an Antigravity
+  capture that recorded zero requests — nothing was being redirected to us at all.
+
+  `getMitmStatus` now falls back to a TCP connect on the MITM port, which does not care who
+  owns the socket. Being wrong the other way is cheap: a redirect we could have cleaned
+  survives to the next tick. Deleting a working one is not.
+
+## Notes
+
+- Two new test files, 19 tests; the suite is 3,669.
+- Antigravity's agent still cannot be intercepted, now confirmed with the redirect
+  verifiably held for the whole capture: in the same window on the same host, `curl`
+  reached the MITM and produced dumps while the agent produced none and logged 38
+  `x509: certificate signed by unknown authority` errors. `agy` embeds its own root pool
+  (`NewCertPool`/`RootCAs`, 22 bundled PEM blocks) and reads no TLS, CA or proxy
+  environment variables; `antigravity.caCertificates` exists only in `@vscode/proxy-agent`,
+  the Electron side, which is why it fixes sign-in and never the agent. The `ag/` provider
+  itself works normally — this is the IDE-via-MITM path only.
+
 # v0.5.172 (2026-11-11) — a 200 that is a retirement notice is not an answer
 
 **Upgrade if you use combos, or any model a vendor has retired.** A provider answering
