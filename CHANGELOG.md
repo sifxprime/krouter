@@ -1,3 +1,86 @@
+# v0.5.170 (2026-11-11) — the Antigravity roster, and a test instance that could repoint the whole machine
+
+**Upgrade if you use Antigravity.** Every Gemini chat id kRouter published for it returned
+404, and the catalog was advertising models the account cannot serve while hiding ones it
+can. Both are fixed, and measured against a live account rather than against upstream
+commit messages.
+
+## Fixed
+
+- **Every Antigravity Gemini id returned 404.** Measured against a live
+  `v1internal:fetchAvailableModels` for a real account: of the 25 ag ids kRouter
+  advertised, **15 were not served**, and **12 served ids were advertised to nobody**.
+
+  Two halves were missing, which is why 0.5.166 believed it had already fixed this. The
+  3.8 entries carried no `upstreamModelId` at all, so `getModelUpstreamId` returned the id
+  unchanged; and `getModelThinkingLevel`, added in 0.5.166 for exactly this ladder, was
+  called from nowhere, so even a correct wire id would have dropped the tier. Antigravity
+  collapses each flash family to ONE tiered id and takes the tier in
+  `generationConfig.thinkingConfig`. Proven directly against Google:
+
+  ```
+  model=gemini-3.8-flash-tiered -> 200
+  model=gemini-3.8-flash-high   -> 404 NOT_FOUND
+  ```
+
+  The executor rebuilds the envelope from the catalog id, so it is what decides; it now
+  reads both helpers. Result on that account, across every published ag Gemini id:
+
+  ```
+  before   0 of 20 worked
+  after    9 work, 1 transient Google capacity 429, 10 correctly 404
+           (that account's experiment arm genuinely does not serve them)
+  ```
+
+- **Models Google serves that nobody could reach.** Added `gemini-2.5-flash`,
+  `-flash-lite`, `-flash-thinking`, `gemini-2.5-pro`, `gemini-3.1-flash-lite` and
+  `gemini-3.5-flash-lite`. `gemini-3-flash` had been dropped as "retired on 2026-10-08" on
+  the strength of an upstream commit; it is served at full quota and is that account's
+  `commandModelIds` entry, so it is published again.
+
+- **The quota bars for the real models never rendered.** `usage.js` kept a SECOND
+  hand-maintained list that had to agree with Google and did not: it carried
+  `gemini-3.8-flash-high`, which does not exist, while omitting ids that do. It is derived
+  from the ag catalog now, under both the published and the wire id, so a catalog edit
+  cannot silently lose a bar.
+
+- **A second instance could repoint the whole machine's CA trust.** Starting MITM writes
+  `NODE_EXTRA_CA_CERTS` for the login session and `antigravity.caCertificates` in the IDE's
+  settings — both absolute paths inside `DATA_DIR`. Run a build under test with
+  `DATA_DIR=/tmp/something` next to a working install, as you would to avoid touching it,
+  and every Electron app on the machine plus the Antigravity IDE is silently repointed at a
+  certificate under `/tmp`.
+
+  This happened while testing 0.5.169 on a real machine. Both settings were rewritten to a
+  scratch path, and Antigravity's Go agent then failed every request with
+
+  ```
+  tls: failed to verify certificate: x509: certificate signed by unknown authority
+  ```
+
+  The file was present and byte-identical — the sandboxed agent simply could not read that
+  path. It looked exactly like a CA-install bug, and the keychain was investigated at
+  length before the cause turned out to be the test instance. Both writes are now gated on
+  `IS_DEFAULT_DATA_DIR`, and a skipped write says so in the log rather than being silently
+  different.
+
+## Changed
+
+- The test that was meant to prevent the Gemini drift was asserting the bug: it pinned
+  `gemini-3.8-flash-high` as its own wire id, and its header claimed the tier was "read by
+  the Antigravity executor through `getModelThinkingLevel`" while nothing read it. It
+  checked the catalog's data against itself and never that anything consumed it, so it
+  passed throughout. Corrected against measurement, and a checked-in snapshot of the live
+  roster (`tests/fixtures/antigravity-live-roster.json`) now makes drift fail a test
+  instead of reaching users as a 404.
+
+## Notes
+
+- Three new test files since 0.5.169; the suite is 3,622.
+- The roster is server-side dynamic — it flips with `experimentIds`, and two captures of
+  the same account minutes apart differed — so the fixture is a snapshot of one arm, not a
+  contract.
+
 # v0.5.169 (2026-11-11) — four ways a request succeeded without doing what you asked
 
 **Upgrade if you use MITM, a Gemini-protocol client, a Codex-style client, or send images to
