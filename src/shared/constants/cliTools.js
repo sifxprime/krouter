@@ -142,10 +142,14 @@ export const MITM_TOOLS = {
     // Needs no sudo and no /etc/hosts, so unlike the DNS transport it cannot leave
     // api.anthropic.com unreachable for the whole machine.
     //
-    // NOT yet proven for the Claude Desktop GUI's own chat, which is a separate
-    // path from the agent-sdk CLI above. Its app.asar does reference HTTPS_PROXY,
-    // ProxyAgent and NODE_EXTRA_CA_CERTS, so it is expected to work; confirming it
-    // needs the app relaunched with the variable set.
+    // The Claude Desktop GUI's own chat -- a separate path from the agent-sdk CLI
+    // above -- was then verified too: relaunched with HTTPS_PROXY set, its traffic
+    // identifies itself (claude_cli/bootstrap?entrypoint=claude-desktop, plus the
+    // Desktop-only /api/artifacts/mcp and /api/directory/plugins), chats were
+    // intercepted (claude-opus-5 -> mapped; claude-haiku-5-5, the title model,
+    // -> mapped) and telemetry/OAuth passed through untouched. On launch the
+    // Desktop fans out ~100 near-simultaneous calls (one per conversation), which
+    // is why the intercept log line carries the request path.
     captureModes: ["dns", "proxy"],
     id: "claude",
     name: "Claude Desktop",

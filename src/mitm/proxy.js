@@ -124,7 +124,11 @@ function createDecryptedServer() {
         return forwardUpstream(req, res, bodyBuffer, host);
       }
 
-      log(`[proxy intercept] ${route.tool} ${route.model || "?"} -> ${route.mappedModel}`);
+      // The path is in the line because of a real incident shape: Claude Desktop
+      // produced ~100 identical-looking intercepts in one second on launch, and
+      // without the path there is no telling a count_tokens fan-out (benign,
+      // one per conversation in the sidebar) from a retry storm (not benign).
+      log(`[proxy intercept] ${route.tool} ${route.model || "?"} ${String(req.url || "").split("?")[0]} -> ${route.mappedModel}`);
       // Hand the handler the DECODED body and a passthrough that still sends the
       // original bytes, exactly as the :443 transport does.
       return handlers[route.tool].intercept(

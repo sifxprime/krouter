@@ -1,3 +1,66 @@
+# v0.5.175 (2026-11-11) — Proxy capture mode: interception without sudo, and without a black hole
+
+**New capture transport.** The DNS mode stays; this adds a second way to route an IDE
+through kRouter that needs no password and cannot take a domain down with it.
+
+## Added
+
+- **Proxy capture mode.** kRouter can now intercept over HTTP CONNECT on port 20129
+  instead of (or alongside) the /etc/hosts + :443 transport. Point a client at it with
+  `HTTPS_PROXY=http://127.0.0.1:20129` (plus the usual root-CA trust) and only that
+  client is affected:
+
+  | | DNS spoof | Proxy capture |
+  |---|---|---|
+  | sudo | every toggle | never |
+  | scope | whole machine | one app |
+  | kRouter down | domain blackholed machine-wide | one refused connection |
+  | state left behind | hosts entries to heal | none |
+  | hosts covered | hardcoded list | any CONNECT target |
+
+  Hosts it does not intercept are blind-tunnelled untouched, so pointing a whole app at
+  it cannot break the rest of that app's traffic. Start/stop from the dashboard card or
+  `PATCH /api/cli-tools/antigravity-mitm {"action":"proxy-start"|"proxy-stop"}` -- no
+  sudoPassword, deliberately.
+
+  Verified live, not just in tests:
+  - the real Claude CLI (`HTTPS_PROXY=... claude -p ... --model claude-opus-5`) answered
+    through it; the log shows 15 non-chat calls passed through untouched and exactly one
+    intercepted and mapped;
+  - the Claude Desktop app itself, relaunched with the variable: its own traffic
+    (`claude_cli/bootstrap?entrypoint=claude-desktop`, `/api/artifacts/mcp`,
+    `/api/directory/plugins`) with chats intercepted and telemetry/OAuth untouched;
+  - a real Kiro 1.4.154 request shape replayed through it was intercepted and answered on
+    a deliberately invalid bearer token, so it never reached AWS. The Kiro CLIENT side is
+    not yet verified (it was running and was not restarted for this), so Kiro's card does
+    not list "proxy" yet. Copilot was unverifiable here (no VS Code installed).
+  - Antigravity cannot use this mode either: its agent reads no proxy variable at all, on
+    top of pinning its CA pool. The card already says so.
+
+  Each tool card now carries `captureModes` stating which transports are actually
+  verified for it, and the intercept log line carries the request path -- Claude Desktop
+  fans out ~100 near-simultaneous calls on launch (one per conversation), and without the
+  path a benign count_tokens fan-out is indistinguishable from a retry storm.
+
+  The routing decision moved to `src/mitm/dispatch.js`, shared by both transports and
+  testable for the first time (server.js opens a TLS listener on require); per-host TLS
+  contexts to `src/mitm/certContext.js`; hosts-file-bypassing DNS to
+  `src/mitm/resolveUpstream.js`, so the two modes cannot loop into each other.
+
+## Fixed
+
+- **Four lifecycle bugs found by running the proxy before shipping it**, three of them
+  the 0.5.171 shape (a status that lies): status trusted the child-process handle
+  instead of the port; the readiness loop had no delay so start() returned before the
+  bind; stop checked the port immediately after an asynchronous kill(); and the child
+  held piped stdio, so after its parent exited the next log write hit a dead pipe,
+  leaving a proxy that accepts connections and answers nothing. It is now spawned
+  detached, logging to `~/.krouter/mitm/proxy.log`.
+
+- **proxy.js is a build entrypoint.** `cleanPlainFiles` deletes every file in the CLI
+  bundle dir that is not one, so without this the entire feature would have been removed
+  from the published package while source, tests and lint all passed. A test pins it.
+
 # v0.5.174 (2026-11-11) — Claude Desktop gzips its bodies, so every request was passed through
 
 **Upgrade if you route Claude Desktop or Claude Code through MITM.** Interception looked
