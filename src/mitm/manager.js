@@ -1,8 +1,8 @@
 const { exec, spawn, execSync } = require("child_process");
 const path = require("path");
 const fs = require("fs");
-const os = require("os");
 const net = require("net");
+const os = require("os");
 const https = require("https");
 const crypto = require("crypto");
 const { addDNSEntry, removeDNSEntry, removeAllDNSEntries, removeAllDNSEntriesSync, checkAllDNSStatus, TOOL_HOSTS, isSudoAvailable, isSudoPasswordRequired } = require("./dns/dnsConfig");
@@ -377,6 +377,38 @@ function pollMitmHealth(timeoutMs, port = MITM_PORT) {
 /**
  * Get full MITM status including per-tool DNS status
  */
+// 0.5.173 — is something actually accepting on the MITM port?
+//
+// `running` was decided by the in-process handle plus the PID file. Both are blind to a
+// MITM server that outlives the app process that spawned it: restart the app and
+// serverProcess is null, while the real server — spawned through sudo, owned by root —
+// is still listening. `lsof` cannot see a root-owned listener as an ordinary user either,
+// which is the same blind spot that made a manual check report "MITM is down" earlier.
+//
+// That matters because of what reads this flag: healStaleMitmDns treats
+// "DNS redirects present + server not running" as the blackhole state and REMOVES the
+// redirects. With a false negative here it deleted live, working redirects every
+// watchdog tick. Observed on a real machine: antigravity and kiro DNS confirmed active
+// and intercepting at 12:02, both entries gone minutes later with the server still up,
+// and the IDEs quietly back on the vendor's own billing.
+//
+// A TCP connect is the one check that does not care who owns the socket. Being wrong in
+// the other direction is cheap: we keep redirects we could have cleaned, and the next
+// tick tries again. Deleting a working redirect is not cheap.
+const MITM_LOCAL_PORT = 443;
+
+function isPortAccepting(port, timeoutMs = 400) {
+  return new Promise((resolve) => {
+    const socket = new net.Socket();
+    const done = (v) => { try { socket.destroy(); } catch { /* ignore */ } resolve(v); };
+    socket.setTimeout(timeoutMs);
+    socket.once("connect", () => done(true));
+    socket.once("timeout", () => done(false));
+    socket.once("error", () => done(false));
+    try { socket.connect(port, "127.0.0.1"); } catch { done(false); }
+  });
+}
+
 async function getMitmStatus() {
   let running = serverProcess !== null && !serverProcess.killed;
   let pid = serverPid;
@@ -393,6 +425,11 @@ async function getMitmStatus() {
         }
       }
     } catch { /* ignore */ }
+  }
+
+  // 0.5.173 — last resort before declaring it down: ask the port. See isPortAccepting.
+  if (!running && await isPortAccepting(MITM_LOCAL_PORT)) {
+    running = true;
   }
 
   const dnsStatus = checkAllDNSStatus();

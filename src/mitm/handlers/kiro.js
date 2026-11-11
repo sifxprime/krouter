@@ -1,6 +1,6 @@
 const { err } = require("../logger");
 const { IS_DEV } = require("../config");
-const { fetchRouter, pipeTransformedEventStream } = require("./base");
+const { fetchRouter, pipeSSE, pipeTransformedEventStream } = require("./base");
 const fs = require("fs");
 const path = require("path");
 
@@ -565,6 +565,19 @@ function emitFinish(state) {
  */
 async function intercept(req, res, bodyBuffer, mappedModel) {
   try {
+    // Kiro IDE 1.4.x speaks the OpenAI Responses API on /v1/responses rather than the
+    // CodeWhisperer envelope the rest of this file translates. kRouter serves that
+    // format natively, so the body goes through untouched with only the model swapped —
+    // the same shape of passthrough-with-rewrite that handlers/antigravity.js uses for
+    // Gemini bodies. Translating it into CodeWhisperer and back would lose the 25 tool
+    // definitions and the kiro:* metadata the IDE round-trips.
+    if ((req.url || "").includes("/v1/responses")) {
+      const responsesBody = JSON.parse(bodyBuffer.toString());
+      responsesBody.model = mappedModel;
+      const routerRes = await fetchRouter(responsesBody, "/v1/responses", req.headers);
+      return pipeSSE(routerRes, res);
+    }
+
     // Detect and handle binary data (e.g., continuation requests with EventStream frames)
     if (isBinaryEventStream(bodyBuffer)) {
       // Binary EventStream requests are typically continuation/streaming frames

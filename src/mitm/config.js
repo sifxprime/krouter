@@ -27,9 +27,17 @@ const TARGET_HOSTS = [
 const URL_PATTERNS = {
   antigravity: [":generateContent", ":streamGenerateContent"],
   copilot: ["/chat/completions", "/v1/messages", "/responses"],
-  // Legacy path form. Kiro IDE 1.0.228+ posts to `/` with x-amz-target instead —
-  // see isChatRequest() for the header-based match.
-  kiro: ["/generateAssistantResponse"],
+  // Kiro has moved its chat endpoint twice. 1.0.228+ posts to `/` with an
+  // x-amz-target header instead of the /generateAssistantResponse path (see
+  // isChatRequest). 1.4.x moved again, to POST /v1/responses with an OpenAI
+  // Responses body — captured from KiroIDE 1.4.154:
+  //   POST /v1/responses
+  //   {"model":"auto","input":[...],"tools":[...],"stream":true,
+  //    "origin":"AI_EDITOR","profileArn":"...","metadata":{"kiro:agent_mode":"vibe",...}}
+  // Matching only the old forms meant every chat turn fell through to passthrough:
+  // MITM showed as enabled, routed nothing, and the user's Kiro credits were spent
+  // while kRouter recorded no request at all. Same failure as the 1.0.228 move.
+  kiro: ["/generateAssistantResponse", "/v1/responses"],
   cursor: ["/BidiAppend", "/RunSSE", "/RunPoll", "/Run"],
   // /v1/messages is the chat endpoint; /v1/messages/count_tokens is the
   // pre-request token preview Claude Desktop fires before each send.
