@@ -35,8 +35,12 @@ function NavRow({ href, icon, label, active, collapsed, badge, onClick }) {
         "group relative flex items-center rounded-lg transition-colors",
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60",
         collapsed ? "justify-center p-2 mx-auto size-9" : "gap-3 px-3 py-1.5",
+        // The label stays at full text weight when active and only the icon
+        // takes the brand colour. Tinting the whole row made the current page
+        // the *least* legible label in the nav — brand orange on a brand tint
+        // is lower contrast than plain text on the sidebar.
         active
-          ? "bg-primary/10 text-primary"
+          ? "bg-primary/10 text-text-main"
           : "text-text-muted hover:bg-surface-2 hover:text-text-main",
       )}
     >
@@ -45,11 +49,11 @@ function NavRow({ href, icon, label, active, collapsed, badge, onClick }) {
       {active ? (
         <span aria-hidden="true" className="absolute -left-2 top-1.5 bottom-1.5 w-[2.5px] rounded-r bg-primary" />
       ) : null}
-      <Icon name={icon} size={18} className={cn("shrink-0", active ? "" : "group-hover:text-primary transition-colors")} />
+      <Icon name={icon} size={18} className={cn("shrink-0", active ? "text-primary" : "group-hover:text-primary transition-colors")} />
       {collapsed ? null : <span className="text-[13px] font-medium truncate">{label}</span>}
       {badge && !collapsed ? <span className="ml-auto">{badge}</span> : null}
       {badge && collapsed ? (
-        <span aria-hidden="true" className="absolute top-1 right-1 size-[7px] rounded-full bg-green-500 ring-2 ring-vibrancy" />
+        <span aria-hidden="true" className="absolute top-1 right-1 size-[7px] rounded-full bg-green-500 ring-2 ring-sidebar" />
       ) : null}
     </Link>
   );
@@ -158,25 +162,34 @@ export default function Sidebar({ onClose }) {
         {/* Logo — echo chevron on the brand tile + Space Grotesk wordmark */}
         <div className={cn("py-3 flex flex-col gap-2", railed ? "px-4" : "px-6")}>
           <Link href="/dashboard" className="flex items-center gap-3 group" title={railed ? APP_CONFIG.name : undefined}>
-            <div className="flex items-center justify-center size-9 shrink-0 rounded-[10px] bg-gradient-to-br from-brand-500 to-brand-700 shadow-[var(--shadow-warm)] transition-transform group-hover:scale-[1.03]">
-              <svg viewBox="0 0 400 400" className="size-[22px]" aria-hidden="true">
-                <g fill="none" stroke="#ffffff" strokeLinecap="round" strokeLinejoin="round">
-                  <polyline points="128,104 184,200 128,296" strokeWidth="28" strokeOpacity="0.25" />
-                  <polyline points="172,100 260,200 172,300" strokeWidth="52" />
-                </g>
-              </svg>
-            </div>
+            {/* The mark is drawn bare, not set on a filled tile. On a tile the
+                chevron has to be white to survive the brand fill, which costs
+                the brand colour exactly where the brand is being stated, and
+                the tile's silhouette — a rounded square — is what the eye
+                actually reads at this size, not the chevron inside it.
+                Geometry is the echo chevron: one stroke and one at 0.35 behind
+                it on the same slope. */}
+            <svg viewBox="0 0 400 400" className="size-[30px] shrink-0 transition-transform group-hover:translate-x-[1px]" aria-hidden="true">
+              <g fill="none" stroke="var(--color-brand-500)" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="97.8,118 170,200 97.8,282" strokeWidth="24" strokeOpacity="0.35" />
+                <polyline points="174,100 262,200 174,300" strokeWidth="54" />
+              </g>
+            </svg>
             {railed ? null : (
               <div className="flex flex-col leading-none min-w-0">
                 {/* No `uppercase` here: the brand is "kRouter", and forcing caps rendered
                     it "KROUTER" in the sidebar while the login screen showed it correctly. */}
                 <h1
-                  className="text-[17px] font-bold text-text-main"
-                  style={{ fontFamily: "var(--font-display)", letterSpacing: "-0.01em" }}
+                  className="text-[19px] font-bold text-text-main"
+                  style={{ fontFamily: "var(--font-display)", letterSpacing: "-0.025em" }}
                 >
-                  {APP_CONFIG.name}
+                  {/* Split so the leading letter carries the brand colour. The
+                      name is one word to a reader either way, so it is not
+                      announced as two. */}
+                  <span className="text-primary">{APP_CONFIG.name.slice(0, 1)}</span>
+                  {APP_CONFIG.name.slice(1)}
                 </h1>
-                <span className="text-[11px] text-text-muted mt-[3px] font-medium tabular-nums">v{APP_CONFIG.version}</span>
+                <span className="text-[10.5px] text-text-muted mt-[2px] font-medium tabular-nums">v{APP_CONFIG.version}</span>
               </div>
             )}
           </Link>

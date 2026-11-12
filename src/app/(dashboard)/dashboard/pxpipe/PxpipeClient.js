@@ -136,7 +136,7 @@ export default function PxpipeClient() {
       <Card className="p-4">
         <div className="flex items-center justify-between flex-wrap gap-3 mb-4">
           <h3 className="font-medium">Token savings (estimated)</h3>
-          <div className="flex items-center gap-1 rounded-lg border border-border bg-bg-subtle p-1">
+          <div className="flex items-center gap-1 rounded-lg border border-border bg-bg-alt p-1">
             {WINDOW_TABS.map((tab) => (
               <button
                 key={tab.id}
@@ -144,7 +144,7 @@ export default function PxpipeClient() {
                 className={`px-3 py-1 rounded-md text-xs font-medium transition-colors ${
                   windowId === tab.id
                     ? "bg-primary text-white shadow-sm"
-                    : "text-text-muted hover:text-text hover:bg-bg-hover"
+                    : "text-text-muted hover:text-text hover:bg-surface-2"
                 }`}
               >
                 {tab.label}

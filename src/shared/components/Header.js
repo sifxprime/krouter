@@ -162,6 +162,41 @@ const getPageInfo = (pathname) => {
       icon: "translate",
       breadcrumbs: [],
     };
+  if (pathname.includes("/pxpipe"))
+    return {
+      title: "PXPIPE",
+      description: "Compress images before they reach a provider",
+      icon: "image",
+      breadcrumbs: [],
+    };
+  if (pathname.includes("/presidio"))
+    return {
+      title: "Presidio",
+      description: "Redact personal data before it leaves this machine",
+      icon: "admin_panel_settings",
+      breadcrumbs: [],
+    };
+  if (pathname.includes("/environment"))
+    return {
+      title: "Environment",
+      description: "Runtime configuration this server was started with",
+      icon: "tune",
+      breadcrumbs: [],
+    };
+  if (pathname.includes("/basic-chat"))
+    return {
+      title: "Chat",
+      description: "Send a request through the router to check a model answers",
+      icon: "chat",
+      breadcrumbs: [],
+    };
+  if (pathname.includes("/settings/pricing"))
+    return {
+      title: "Pricing",
+      description: "Rates used to estimate cost per request",
+      icon: "toll",
+      breadcrumbs: [],
+    };
   if (pathname.includes("/console-log"))
     return {
       title: "Console Log",

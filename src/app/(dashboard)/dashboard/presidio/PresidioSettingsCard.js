@@ -245,13 +245,13 @@ export default function PresidioSettingsCard() {
                       className={`
                         px-4 py-2 rounded-lg font-medium text-sm transition-all
                         ${isSaving
-                          ? 'bg-text-muted text-text-muted-foreground cursor-not-allowed'
+                          ? 'bg-text-muted text-text-muted cursor-not-allowed'
                           : saveStatus === 'success'
                             ? 'bg-success text-white'
                             : saveStatus === 'error'
                               ? 'bg-error text-white'
                               : validationError
-                                ? 'bg-text-muted text-text-muted-foreground cursor-not-allowed'
+                                ? 'bg-text-muted text-text-muted cursor-not-allowed'
                                 : 'bg-primary text-white hover:bg-primary/90'
                         }
                       `}

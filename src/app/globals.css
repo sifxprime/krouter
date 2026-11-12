@@ -81,16 +81,21 @@
   --color-primary: #E56A4A;
   --color-primary-hover: #cc5236;
 
-  /* Surfaces (dark - Claude-like neutral warm) */
+  /* Surfaces (dark). Four planes, deepest first: the nav sits BELOW the canvas
+     and cards sit above it, so depth runs sidebar < bg < surface < surface-2.
+     It used to run the other way — a 0.72-alpha sidebar resolved lighter than
+     the canvas behind it — which left the nav floating over a darker page and
+     cost the cards their lift, because a #262626 card on a ~#222 neighbour has
+     almost nothing to separate it. */
   --color-bg: #1a1a1a;
   --color-bg-alt: #1F1F1E;
-  --color-surface: #262626;
-  --color-surface-2: #303030;
+  --color-surface: #212121;
+  --color-surface-2: #262626;
   --color-surface-3: #3a3a3a;
-  --color-sidebar: rgba(30, 30, 30, 0.85);
+  --color-sidebar: #151514;
 
-  --color-border: #333333;
-  --color-border-subtle: #2a2a2a;
+  --color-border: #2f2f2f;
+  --color-border-subtle: #262626;
 
   --color-text: #ededed;
   --color-text-main: #ededed;
@@ -170,9 +175,9 @@ select {
   --color-bg-light: #FCFBF9;
   --color-bg-dark: #1a1a1a;
   --color-surface-light: #ffffff;
-  --color-surface-dark: #262626;
+  --color-surface-dark: #212121;
   --color-sidebar-light: #F4F1EC;
-  --color-sidebar-dark: #1F1F1E;
+  --color-sidebar-dark: #151514;
   --color-border-light: #e5e7eb;
   --color-border-dark: #333333;
   --color-text-main-light: #0a0a0a;
@@ -281,7 +286,11 @@ input, textarea {
   background: rgba(255, 255, 255, 0.72);
 }
 .dark .bg-vibrancy {
-  background: rgba(38, 38, 38, 0.72);
+  /* Was rgba(38,38,38,.72), which composites to roughly #222 over the canvas —
+     lighter than the page it borders. Deeper than the canvas, and opaque, so
+     the nav is one flat plane rather than a blurred sample of the content
+     scrolling behind it. */
+  background: #151514;
 }
 
 /* macOS Traffic Lights */

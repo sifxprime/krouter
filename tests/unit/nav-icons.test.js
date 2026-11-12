@@ -48,6 +48,37 @@ describe("nav icon coverage", () => {
     expect(missing, `header page icons falling back to the font: ${missing}`).toEqual([]);
   });
 
+  it("every dashboard route gets a page header", () => {
+    // getPageInfo is an if-chain over the pathname with `{ title: "" }` at the
+    // end, so a route nobody added lands silently on the empty case: the page
+    // renders with a bare top bar and no title, which is how pxpipe, presidio,
+    // environment and basic-chat shipped without one. Walk the routes that
+    // actually exist rather than trusting the chain to be complete.
+    const base = path.join(process.cwd(), "src/app/(dashboard)/dashboard");
+    const routes = [];
+    const walk = (dir, prefix) => {
+      for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+        if (!e.isDirectory()) continue;
+        const next = `${prefix}/${e.name}`;
+        if (fs.existsSync(path.join(dir, e.name, "page.js"))) routes.push(next);
+        walk(path.join(dir, e.name), next);
+      }
+    };
+    walk(base, "");
+    expect(routes.length, "no routes found — did the app directory move?").toBeGreaterThan(10);
+
+    const header = fs.readFileSync(path.join(process.cwd(), "src/shared/components/Header.js"), "utf8");
+    const matched = [...header.matchAll(/pathname\.includes\("([^"]+)"\)/g)].map((m) => m[1]);
+    const patterns = [...header.matchAll(/pathname\.match\(([^)]+)\)/g)].length;
+    expect(patterns, "the dynamic-route branches are gone").toBeGreaterThan(0);
+
+    // A dynamic segment is handled by one of the `.match(...)` branches above.
+    const missing = routes.filter(
+      (r) => !r.includes("[") && !matched.some((m) => r === m || r.startsWith(`${m}/`))
+    );
+    expect(missing, `these routes render with no title in the top bar: ${missing}`).toEqual([]);
+  });
+
   it("the nav chrome has no Material Symbols spans left", () => {
     for (const f of [
       "src/shared/components/Sidebar.js",

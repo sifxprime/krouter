@@ -258,7 +258,7 @@ export default function MitmToolCard({
                       type="button"
                       onClick={toggleProxy}
                       disabled={proxyBusy}
-                      className="rounded border border-border px-2 py-0.5 text-[10px] hover:bg-surface-hover disabled:opacity-50"
+                      className="rounded border border-border px-2 py-0.5 text-[10px] hover:bg-surface-2 disabled:opacity-50"
                     >
                       {proxyBusy ? "…" : proxyCapture?.running ? "Stop" : "Start"}
                     </button>
