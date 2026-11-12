@@ -23,6 +23,26 @@ function apiKeyBucketId(key, model, provider) {
   return `key_${ref}|${model}|${provider || "unknown"}`;
 }
 
+/**
+ * Whether `ts` is a better lastUsed than what a bucket already has.
+ *
+ * `current` is either a day key from the usageDaily rollup ("2026-11-13") or a
+ * full ISO timestamp from an earlier overlay row. `new Date("2026-11-13")`
+ * parses as UTC midnight, so in any timezone ahead of UTC an entry recorded
+ * between local midnight and that offset compared as OLDER than its own day key
+ * and was never refined: for the first hours of each local day the dashboard
+ * showed a bare date where every other row showed a time. At UTC+6 that is
+ * 00:00–06:00 every day.
+ *
+ * A day key is always coarser than a timestamp the overlay just read, and the
+ * overlay only reads the last two days, so the day key never wins.
+ */
+function isBetterLastUsed(ts, current) {
+  if (!current) return true;
+  if (!String(current).includes("T")) return true;
+  return new Date(ts) > new Date(current);
+}
+
 const PENDING_TIMEOUT_MS = 60 * 1000;
 const RING_CAP = 50;
 const CONN_CACHE_TTL_MS = 30 * 1000;
@@ -579,18 +599,18 @@ export async function getUsageStats(period = "all") {
       Date.now() - LAST_USED_OVERLAY_WINDOW_MS
     );
     const histRows = db.all(
-      `SELECT timestamp, provider, model, connectionId, apiKey, endpoint FROM usageHistory WHERE timestamp >= ?`,
+      `SELECT timestamp, provider, model, connectionId, apiKey, endpoint, meta FROM usageHistory WHERE timestamp >= ?`,
       [new Date(overlayCutoff).toISOString()]
     );
     for (const e of histRows) {
       const ts = e.timestamp;
       const modelKey = e.provider ? `${e.model} (${e.provider})` : e.model;
-      if (stats.byModel[modelKey] && new Date(ts) > new Date(stats.byModel[modelKey].lastUsed)) stats.byModel[modelKey].lastUsed = ts;
+      if (stats.byModel[modelKey] && isBetterLastUsed(ts, stats.byModel[modelKey].lastUsed)) stats.byModel[modelKey].lastUsed = ts;
 
       if (e.connectionId) {
         const accountName = connectionMap[e.connectionId] || `Account ${e.connectionId.slice(0, 8)}...`;
         const accountKey = `${e.model} (${e.provider} - ${accountName})`;
-        if (stats.byAccount[accountKey] && new Date(ts) > new Date(stats.byAccount[accountKey].lastUsed)) stats.byAccount[accountKey].lastUsed = ts;
+        if (stats.byAccount[accountKey] && isBetterLastUsed(ts, stats.byAccount[accountKey].lastUsed)) stats.byAccount[accountKey].lastUsed = ts;
       }
 
       // 0.5.166 — same bucket ids as the daily loop above; the no-key form now
@@ -598,11 +618,19 @@ export async function getUsageStats(period = "all") {
       const apiKeyKey = (e.apiKey && typeof e.apiKey === "string")
         ? apiKeyBucketId(e.apiKey, e.model, e.provider)
         : `local-no-key|${e.model}|${e.provider || "unknown"}`;
-      if (stats.byApiKey[apiKeyKey] && new Date(ts) > new Date(stats.byApiKey[apiKeyKey].lastUsed)) stats.byApiKey[apiKeyKey].lastUsed = ts;
+      if (stats.byApiKey[apiKeyKey] && isBetterLastUsed(ts, stats.byApiKey[apiKeyKey].lastUsed)) stats.byApiKey[apiKeyKey].lastUsed = ts;
 
       const endpoint = e.endpoint || "Unknown";
       const endpointKey = `${endpoint}|${e.model}|${e.provider || "unknown"}`;
-      if (stats.byEndpoint[endpointKey] && new Date(ts) > new Date(stats.byEndpoint[endpointKey].lastUsed)) stats.byEndpoint[endpointKey].lastUsed = ts;
+      if (stats.byEndpoint[endpointKey] && isBetterLastUsed(ts, stats.byEndpoint[endpointKey].lastUsed)) stats.byEndpoint[endpointKey].lastUsed = ts;
+
+      // byTool gets the same treatment, or a captured tool would be the one row
+      // on the page still showing a date where its neighbours show a time.
+      const rowTool = parseJson(e.meta, {})?.tool || null;
+      if (rowTool) {
+        const toolKey = `${rowTool}|${e.model}|${e.provider || "unknown"}`;
+        if (stats.byTool[toolKey] && isBetterLastUsed(ts, stats.byTool[toolKey].lastUsed)) stats.byTool[toolKey].lastUsed = ts;
+      }
     }
   } else {
     // 24h / today: live history

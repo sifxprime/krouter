@@ -231,3 +231,25 @@ describe("one request, one usage row", () => {
     vi.resetModules();
   });
 });
+
+describe("lastUsed across the local-midnight boundary", () => {
+  it("refines a day-key lastUsed to a real timestamp", async () => {
+    // The rollup stores lastUsed as a LOCAL day key; the overlay refines it from
+    // the row's UTC timestamp. Comparing them with `new Date()` parses
+    // "2026-11-13" as UTC midnight, so in any timezone ahead of UTC an entry
+    // recorded between local midnight and that offset read as older than its own
+    // day key and never got refined. Caught at 00:44 local, UTC+6: three tests
+    // in this repo failed purely because the clock had passed midnight.
+    await usage({ model: "midnight-row", tool: "kiro", promptTokens: 9 });
+
+    // period="7d" takes the rollup path, where lastUsed starts as the day key.
+    const stats = await db.getUsageStats("7d");
+    const model = stats.byModel["midnight-row (claude)"];
+    expect(model, "the bucket must exist").toBeTruthy();
+    expect(model.lastUsed, "a bare date means the overlay never refined it").toMatch(/T\d{2}:\d{2}/);
+
+    const tool = Object.values(stats.byTool).find((e) => e.rawModel === "midnight-row");
+    expect(tool, "the tool bucket must exist").toBeTruthy();
+    expect(tool.lastUsed, "byTool must be refined like every other bucket").toMatch(/T\d{2}:\d{2}/);
+  });
+});

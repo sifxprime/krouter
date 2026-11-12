@@ -13,7 +13,7 @@ import path from "node:path";
 import { describe, it, expect, beforeAll, afterAll, afterEach, vi } from "vitest";
 
 const DAY_MS = 86400000;
-const OVERLAY_SQL = "SELECT timestamp, provider, model, connectionId, apiKey, endpoint FROM usageHistory WHERE timestamp >= ?";
+const OVERLAY_SQL = "SELECT timestamp, provider, model, connectionId, apiKey, endpoint, meta FROM usageHistory WHERE timestamp >= ?";
 
 const originalDataDir = process.env.DATA_DIR;
 let tempDir;

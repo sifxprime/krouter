@@ -77,3 +77,51 @@ The stream path with no `onStreamComplete` still records tool-less, because that
 code has no client request in scope. It is the degraded path (nothing else
 tracks the stream at all), so it counts the request but cannot attribute it.
 
+
+---
+
+# MITM auto-start on boot (v0.5.185)
+
+## Symptom
+After `launchctl kickstart -k`, MITM did not come back. `mitmEnabled: true`,
+`hasCachedPassword: true`, and the only trace was
+`[InitApp] MITM was enabled but no saved password found, skipping auto-start`.
+The watchdog then correctly stripped the DNS redirects, so capture was off.
+
+## Causes (three, all silent)
+- [x] 1. `deriveKey()` depended on PATH. `node-machine-id` shells out to `ioreg`
+      (/usr/sbin); the LaunchAgent PATH has no /usr/sbin, so the call threw and
+      the key silently became `sha256(salt)` instead of `sha256(machineId+salt)`.
+      Different key -> GCM auth-tag failure -> "no password saved".
+      Fix: derive from the persisted `DATA_DIR/machine-id`; try all historical
+      keys on decrypt; memoize (the call ran per attempt, 162 ioreg errors/boot).
+- [x] 2. A stale start lock blocked every later start FOREVER. Written O_EXCL,
+      removed only on clean paths, and `kickstart -k` is a SIGKILL. Fix: reclaim
+      a lock whose holder is dead, with a 2-minute age backstop for pid reuse.
+- [x] 3. `lastUsed` stayed a bare date for the first hours of each local day.
+      Rollup writes a LOCAL day key, the overlay refines from a UTC timestamp,
+      and `new Date("2026-11-13")` is UTC midnight — so at UTC+6 entries from
+      00:00-06:00 compared as older than their own day key. Found because this
+      session crossed midnight and three existing tests went red on an unchanged
+      checkout. Fix: one `isBetterLastUsed` helper across all four buckets, plus
+      byTool refined with them.
+- [x] 4. `/usr/sbin:/sbin` added to the LaunchAgent PATH (defense in depth).
+- [x] 5. The one log line now names which of its four causes fired.
+
+## Evidence
+Booted with `env -i PATH=<exact plist PATH>` and a stale lock in place:
+    [InitApp] MITM was enabled, auto-starting...
+    [MITM] 🔓 Reclaiming a stale start lock (pid 70842, age 357s)
+    [MITM] 🚀 Starting server...
+    [InitApp] MITM auto-started
+    [InitApp] DNS restored from saved state
+Port 443 up with no intervention and no sudo prompt; plain curl to
+api.anthropic.com captured and answered "AUTOBOOT". ioreg noise 162 -> 1.
+Reverting the derivation fails 3 of the new tests, incl. two different keys for
+the two PATHs (31b0b6… vs 41c895…). 3788 tests pass, eslint clean.
+
+## Not fixed here
+- npm Trusted Publisher is still misconfigured, so every release goes through the
+  NPM_TOKEN fallback and gets staged (issue #37). 0.5.183 never drained.
+- `next/font` fetches Inter + Space Grotesk from Google at build time, so a
+  release build depends on fonts.googleapis.com answering from a CI runner.

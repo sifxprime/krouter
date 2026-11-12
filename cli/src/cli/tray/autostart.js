@@ -200,7 +200,18 @@ function enableMacOS(cliPath) {
   // Invoke node + cli.js directly with absolute paths — no shell wrapper.
   // EnvironmentVariables.PATH explicitly includes node's bin dir so child
   // processes spawned by cli.js (npm install at runtime, etc.) resolve.
-  const launchPath = `${path.dirname(nodePath)}:/usr/local/bin:/usr/bin:/bin`;
+  //
+  // /usr/sbin and /sbin are in the list because leaving them out broke MITM
+  // auto-start on every boot. `node-machine-id` shells out to `ioreg`, which
+  // lives in /usr/sbin; without it the call threw, the sudo-password key fell
+  // back to a different derivation, the saved password failed to decrypt, and
+  // the server reported "no saved password found" and skipped auto-start. A
+  // login shell has these two directories; a LaunchAgent only has what is
+  // written here, so anything shelling out to an sbin tool silently behaved
+  // differently under launchd than when run by hand. manager.js no longer
+  // depends on ioreg, but the next caller that reaches for an sbin tool should
+  // not have to rediscover this.
+  const launchPath = `${path.dirname(nodePath)}:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin`;
 
   const plistContent = `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">

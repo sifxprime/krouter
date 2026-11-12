@@ -1,3 +1,64 @@
+# v0.5.185 (2026-11-13) — MITM comes back after a reboot
+
+Three bugs, all silent. The first two stacked: MITM never auto-started after a
+restart, and the watchdog then stripped the DNS redirects it could no longer
+serve, so capture was simply off until someone opened the dashboard.
+
+**The saved sudo password could not be read under launchd.** `node-machine-id`
+shells out to `ioreg`, which lives in /usr/sbin, and the LaunchAgent's PATH was
+`<node>/bin:/usr/local/bin:/usr/bin:/bin`. Measured on a real machine:
+
+    $ env -i PATH=<the plist's PATH> node -e 'machineIdSync()'
+    /bin/sh: ioreg: command not found
+
+So the call threw, the key derivation silently fell back to hashing the salt
+alone — a different key — AES-GCM rejected the auth tag, and the password read
+as absent. The whole failure surfaced as `MITM was enabled but no saved password
+found, skipping auto-start`, which is the wrong sentence: the password was on
+disk and decrypted fine by hand.
+
+The key now comes from the machine id this app already persists to
+`DATA_DIR/machine-id`, the file shared/utils/machineId.js keeps for exactly this
+reason ("guarantees CLI/server/middleware see same value even when machineIdSync
+fails"). Reading a file needs no PATH. Decryption tries every historical key, so
+a password saved under the old derivation still opens and nobody re-enters
+anything. The candidates are memoized: that call ran per decrypt attempt and
+printed `ioreg: command not found` 162 times in a single boot.
+
+**A stale start lock blocked every later start, permanently.** The lock is
+written with O_EXCL and removed on every clean path — but not by a SIGKILL, and
+`launchctl kickstart -k` is a SIGKILL. The leftover file named a pid that had
+been dead for six minutes and the throw was unconditional, so after one unclean
+shutdown MITM could never start again until someone deleted the file by hand:
+
+    [InitApp] MITM was enabled, auto-starting...
+    [InitApp] MITM auto-start failed: MITM server is already starting (lock contention)
+
+A lock whose holder is gone is now reclaimed, with a two-minute age backstop for
+a recycled pid number.
+
+`/usr/sbin:/sbin` are added to the LaunchAgent PATH as well. manager.js no longer
+needs ioreg, but the next caller reaching for an sbin tool should not have to
+rediscover that a LaunchAgent only gets the PATH written into the plist.
+
+The one unhelpful log line now distinguishes its four causes. That silence is why
+this survived.
+
+**lastUsed stayed a bare date for the first hours of each local day.** Found
+because the test run crossed midnight and three existing tests went red on an
+unchanged checkout. The daily rollup stores `lastUsed` as a LOCAL day key and the
+overlay refines it from a UTC timestamp; `new Date("2026-11-13")` parses as UTC
+midnight, so at UTC+6 every entry recorded between 00:00 and 06:00 local compared
+as older than its own day key and was never refined. One comparison helper now
+covers all four buckets, and byTool is refined with them instead of being the one
+row on the page still showing a date.
+
+Verified by booting with `env -i PATH=<the exact plist PATH>` and a stale lock
+left in place: port 443 came up with no intervention and no sudo prompt, DNS was
+restored from saved state, and a plain curl to api.anthropic.com was captured and
+answered. Reverting the key derivation fails three of the new tests, including
+two different keys for the two PATHs.
+
 # v0.5.184 (2026-11-12) — usage can finally tell you which IDE spent the money
 
 There is no 0.5.183 on npm. Its publish was accepted, signed and logged, and

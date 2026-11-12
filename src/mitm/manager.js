@@ -92,6 +92,9 @@ const MITM_PORT = 443;
 const MITM_WIN_NODE_PORT = 8443;
 const PID_FILE = path.join(MITM_DIR, ".mitm.pid");
 const LOCK_FILE = path.join(MITM_DIR, ".mitm.lock");
+// How long a start lock can be held before it is treated as abandoned. Only a
+// backstop for a reclaimed pid number; liveness is the primary check.
+const STALE_LOCK_MS = 2 * 60 * 1000;
 
 const MITM_MAX_RESTARTS = 5;
 const MITM_RESTART_DELAYS_MS = [5000, 10000, 20000, 30000, 60000];
@@ -209,14 +212,59 @@ function killProcess(pid, force = false, sudoPassword = null) {
   }
 }
 
-function deriveKey() {
+/**
+ * Every key this machine's saved sudo password could be under, best first.
+ *
+ * This used to be one key from `machineIdSync()`, with a silent fall back to the
+ * salt alone when that threw — and on macOS under launchd it always threw.
+ * `node-machine-id` shells out to `ioreg`, which lives in /usr/sbin, and the
+ * LaunchAgent's PATH is /opt/homebrew/.../bin:/usr/local/bin:/usr/bin:/bin. No
+ * /usr/sbin, no ioreg, so the key quietly became a different key than the one
+ * the password was encrypted under, GCM rejected the tag, and the only symptom
+ * was "MITM was enabled but no saved password found, skipping auto-start" on
+ * every boot. MITM never came back after a restart, and the watchdog then
+ * stripped the DNS redirects it could no longer serve.
+ *
+ * The first candidate is the machine id this app already persists to
+ * DATA_DIR/machine-id (see shared/utils/machineId.js, which keeps that file for
+ * exactly this reason: "guarantees CLI/server/middleware see same value even
+ * when machineIdSync fails"). Reading a file needs no PATH.
+ *
+ * The rest are the historical keys. A password saved before this change still
+ * opens, so nobody has to re-enter it — including on a machine where ioreg was
+ * never reachable and the salt-only key is the real one.
+ */
+let _keyCandidates = null;
+function deriveKeyCandidates() {
+  if (_keyCandidates) return _keyCandidates;
+  const keys = [];
+  const add = (raw) => {
+    const key = crypto.createHash("sha256").update(raw + ENCRYPT_SALT).digest();
+    if (!keys.some((k) => k.equals(key))) keys.push(key);
+  };
+
   try {
+    const persisted = fs.readFileSync(path.join(DATA_DIR, "machine-id"), "utf8").trim();
+    if (persisted) add(persisted);
+  } catch { /* not written yet — fall through */ }
+
+  try {
+    // Shells out to ioreg on macOS. Kept for blobs saved under the old key, but
+    // memoized: without that it ran on every decrypt attempt and printed
+    // "/bin/sh: ioreg: command not found" to stderr once per call under launchd.
     const { machineIdSync } = require("node-machine-id");
-    const raw = machineIdSync();
-    return crypto.createHash("sha256").update(raw + ENCRYPT_SALT).digest();
-  } catch {
-    return crypto.createHash("sha256").update(ENCRYPT_SALT).digest();
-  }
+    add(machineIdSync());
+  } catch { /* no ioreg on PATH, which is the whole point of the file above */ }
+
+  const saltOnly = crypto.createHash("sha256").update(ENCRYPT_SALT).digest();
+  if (!keys.some((k) => k.equals(saltOnly))) keys.push(saltOnly);
+  _keyCandidates = keys;
+  return keys;
+}
+
+/** The key new passwords are encrypted under: the most stable one available. */
+function deriveKey() {
+  return deriveKeyCandidates()[0];
 }
 
 function encryptPassword(plaintext) {
@@ -229,16 +277,18 @@ function encryptPassword(plaintext) {
 }
 
 function decryptPassword(stored) {
-  try {
-    const [ivHex, tagHex, dataHex] = stored.split(":");
-    if (!ivHex || !tagHex || !dataHex) return null;
-    const key = deriveKey();
-    const decipher = crypto.createDecipheriv(ENCRYPT_ALGO, key, Buffer.from(ivHex, "hex"));
-    decipher.setAuthTag(Buffer.from(tagHex, "hex"));
-    return decipher.update(Buffer.from(dataHex, "hex")) + decipher.final("utf8");
-  } catch {
-    return null;
+  const [ivHex, tagHex, dataHex] = String(stored || "").split(":");
+  if (!ivHex || !tagHex || !dataHex) return null;
+  // Try every key this machine could have encrypted under, so a password saved
+  // under an older derivation still opens instead of reading as "not saved".
+  for (const key of deriveKeyCandidates()) {
+    try {
+      const decipher = crypto.createDecipheriv(ENCRYPT_ALGO, key, Buffer.from(ivHex, "hex"));
+      decipher.setAuthTag(Buffer.from(tagHex, "hex"));
+      return decipher.update(Buffer.from(dataHex, "hex")) + decipher.final("utf8");
+    } catch { /* wrong key for this blob — try the next */ }
   }
+  return null;
 }
 
 let _getSettings = null;
@@ -269,13 +319,33 @@ async function clearEncryptedPassword() {
   }
 }
 
+/**
+ * The saved sudo password, or null.
+ *
+ * Every failure here used to return a bare null, and the one caller that matters
+ * — auto-start on boot — turned that into "no saved password found, skipping".
+ * That sentence is wrong for three of the four ways this can fail, and it is the
+ * only thing a user saw when MITM silently did not come up after a reboot. Each
+ * cause now says which it is.
+ */
 async function loadEncryptedPassword() {
-  if (!_getSettings) return null;
+  if (!_getSettings) {
+    log("🔐 Cannot read the saved sudo password: no settings hook registered (initDbHooks was never called in this module instance).");
+    return null;
+  }
   try {
     const settings = await _getSettings();
-    if (!settings.mitmSudoEncrypted) return null;
-    return decryptPassword(settings.mitmSudoEncrypted);
-  } catch {
+    if (!settings.mitmSudoEncrypted) {
+      log("🔐 No sudo password saved — MITM has to be started once from the dashboard to store one.");
+      return null;
+    }
+    const password = decryptPassword(settings.mitmSudoEncrypted);
+    if (!password) {
+      log("🔐 The saved sudo password did not decrypt. It is bound to this machine's id, so a changed machine id or a copied data dir invalidates it — start MITM once from the dashboard to save it again.");
+    }
+    return password;
+  } catch (e) {
+    log(`🔐 Reading the saved sudo password failed: ${e.message}`);
     return null;
   }
 }
@@ -780,10 +850,28 @@ async function startServer(apiKey, sudoPassword, forceKillPort443 = false) {
   try {
     fs.writeFileSync(LOCK_FILE, String(process.pid), { flag: "wx" });
   } catch (e) {
-    if (e.code === "EEXIST") {
-      throw new Error("MITM server is already starting (lock contention)");
-    }
-    throw e;
+    if (e.code !== "EEXIST") throw e;
+    // A lock only means something while the process holding it is alive.
+    //
+    // It is removed on every clean path, but not by a SIGKILL — `launchctl
+    // kickstart -k`, a crash, a power cut — and the bare throw below then made
+    // EVERY later start fail with "already starting". Not until the next boot:
+    // forever, because nothing ever deleted the file. Observed here as
+    // "[InitApp] MITM auto-start failed: MITM server is already starting (lock
+    // contention)" with the lock naming a pid that had been dead for minutes.
+    const holder = (() => {
+      try { return parseInt(fs.readFileSync(LOCK_FILE, "utf8").trim(), 10) || null; } catch { return null; }
+    })();
+    const ageMs = (() => {
+      try { return Date.now() - fs.statSync(LOCK_FILE).mtimeMs; } catch { return Infinity; }
+    })();
+    // The age check is the backstop for a recycled pid: a start that is genuinely
+    // in flight finishes or fails well inside this window, so a lock older than
+    // that is not a start in progress whoever owns the number now.
+    const live = holder && isProcessAlive(holder) && ageMs < STALE_LOCK_MS;
+    if (live) throw new Error("MITM server is already starting (lock contention)");
+    log(`🔓 Reclaiming a stale start lock (pid ${holder ?? "unknown"}, age ${Math.round(ageMs / 1000)}s)`);
+    fs.writeFileSync(LOCK_FILE, String(process.pid));
   }
 
   try {
@@ -1255,4 +1343,7 @@ module.exports = {
   hasDnsPrivilege,
   removeAllDNSEntries,
   removeAllDNSEntriesSync,
+  // The sudo-password crypto, so a test can prove the key does not depend on
+  // PATH. It silently did, and MITM auto-start was off on every boot for it.
+  __test__: { encryptPassword, decryptPassword, deriveKeyCandidates },
 };
