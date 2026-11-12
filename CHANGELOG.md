@@ -1,3 +1,56 @@
+# v0.5.189 (2026-11-13) — a green release now means the version is installable
+
+No product change. This is the release pipeline learning the difference between
+"npm accepted the upload" and "npm serves it", which it has been getting wrong
+all day.
+
+**A staged 409 is no longer a failure.** npm holds a new publish in a staged
+state while it validates it. A staged version is not served — `npm view` 404s, so
+this workflow's own version check reports it as unpublished — but a second upload
+of it is refused:
+
+    npm error code E409
+    409 Conflict - PUT .../@sifxprime%2fkrouter
+    Cannot publish over previously staged version "0.5.183".
+
+That is the previous attempt still in flight, not a failed release, and failing on
+it is how v0.5.183's retry reported a publish npm had in fact accepted. Matched on
+the code AND the wording AND the version being released, so a 409 about any other
+version, and every other error — E404, E403, EPUBLISHCONFLICT, ENEEDAUTH, a build
+failure — still fails. The matcher is tested as shell against npm's real output in
+both directions.
+
+**Success now means the registry serves it.** A new gate polls the version
+document until it answers 200, past any CDN cache, and only then passes. This is
+the mistake that mattered: v0.5.185's publish step went green while `npm install`
+could not reach that version for hours, and it was reported as released on that
+basis. The gate also reports whether `dist-tags.latest` moved — a separate
+registry write, and the thing a plain `npm i -g` actually resolves. Observed on
+v0.5.187: served, while latest still pointed at v0.5.186.
+
+The wait is 75 minutes because v0.5.187 took 55 to appear after a green publish.
+A 25m ceiling would have failed that release and opened an issue for something
+that was fine half an hour later. The job timeout went to 110 to match; left at
+30, GitHub would have cancelled the job mid-wait and the release would have failed
+for the one reason the gate exists to describe properly. A test pins the two
+together, because nothing else in the file connects them.
+
+The issue this workflow opens on failure now separates the two causes: an upload
+that never landed (fix the Trusted Publisher) from one that landed and is staged
+(re-run to re-check, nothing needs republishing).
+
+Also added: the workflow is now checked as YAML and every `run` step parsed with
+`sh -n`. While writing this change the file was syntactically broken for a while —
+a continuation line of a shell string sat at column 0 and ended a `run: |` block
+scalar — and the whole suite stayed green, because every test read it as text.
+GitHub would only have said so on the next tag, after the release was cut.
+
+Still unfixed, and the cause of all of the above: trusted publishing is refused
+for this package (OIDC exchange 404, "package not found") so every release goes
+out through the NPM_TOKEN fallback and gets staged. That needs a Trusted Publisher
+configured on npmjs.com — owner `sifxprime`, repository `krouter`, workflow
+`npm-publish.yml`, no environment — which only the package owner can do.
+
 # v0.5.188 (2026-11-13) — proxy capture comes back after a restart too
 
 Carries v0.5.187, which npm accepted and has not served, so that version has

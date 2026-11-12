@@ -40,7 +40,11 @@ concurrency:
 jobs:
   publish:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    # Must exceed the serve gate's TIMEOUT_MINUTES plus the build, or GitHub
+    # cancels the job mid-wait and the release reads as failed for the one reason
+    # the gate exists to describe properly. 75m of waiting + ~10m of build, with
+    # room to spare. A test pins the two together.
+    timeout-minutes: 110
     steps:
       - uses: actions/checkout@v5
 
@@ -166,11 +170,91 @@ jobs:
         env:
           # Empty when the secret is unset, which leaves trusted publishing alone.
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          VERSION: ${{ steps.v.outputs.version }}
         run: |
           TGZ=$(ls "$RUNNER_TEMP"/sifxprime-krouter-*.tgz)
-          if ! npm publish "$TGZ" --provenance --access public; then
-            echo "::error::npm publish failed. See 'Check npm trusted publishing' above for why npm refused, and the comment at the top of this workflow for the fix (Trusted Publisher, or an NPM_TOKEN secret)."
-            exit 1
+
+          # Output is captured as well as printed, because the one case worth
+          # telling apart from a failure is only visible in npm's own message.
+          set +e
+          OUT=$(npm publish "$TGZ" --provenance --access public 2>&1)
+          CODE=$?
+          set -e
+          printf '%s\n' "$OUT"
+
+          if [ "$CODE" -ne 0 ]; then
+            # npm holds a new publish in a staged state while it validates it. A
+            # staged version is not served -- `npm view` 404s, so the "Check
+            # version" step above reports it as unpublished -- but a second upload
+            # of it is refused:
+            #
+            #   npm error code E409
+            #   409 Conflict - PUT .../@sifxprime%2fkrouter
+            #   Cannot publish over previously staged version "0.5.183".
+            #
+            # That is not a failed release, it is the previous attempt still in
+            # flight, and failing on it is how v0.5.183's retry reported a publish
+            # npm had in fact accepted. Matched on the code AND the wording AND
+            # this run's version, so a 409 about anything else still fails.
+            if printf '%s' "$OUT" | grep -q 'E409' && printf '%s' "$OUT" | grep -qF "previously staged version \"$VERSION\""; then
+              echo "::notice::npm already holds $VERSION as a staged publish from an earlier attempt -- not republishing. The gate below decides whether it became installable."
+            else
+              echo "::error::npm publish failed. See 'Check npm trusted publishing' above for why npm refused, and the comment at the top of this workflow for the fix (Trusted Publisher, or an NPM_TOKEN secret)."
+              exit 1
+            fi
+          fi
+
+      # A green publish step does not mean the version can be installed.
+      #
+      # Every release of this package goes out through the NPM_TOKEN fallback (see
+      # 'Check npm trusted publishing') and is staged: npm prints
+      # `+ @sifxprime/krouter@x.y.z` with signed provenance, and then serves
+      # nothing for a while. Measured here: 0.5.184 nine minutes, 0.5.186 seven,
+      # 0.5.183 hours, and 0.5.185 was reported as released while `npm install`
+      # still could not reach it. So success means "the registry serves it", not
+      # "npm accepted the upload".
+      #
+      # The wait is deliberately long, because a tighter one would fail releases
+      # that are merely slow and this job opens an issue when it fails.
+      - name: Wait until npm actually serves the version
+        if: >-
+          steps.v.outputs.already != 'true' &&
+          (github.event_name == 'push' || inputs.dry_run == false)
+        env:
+          VERSION: ${{ steps.v.outputs.version }}
+          # 75, because 0.5.187 took 55 minutes to be served after a green
+          # publish. A 25m ceiling would have failed that release and opened an
+          # issue for something that was fine half an hour later. The gate's job
+          # is to prevent a false green, and waiting an hour still does that.
+          TIMEOUT_MINUTES: "75"
+        run: |
+          URL="https://registry.npmjs.org/@sifxprime%2fkrouter/$VERSION"
+          deadline=$(( $(date +%s) + TIMEOUT_MINUTES * 60 ))
+          attempt=0
+          while :; do
+            attempt=$(( attempt + 1 ))
+            # Cache-Control, because a CDN edge that answered 404 a moment ago
+            # keeps answering 404 and reads as a far longer delay than there is.
+            code=$(curl -sS -o /dev/null -w '%{http_code}' -H 'Cache-Control: no-cache' "$URL" || echo 000)
+            if [ "$code" = "200" ]; then
+              echo "npm is serving $VERSION (attempt $attempt)"
+              break
+            fi
+            if [ "$(date +%s)" -ge "$deadline" ]; then
+              echo "::error::npm accepted $VERSION but has not served it after ${TIMEOUT_MINUTES}m (last HTTP $code). It is staged, so npm install cannot reach it and a re-run is refused with E409 until it completes -- which this workflow now tolerates. Re-run this job to re-check without republishing; staging has resolved on its own before, sometimes after hours."
+              exit 1
+            fi
+            sleep 20
+          done
+
+          # The dist-tag is a separate write, and it is what a bare
+          # `npm i -g @sifxprime/krouter` resolves. Reported, not enforced:
+          # publishing an older patch on purpose should not fail here.
+          latest=$(curl -sS -H 'Cache-Control: no-cache' https://registry.npmjs.org/@sifxprime%2fkrouter | node -e 'let d="";process.stdin.on("data",c=>d+=c).on("end",()=>{try{console.log(JSON.parse(d)["dist-tags"].latest)}catch{console.log("unknown")}})')
+          if [ "$latest" = "$VERSION" ]; then
+            echo "dist-tags.latest is $latest"
+          else
+            echo "::warning::$VERSION is served, but dist-tags.latest is $latest -- a plain install will not pick up this version."
           fi
 
   # A re-run that succeeds after a failed attempt left that attempt's issue open
@@ -215,4 +299,4 @@ jobs:
             echo "An open issue already tracks this"; exit 0
           fi
           gh issue create --repo "${{ github.repository }}" --title "$title" --label bug \
-            --body "**$TAG** was not published to npm, so \`npm install -g @sifxprime/krouter\` still installs the previous version. If the log shows \`E404\` on \`PUT\`, the npm Trusted Publisher for @sifxprime/krouter is missing or does not match (user \`sifxprime\`, repository \`krouter\`, workflow \`npm-publish.yml\`, no environment): fix it on npmjs.com, then re-run the failed job. Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+            --body "**$TAG** is not installable from npm: \`npm install -g @sifxprime/krouter\` still gets the previous version. Two different things produce this, and the log says which. **(1) The upload never landed** -- an \`E404\` on \`PUT\` means the npm Trusted Publisher for @sifxprime/krouter is missing or does not match (user \`sifxprime\`, repository \`krouter\`, workflow \`npm-publish.yml\`, no environment); fix it on npmjs.com, then re-run the failed job. **(2) The upload landed and npm has not served it** -- if the last step timed out waiting, npm accepted the version and is holding it staged; nothing is lost and nothing needs republishing, a retry is refused with \`E409 Cannot publish over previously staged version\` which this workflow tolerates, so just re-run the failed job to re-check. Staging has taken from seven minutes to several hours here, and it keeps happening because every release goes out through the \`NPM_TOKEN\` fallback rather than trusted publishing. Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
