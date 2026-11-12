@@ -106,3 +106,27 @@ describe("tray handoff ordering", () => {
     expect(Date.now() - started).toBeGreaterThanOrEqual(150);
   });
 });
+
+// The first release of this feature called the CLI's killAllAppProcesses() as
+// its "stop", which kills every kRouter process on the machine -- this one
+// mid-handoff, and the launchd agent it was about to start. The menu printed
+// "Handing the server over to launchd..." and the user got their prompt back
+// with nothing running and the agent recorded as LastExitStatus = 9.
+//
+// Pinning it at the source, because the failure only shows up on a real
+// machine: in a unit test the stop is a stub and kills nobody.
+describe("the handoff stops only its own server", () => {
+  it("neither branch calls the kill-everything helper", async () => {
+    const fs = await import("node:fs");
+    const src = fs.readFileSync("cli/cli.js", "utf8");
+
+    // The two stopCurrent callbacks passed into the handoffs.
+    const stops = [...src.matchAll(/stopCurrent:\s*async\s*\(\)\s*=>\s*\{([^}]*)\}/g)].map((m) => m[1]);
+    expect(stops.length, "both handoff call sites must pass a stopCurrent").toBe(2);
+    for (const body of stops) {
+      expect(body, "stopCurrent must not nuke every kRouter process").not.toMatch(/killAllAppProcesses/);
+      expect(body, "stopCurrent must not kill by port either").not.toMatch(/killProcessOnPort/);
+      expect(body, "stopCurrent should stop our own server").toMatch(/cleanup\(\)/);
+    }
+  });
+});

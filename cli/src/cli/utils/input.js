@@ -122,7 +122,13 @@ async function selectMenu(title, items, defaultIndex = 0, subtitle = "", headerC
       const width = Math.min(process.stdout.columns || 40, 40);
       console.log(`\n${COLORS.terracotta}${"=".repeat(width)}${COLORS.reset}`);
       console.log(`  ${COLORS.bright}${COLORS.terracotta}${title}${COLORS.reset}`);
-      if (subtitle) console.log(`  ${COLORS.dim}${subtitle}${COLORS.reset}`);
+      if (subtitle) {
+        // Indent every line, not just the first: a multi-line subtitle (the
+        // main menu's server/status/update block) otherwise prints ragged.
+        for (const line of String(subtitle).split("\n")) {
+          console.log(`  ${COLORS.dim}${line}${COLORS.reset}`);
+        }
+      }
       console.log(`${COLORS.terracotta}${"=".repeat(width)}${COLORS.reset}`);
       if (breadcrumb.length > 0) console.log(`  ${COLORS.dim}${breadcrumb.join(" > ")}${COLORS.reset}`);
       console.log();

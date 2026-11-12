@@ -75,15 +75,21 @@ async function handOffToLaunchd({
 
   log("Handing the server over to launchd...");
 
-  // Ours has to let go of the port first, or the agent dies on EADDRINUSE the
-  // same way it has been doing silently until now.
+  // Stop ONLY our own server. The first version called the CLI's
+  // killAllAppProcesses() here, which kills every kRouter process on the
+  // machine -- including this one, mid-handoff, and the launchd agent it was
+  // about to start. The menu printed "Handing the server over to launchd..."
+  // and the user got their shell prompt back with nothing running and the
+  // agent recorded as LastExitStatus = 9.
   try {
     await stopCurrent();
   } catch (e) {
     return { ok: false, reason: `stop-failed: ${e.message}` };
   }
-  const freed = await waitFor(() => portIsFree(port), freeBudget);
-  if (!freed) return { ok: false, reason: "port-still-held" };
+
+  // Wait for OUR server to let go. A previous agent may legitimately still hold
+  // the port -- kickstart -k replaces that one itself, so it is not a blocker.
+  await waitFor(() => portIsFree(port), freeBudget);
 
   try {
     execFileSync("launchctl", ["kickstart", "-k", `gui/${process.getuid()}/${APP_LABEL}`], {
@@ -94,13 +100,66 @@ async function handOffToLaunchd({
     return { ok: false, reason: `kickstart-failed: ${e.message}` };
   }
 
-  // "Started" is not "serving". Only a reply from the port counts, and only one
-  // that identifies itself as kRouter — something else may have taken the port
-  // in the gap we just opened.
-  const serving = await waitFor(() => Promise.resolve(isKrouterOnPort(port)), serveBudget);
-  if (!serving) return { ok: false, reason: "agent-did-not-serve" };
+  // "Started" is not "serving", and "serving" is not "serving from launchd".
+  // Without the ownership check a leftover terminal-bound server answering the
+  // port would read as success — which is the exact failure this feature
+  // exists to prevent.
+  const ok = await waitFor(
+    () => Promise.resolve(isKrouterOnPort(port) && agentOwnsPort(port)),
+    serveBudget
+  );
+  if (!ok) {
+    return {
+      ok: false,
+      reason: isKrouterOnPort(port) ? "port-served-but-not-by-launchd" : "agent-did-not-serve",
+    };
+  }
 
-  return { ok: true, label: APP_LABEL };
+  return { ok: true, label: APP_LABEL, pid: agentPid() };
+}
+
+/** PID launchd reports for our agent, or null when it is not running. */
+function agentPid() {
+  try {
+    const out = execFileSync("launchctl", ["list", APP_LABEL], { encoding: "utf-8", timeout: 5000 });
+    const m = out.match(/"PID"\s*=\s*(\d+)/);
+    return m ? Number(m[1]) : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * True when the process holding the port is the launchd agent, or descends
+ * from it. The server runs as a child (cli.js --tray spawns next-server), so
+ * the holder is usually the agent's child rather than the agent itself.
+ */
+function agentOwnsPort(port) {
+  const agent = agentPid();
+  if (!agent) return false;
+  let holder;
+  try {
+    const out = execFileSync("/bin/sh", ["-c", `lsof -nP -a -iTCP:${port} -sTCP:LISTEN -t 2>/dev/null | head -1`],
+      { encoding: "utf-8", timeout: 5000 }).trim();
+    holder = Number(out);
+  } catch {
+    return false;
+  }
+  if (!holder) return false;
+
+  // Walk up: holder -> ... -> agent. Bounded, because a cycle here would hang
+  // the menu rather than fail it.
+  let cur = holder;
+  for (let i = 0; i < 8 && cur && cur !== 1; i += 1) {
+    if (cur === agent) return true;
+    try {
+      cur = Number(execFileSync("/bin/ps", ["-o", "ppid=", "-p", String(cur)],
+        { encoding: "utf-8", timeout: 3000 }).trim());
+    } catch {
+      return false;
+    }
+  }
+  return false;
 }
 
 
@@ -143,4 +202,4 @@ async function handOffToDetachedChild({
   return { ok: true, pid: child.pid };
 }
 
-module.exports = { handOffToLaunchd, handOffToDetachedChild, plistPath, APP_LABEL, portIsFree, waitFor };
+module.exports = { handOffToLaunchd, handOffToDetachedChild, agentPid, agentOwnsPort, plistPath, APP_LABEL, portIsFree, waitFor };

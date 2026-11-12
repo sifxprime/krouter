@@ -792,29 +792,62 @@ async function showInterfaceMenu(latestVersion) {
     serverUrl = `http://${displayHost}:${port}`;
   }
 
-  const subtitle = `🚀 Server: \x1b[32m${serverUrl}\x1b[0m`;
+  // Say what state the user is actually in. The menu used to show the URL and
+  // nothing else, so "Hide to Tray" was a guess: no way to see whether a
+  // background service already existed, or whether the last attempt worked.
+  let bg = { mode: "unknown" };
+  try {
+    const { backgroundMode } = require("./src/cli/tray/status");
+    bg = backgroundMode(port);
+  } catch (e) { /* status is a nicety; never block the menu on it */ }
+
+  let whereLine;
+  try {
+    const { describeBackground } = require("./src/cli/tray/status");
+    whereLine = describeBackground(bg);
+  } catch (e) {
+    whereLine = "";
+  }
+
+  const updateLine = latestVersion
+    ? `\x1b[33m⬆ v${latestVersion} available\x1b[0m (you have v${pkg.version})`
+    : `\x1b[90m✓ v${pkg.version} is the latest\x1b[0m`;
+
+  const subtitle = [
+    `🚀 Server:  \x1b[32m${serverUrl}\x1b[0m`,
+    `   Status:  ${whereLine}`,
+    `   Update:  ${updateLine}`,
+  ].join("\n");
 
   const menuItems = [];
 
   if (latestVersion) {
-    menuItems.push({ label: `Update to v${latestVersion} (current: v${pkg.version})`, icon: "⬆" });
+    menuItems.push({ label: `Update to v${latestVersion}`, icon: "⬆" });
   }
 
   menuItems.push(
     { label: "Web UI (Open in Browser)", icon: "🌐" },
     { label: "Terminal UI (Interactive CLI)", icon: "💻" },
-    { label: "Hide to Tray + Start on Login", icon: "🔔" },
-    { label: "Exit", icon: "🚪" }
   );
 
-  const selected = await selectMenu(`Choose Interface (v${pkg.version})`, menuItems, 0, subtitle);
+  // The background item describes what it will DO from here, instead of naming
+  // an implementation detail the user has to guess the consequences of.
+  const alreadyBackground = bg.mode === "launchd" || bg.mode === "detached";
+  menuItems.push(
+    alreadyBackground
+      ? { label: "Already in background — leave it running and quit this menu", icon: "✓" }
+      : { label: "Run in background (keeps running when you close this terminal)", icon: "🔔" },
+    { label: alreadyBackground ? "Stop kRouter completely" : "Exit (stops kRouter)", icon: "🚪" }
+  );
+
+  const selected = await selectMenu(`kRouter v${pkg.version}`, menuItems, 0, subtitle);
 
   const offset = latestVersion ? 1 : 0;
 
   if (latestVersion && selected === 0) return "update";
   if (selected === offset) return "web";
   if (selected === offset + 1) return "terminal";
-  if (selected === offset + 2) return "hide";
+  if (selected === offset + 2) return alreadyBackground ? "detach" : "hide";
   return "exit";
 }
 
@@ -1002,6 +1035,16 @@ function startServer(latestVersion) {
           await killProcessOnPort(port);
           setTimeout(() => process.exit(0), 200);
           return;
+        } else if (choice === "detach") {
+          // kRouter is already running in the background. Quitting this menu
+          // must leave it alone -- the old "Exit" path would have killed it,
+          // which is the opposite of what someone picking this wants.
+          const { clearScreen } = require("./src/cli/utils/display");
+          clearScreen();
+          console.log(`\n✅ kRouter stays running in the background.`);
+          console.log(`   Server: http://${displayHost}:${port}`);
+          console.log(`\n   To stop it later: run krouter and choose "Stop kRouter completely".\n`);
+          process.exit(0);
         } else if (choice === "web") {
           openBrowser(url);
           // Wait for user to come back
@@ -1047,15 +1090,12 @@ function startServer(latestVersion) {
             const handoff = startsOnLogin
               ? await handOffToLaunchd({
                 port,
-                stopCurrent: async () => {
-                  try {
-                    const { killTray } = require("./src/cli/tray/tray");
-                    killTray();
-                  } catch (e) { /* tray may not be up */ }
-                  cleanup();
-                  await killAllAppProcesses(port);
-                  await killProcessOnPort(port);
-                },
+                // cleanup() stops OUR server (and tray/mitm/tunnel pid files)
+                // and nothing else. killAllAppProcesses() must not be used
+                // here: it kills every kRouter process on the machine,
+                // including this one mid-handoff and the agent we are about to
+                // start.
+                stopCurrent: async () => { cleanup(); },
                 isKrouterOnPort: portServesKrouter,
                 log: (m) => console.log(`\n⏳ ${m}`),
               })
@@ -1095,15 +1135,9 @@ function startServer(latestVersion) {
             port,
             cliPath: __filename,
             spawn,
-            stopCurrent: async () => {
-              try {
-                const { killTray } = require("./src/cli/tray/tray");
-                killTray();
-              } catch (e) { /* tray may not be up */ }
-              cleanup();
-              await killAllAppProcesses(port);
-              await killProcessOnPort(port);
-            },
+            // Only our own server — see the macOS branch. killAllAppProcesses()
+            // here would kill this process before it could spawn the child.
+            stopCurrent: async () => { cleanup(); },
             isKrouterOnPort: portServesKrouter,
             log: (m) => console.log(`\n⏳ ${m}`),
           });
