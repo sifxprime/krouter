@@ -61,12 +61,30 @@ describe("nav icon coverage", () => {
 });
 
 describe("icon paths", () => {
-  it("every icon is stroke-only on the 24 grid — no fills, no stray colour", () => {
-    // One hand across the set. A `fill` or a hardcoded colour breaks both the
-    // weight match and `currentColor` picking up the active state.
+  it("every icon paints in currentColor — no hardcoded colour anywhere", () => {
+    // One hand across the set, and one colour. A literal colour breaks the active
+    // state, which works by setting `color` on the element.
+    //
+    // `fill="currentColor"` is allowed, and is not what that rule was about: a few
+    // icons are only readable as a solid — toggle_on's knob is what separates it
+    // from toggle_off, and contrast is a half-filled disc by definition. It still
+    // follows `color` like every stroke does.
     for (const [name, d] of Object.entries(ICON_PATHS)) {
-      expect(d, `${name} uses fill`).not.toMatch(/fill="(?!none)/);
-      expect(d, `${name} hardcodes a colour`).not.toMatch(/stroke="#|stroke="rgb/);
+      const fills = [...d.matchAll(/fill="([^"]*)"/g)].map((m) => m[1]);
+      for (const f of fills) {
+        expect(["none", "currentColor"], `${name} fills with ${f}`).toContain(f);
+      }
+      expect(d, `${name} hardcodes a stroke colour`).not.toMatch(/stroke="(?!none|currentColor)/);
+    }
+  });
+
+  it("a filled element turns its own stroke off", () => {
+    // A shape that is both filled and stroked sits a half-stroke wider than the
+    // rest of the set, so it reads bolder at nav size for no reason.
+    for (const [name, d] of Object.entries(ICON_PATHS)) {
+      for (const el of d.match(/<[a-z]+\b[^>]*fill="currentColor"[^>]*>/g) || []) {
+        expect(el, `${name}: a filled element must set stroke="none"`).toContain('stroke="none"');
+      }
     }
   });
 
