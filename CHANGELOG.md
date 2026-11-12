@@ -1,3 +1,76 @@
+# v0.5.182 (2026-11-12) — the dashboard stops shipping a 3.9 MB font, and dialogs become dialogs
+
+Mostly the dashboard, measured against the design canvas rather than by eye. Four of
+these are bugs rather than taste, and three of them were invisible because nothing
+errored.
+
+## Fixed
+
+- **45 class names referenced colour tokens that do not exist.** `text-text-primary`
+  (29 uses), `bg-bg-subtle`, `bg-surface-hover`, `bg-bg-tertiary` and six more. Tailwind
+  emits no rule for an unknown token, so nothing errored and nothing painted: a "hover"
+  row that never changed, a "subtle" well with no well. They survived because an element
+  with no colour of its own inherits, and wherever the parent happened to be right it
+  looked correct. A test now scans the app's own token namespaces and fails on any name
+  `globals.css` does not define.
+
+- **Four pages had no title in the top bar** — PXPIPE, Presidio, Environment and Chat.
+  The title map is a chain of `pathname.includes(...)` ending in `{ title: "" }`, so a
+  route nobody added lands silently on the empty case. The new test walks the routes that
+  actually exist instead of trusting the chain to be complete; nothing throws when a page
+  simply has no header.
+
+- **Dialogs were not dialogs.** 47 of them go through the shared component and another
+  10 built their own overlay; none had `role="dialog"`, so a screen reader read the
+  content as more of the page it was covering. Focus never entered, so the first Tab
+  after opening went to something behind the overlay, and Tab then walked straight out.
+  Nothing brought focus back on close. The shared header also drew macOS traffic lights,
+  where two of the three circles were `cursor-not-allowed` decoration — window chrome on
+  something that is not a window, and controls drawn on things that do nothing.
+
+  The focus restore is the subtle part. The opener cannot be read from an effect: React
+  applies `autoFocus` while committing the panel, so by the time any effect runs — layout
+  or passive — `document.activeElement` is already a control inside the dialog, and the
+  dialog "restores" focus to the element it is about to destroy. It is captured during
+  the render that opens it.
+
+- **The active nav row tinted its own label out of legibility.** `text-primary` on
+  `bg-primary/10` made the current page the least readable label in the nav. The icon
+  carries the state; the label stays at full text weight.
+
+## Changed
+
+- **The icon webfont is gone.** 553 spans across 101 files rendered their icon as a word
+  and let `material-symbols-outlined.woff2` turn it into a glyph — a 3,870 KB download on
+  a dashboard whose whole pitch is that it runs on your machine. They are now 182 drawn
+  SVG icons, 28.7 KB of source. The published package drops from 13.9 MB to 10.2 MB. The
+  `opacity: 0` rule that hid every icon until the font arrived goes with it.
+
+- **Dark surfaces ran backwards.** The sidebar was `rgba(38,38,38,.72)`, which composites
+  to roughly `#222` over the canvas — lighter than the page it borders — so the nav
+  floated above a darker page and cards had almost nothing separating them from a
+  neighbour of the same value. The order now runs sidebar `#151514` < canvas `#1a1a1a` <
+  card `#212121`.
+
+- **One treatment for tables and headings.** Eight tables were written by hand with eight
+  different paddings; card headings were written twenty different ways. Both move to a
+  single rule, and numeric columns are tabular — a right-aligned proportional figure
+  still jitters row to row.
+
+- **The endpoint page says whether anything is routing through it**, and hands you the
+  command to point a client at it. The snippets are built from the variables the app
+  actually writes, and read `requireApiKey`, so when no key is required they say so
+  instead of printing a token line that does nothing. Kiro, Antigravity and Claude
+  Desktop are deliberately absent: they do not take a base URL, they are intercepted.
+
+## Security
+
+- **The router API key was on the command line.** The MITM server was spawned as
+  `sudo -S -E sh -c "... ROUTER_API_KEY='sk-...' ..."`, readable by every local process
+  through `ps`. The whole environment now goes down stdin behind a sentinel. The same fix
+  restores `MITM_FILE_LOG`, which never reached the child on macOS because the sudo
+  branch built a fixed variable list while the other branches spread `process.env`.
+
 # v0.5.176 (2026-11-11) — kRouter told you its own server was a stranger
 
 **Upgrade if you ever run `npm install -g` while kRouter is running.** After an upgrade
