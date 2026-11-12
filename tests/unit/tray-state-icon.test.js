@@ -23,6 +23,7 @@ beforeEach(() => {
 afterEach(() => { try { fs.rmSync(dir, { recursive: true, force: true }); } catch { /* ignore */ } });
 
 const pidFile = () => path.join(dir, "mitm", ".mitm.pid");
+const proxyPidFile = () => path.join(dir, "mitm", ".proxy.pid");
 
 describe("tray state", () => {
   it("is running when no MITM pid file exists", () => {
@@ -49,6 +50,36 @@ describe("tray state", () => {
   it("is stopped when the server is down, whatever the MITM file says", () => {
     fs.writeFileSync(pidFile(), String(process.pid));
     expect(ts.currentState({ appDataDir: dir, serverUp: false })).toBe(ts.STATES.STOPPED);
+  });
+
+  // Capture runs two ways and the icon has to count both. The :443 interceptor
+  // writes .mitm.pid; the CONNECT proxy Antigravity's local hop uses writes
+  // .proxy.pid. Reading only the first made the tray report "capture off" with
+  // a live Antigravity capture running — the exact lie the icon exists to stop.
+  it("is capturing when only the proxy-mode pid file is live", () => {
+    fs.writeFileSync(proxyPidFile(), String(process.pid));
+    expect(ts.currentState({ appDataDir: dir })).toBe(ts.STATES.CAPTURING);
+  });
+
+  it("does NOT claim capture for a stale proxy pid file", () => {
+    fs.writeFileSync(proxyPidFile(), "999999");
+    expect(ts.currentState({ appDataDir: dir })).toBe(ts.STATES.RUNNING);
+  });
+
+  it("names which mode is live, because they cover different tools", () => {
+    // Proxy-only capture covers Antigravity but NOT Claude Desktop, so
+    // "Capturing" alone would still leave the user guessing.
+    fs.writeFileSync(proxyPidFile(), String(process.pid));
+    expect(ts.describeCapture(dir)).toBe("proxy");
+    expect(ts.describeState(ts.STATES.CAPTURING, dir)).toContain("(proxy)");
+
+    fs.writeFileSync(pidFile(), String(process.pid));
+    expect(ts.describeCapture(dir)).toBe("system-wide + proxy");
+  });
+
+  it("reports no mode when nothing is capturing", () => {
+    expect(ts.describeCapture(dir)).toBe("");
+    expect(ts.captureModes(dir)).toEqual({ intercept: false, proxy: false });
   });
 
   it("treats EPERM as alive — the MITM runs under sudo", () => {
@@ -78,6 +109,17 @@ describe("state icons", () => {
 
   it("the state line is built from describeState, not a hardcoded string", async () => {
     const src = fs.readFileSync(dirOf("tray.js"), "utf8");
-    expect(src).toContain("describeState(state)");
+    expect(src).toContain("describeState(state, dataDir)");
+  });
+
+  it("the menu passes the data dir, so the mode name is not silently dropped", () => {
+    // describeState defaults appDataDir, so forgetting it here would not throw
+    // — it would just quietly stop saying which capture mode is live.
+    const src = fs.readFileSync(dirOf("tray.js"), "utf8");
+    expect(src, "initTray must record the dir the menu reads")
+      .toContain("dataDir = options && options.appDataDir");
+    for (const call of src.match(/describeState\([^)]*\)/g) || []) {
+      expect(call, `${call} drops the data dir`).toContain("dataDir");
+    }
   });
 });

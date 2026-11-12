@@ -7,6 +7,16 @@ let isWinTray = false;
 
 const { STATES, currentState, iconNameForState, describeState } = require("./trayState");
 
+// The data dir the menu reads capture state from.
+//
+// buildMenuItems is called from the click handler and both platform inits, none
+// of which thread options through — so rather than add a parameter to five call
+// sites that would be easy to forget at one of them, initTray records it once
+// and the menu text reads it from here. A forgotten parameter would silently
+// drop the "(proxy)" / "(system-wide)" detail, which is the only part of the
+// line worth reading.
+let dataDir;
+
 /**
  * Get icon base64 from file — used for systray (mac/linux)
  *
@@ -60,7 +70,7 @@ function startStateWatch(options) {
           icon: getIconBase64(next),
           isTemplateIcon: process.platform === "darwin",
           title: "",
-          tooltip: describeState(next),
+          tooltip: describeState(next, dataDir),
           items: buildMenuItems(options.port, getAutostartEnabled(), next),
         },
       });
@@ -103,6 +113,7 @@ function initTray(options) {
   if (!isTraySupported()) {
     return null;
   }
+  dataDir = options && options.appDataDir;
 
   // Windows uses PowerShell NotifyIcon (AV-safe), others use systray
   if (process.platform === "win32") {
@@ -116,8 +127,8 @@ function initTray(options) {
  */
 function buildMenuItems(port, autostartEnabled, state = STATES.RUNNING) {
   return [
-    { title: `kRouter (Port ${port})`, tooltip: describeState(state), enabled: false },
-    { title: describeState(state), tooltip: "Capture state", enabled: false },
+    { title: `kRouter (Port ${port})`, tooltip: describeState(state, dataDir), enabled: false },
+    { title: describeState(state, dataDir), tooltip: "Capture state", enabled: false },
     { title: "Open Dashboard", tooltip: "Open in browser", enabled: true },
     {
       title: autostartEnabled ? "✓ Auto-start Enabled" : "Enable Auto-start",

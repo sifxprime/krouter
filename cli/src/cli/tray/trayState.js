@@ -12,6 +12,13 @@
 // but the MITM already writes a pid file the CLI reads elsewhere to kill it.
 // Reading that file is cheaper than an authenticated HTTP round trip and has
 // no failure mode where a slow server makes the icon lie.
+//
+// There are TWO ways capture runs, and both have to count. `.mitm.pid` is the
+// :443 interceptor (hosts-file + sudo) that Claude Desktop and Kiro need;
+// `.proxy.pid` is the CONNECT proxy on 20129 that Antigravity's local hop uses
+// and that anything with HTTPS_PROXY can point at. Reading only the first made
+// the icon say "capture off" with a live Antigravity capture running — exactly
+// the lie this is here to prevent.
 
 const fs = require("fs");
 const os = require("os");
@@ -50,22 +57,45 @@ function pidAlive(pid) {
   }
 }
 
+// Pid file per capture mode, and the word for it in the menu.
+const CAPTURE_MODES = Object.freeze({
+  intercept: { file: ".mitm.pid", label: "system-wide" },
+  proxy: { file: ".proxy.pid", label: "proxy" },
+});
+
 /**
- * Read the MITM pid file and say whether capture is actually live.
+ * Is the process named by one mode's pid file alive?
  *
  * A stale pid file is the expected case after a hard kill, so the pid is
  * always probed rather than trusted — otherwise the icon would claim capture
  * forever after one `pkill`.
  */
-function isCapturing(appDataDir = DEFAULT_DATA_DIR) {
+function modeAlive(appDataDir, file) {
   try {
-    const pidFile = path.join(appDataDir || DEFAULT_DATA_DIR, "mitm", ".mitm.pid");
+    const pidFile = path.join(appDataDir || DEFAULT_DATA_DIR, "mitm", file);
     if (!fs.existsSync(pidFile)) return false;
     const pid = parseInt(fs.readFileSync(pidFile, "utf8").trim(), 10);
     return pidAlive(pid);
   } catch {
     return false;
   }
+}
+
+/**
+ * Which capture modes are live right now.
+ * @returns {{intercept: boolean, proxy: boolean}}
+ */
+function captureModes(appDataDir = DEFAULT_DATA_DIR) {
+  return {
+    intercept: modeAlive(appDataDir, CAPTURE_MODES.intercept.file),
+    proxy: modeAlive(appDataDir, CAPTURE_MODES.proxy.file),
+  };
+}
+
+/** True when capture is live in EITHER mode. */
+function isCapturing(appDataDir = DEFAULT_DATA_DIR) {
+  const m = captureModes(appDataDir);
+  return m.intercept || m.proxy;
 }
 
 /**
@@ -78,18 +108,36 @@ function currentState({ appDataDir = DEFAULT_DATA_DIR, serverUp = true } = {}) {
   return isCapturing(appDataDir) ? STATES.CAPTURING : STATES.RUNNING;
 }
 
+/**
+ * Name the live modes, so "Capturing" can say WHICH tools are covered.
+ * Proxy-only capture covers Antigravity but not Claude Desktop, and that
+ * difference is the whole reason someone looks at this line.
+ */
+function describeCapture(appDataDir = DEFAULT_DATA_DIR) {
+  const m = captureModes(appDataDir);
+  const live = [];
+  if (m.intercept) live.push(CAPTURE_MODES.intercept.label);
+  if (m.proxy) live.push(CAPTURE_MODES.proxy.label);
+  return live.join(" + ");
+}
+
 /** Base name of the icon for a state, without extension. */
 function iconNameForState(state) {
   return ICON_FOR_STATE[state] || ICON_FOR_STATE[STATES.RUNNING];
 }
 
 /** One line for the menu, so the state is readable as words too. */
-function describeState(state) {
+function describeState(state, appDataDir = DEFAULT_DATA_DIR) {
   switch (state) {
-    case STATES.CAPTURING: return "Capturing — IDE traffic routes through kRouter";
+    case STATES.CAPTURING: {
+      const modes = describeCapture(appDataDir);
+      return modes
+        ? `Capturing (${modes}) — IDE traffic routes through kRouter`
+        : "Capturing — IDE traffic routes through kRouter";
+    }
     case STATES.STOPPED:   return "Stopped — not serving";
     default:               return "Running — capture off";
   }
 }
 
-module.exports = { STATES, DEFAULT_DATA_DIR, currentState, iconNameForState, describeState, isCapturing, pidAlive };
+module.exports = { STATES, DEFAULT_DATA_DIR, CAPTURE_MODES, currentState, iconNameForState, describeState, describeCapture, captureModes, isCapturing, pidAlive };
