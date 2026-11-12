@@ -5,20 +5,78 @@ const path = require("path");
 let trayInstance = null;
 let isWinTray = false;
 
+const { STATES, currentState, iconNameForState, describeState } = require("./trayState");
+
 /**
  * Get icon base64 from file — used for systray (mac/linux)
+ *
+ * The icon carries the capture state: solid running, dot capturing, faded
+ * stopped. All three are template images (black + alpha), so they differ by
+ * shape and alpha alone — macOS inverts them per menu-bar theme and would
+ * flatten any colour.
  */
-function getIconBase64() {
+function getIconBase64(state = STATES.RUNNING) {
   const isWin = process.platform === "win32";
-  const iconFile = isWin ? "icon.ico" : "icon.png";
+  const base = iconNameForState(state);
+  // Windows ships one .ico; the state variants are PNG only for now, so it
+  // falls back rather than asking for a file that is not there.
+  const candidates = isWin
+    ? ["icon.ico"]
+    : [`${base}.png`, "icon.png"];
   try {
-    const iconPath = path.join(__dirname, iconFile);
-    if (fs.existsSync(iconPath)) {
-      return fs.readFileSync(iconPath).toString("base64");
+    for (const iconFile of candidates) {
+      const iconPath = path.join(__dirname, iconFile);
+      if (fs.existsSync(iconPath)) {
+        return fs.readFileSync(iconPath).toString("base64");
+      }
     }
   } catch (e) {}
   // Fallback: minimal green dot icon (PNG)
   return "iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAABGdBTUEAALGPC/xhBQAAAAlwSFlzAAALEwAACxMBAJqcGAAAAHpJREFUOE9jYBgFgwEwMjIy/Gdg+P8fyP4PxP8ZGBgEcBnGyMjIsICBgSEAhyH/gfgBUNN8XJoZsdkCVL8Ah+b/QPwbqvkBMvk/AwMDAzYX/GdgYAhAN+A/SICRWAMYGfFEJSMjzriEiwDR/xmIa2RkZCSqnZERb3QCAAo3KxzxbKe1AAAAAElFTkSuQmCC";
+}
+
+let stateTimer = null;
+let lastState = null;
+
+/**
+ * Keep the icon honest while kRouter runs.
+ *
+ * Capture is toggled from the dashboard, not from here, so without a poll the
+ * icon would only ever show the state at launch — which is exactly the trap
+ * this feature exists to close. 4s: slow enough to be free, fast enough that
+ * the menu bar agrees with the dashboard before the user looks back at it.
+ */
+function startStateWatch(options) {
+  stopStateWatch();
+  const tick = () => {
+    try {
+      const next = currentState({ appDataDir: options.appDataDir, serverUp: true });
+      if (next === lastState) return;          // nothing to redraw
+      lastState = next;
+      if (!trayInstance || isWinTray) return;  // Windows ships one .ico
+      trayInstance.sendAction({
+        type: "update-menu",
+        menu: {
+          icon: getIconBase64(next),
+          isTemplateIcon: process.platform === "darwin",
+          title: "",
+          tooltip: describeState(next),
+          items: buildMenuItems(options.port, getAutostartEnabled(), next),
+        },
+      });
+    } catch (e) {
+      // A tray that cannot redraw must not take the server down with it.
+    }
+  };
+  lastState = null;
+  tick();
+  stateTimer = setInterval(tick, 4000);
+  // Never hold the process open on the icon's account.
+  if (stateTimer.unref) stateTimer.unref();
+}
+
+function stopStateWatch() {
+  if (stateTimer) { clearInterval(stateTimer); stateTimer = null; }
 }
 
 /**
@@ -56,9 +114,10 @@ function initTray(options) {
 /**
  * Build menu items array shared between platforms
  */
-function buildMenuItems(port, autostartEnabled) {
+function buildMenuItems(port, autostartEnabled, state = STATES.RUNNING) {
   return [
-    { title: `kRouter (Port ${port})`, tooltip: "Server is running", enabled: false },
+    { title: `kRouter (Port ${port})`, tooltip: describeState(state), enabled: false },
+    { title: describeState(state), tooltip: "Capture state", enabled: false },
     { title: "Open Dashboard", tooltip: "Open in browser", enabled: true },
     {
       title: autostartEnabled ? "✓ Auto-start Enabled" : "Enable Auto-start",
@@ -70,7 +129,10 @@ function buildMenuItems(port, autostartEnabled) {
 }
 
 // Menu item indexes
-const MENU_INDEX = { STATUS: 0, DASHBOARD: 1, AUTOSTART: 2, QUIT: 3 };
+// A line was added after STATUS, so every index below it moved. These are
+// positional: the click handler and every update-item call address menu rows
+// by number, and a stale index here silently wires a click to the wrong row.
+const MENU_INDEX = { STATUS: 0, STATE: 1, DASHBOARD: 2, AUTOSTART: 3, QUIT: 4 };
 
 /**
  * Get current autostart state
@@ -117,7 +179,8 @@ function initWindowsTray(options) {
     const { initWinTray } = require("./trayWin");
     const iconPath = path.join(__dirname, "icon.ico");
     const autostartEnabled = getAutostartEnabled();
-    const items = buildMenuItems(port, autostartEnabled);
+    const state = currentState({ appDataDir: options.appDataDir, serverUp: true });
+    const items = buildMenuItems(port, autostartEnabled, state);
 
     trayInstance = initWinTray({
       iconPath,
@@ -195,14 +258,16 @@ function initUnixTray(options) {
     chmodTrayBin(isV2 ? "systray2" : "systray");
 
     const autostartEnabled = getAutostartEnabled();
-    const items = buildMenuItems(port, autostartEnabled);
+    const state = currentState({ appDataDir: options.appDataDir, serverUp: true });
+    const items = buildMenuItems(port, autostartEnabled, state);
 
     const menu = {
-      icon: getIconBase64(),
-      // The bundled icon.png is a full-color RGBA logo. Don't mark it as a
-      // template icon: macOS would then render it as a solid white square
-      // because template mode only uses the alpha channel.
-      isTemplateIcon: false,
+      icon: getIconBase64(state),
+      // 0.5.182 — the icons ARE template images now (black + alpha), so this is
+      // true on macOS and the glyph follows the menu-bar theme. It was false
+      // because the old icon.png was a full-colour RGBA logo, which template
+      // mode renders as a solid white square.
+      isTemplateIcon: process.platform === "darwin",
       title: "",
       tooltip: `kRouter - Port ${port}`,
       items
@@ -210,6 +275,7 @@ function initUnixTray(options) {
 
     trayInstance = new SysTray({ menu, debug: false, copyDir: true });
     isWinTray = false;
+    startStateWatch(options);
 
     trayInstance.onClick((action) => {
       handleClick(action.seq_id, options, (newEnabled) => {
@@ -250,6 +316,7 @@ function initUnixTray(options) {
  * spawns a new tray, otherwise the new icon silently fails to register.
  */
 function killTray() {
+  stopStateWatch();
   const instance = trayInstance;
   const wasWin = isWinTray;
   trayInstance = null;

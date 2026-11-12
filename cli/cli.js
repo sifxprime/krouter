@@ -988,6 +988,10 @@ function startServer(latestVersion) {
       const { initTray } = require("./src/cli/tray/tray");
       initTray({
         port,
+        // The tray reads mitm/.mitm.pid from here to show whether capture is
+        // on. trayState defaults this, but passing it keeps the icon correct
+        // when kRouter runs with a non-default data dir.
+        appDataDir: getAppDataDir(),
         onQuit: () => {
           isShuttingDown = true;
           console.log("\n👋 Shutting down from tray...");
