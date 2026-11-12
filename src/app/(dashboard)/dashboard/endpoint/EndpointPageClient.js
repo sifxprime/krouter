@@ -6,6 +6,7 @@ import { Card, Button, Input, Modal, CardSkeleton, Toggle, ConfirmModal } from "
 import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
 import { getCurrentLocale, onLocaleChange } from "@/i18n/runtime";
 import Icon from "../../../../shared/components/icons/Icon";
+import TrafficStrip from "./components/TrafficStrip";
 
 // Locales that unlock wenyan (classical Chinese) caveman levels
 const WENYAN_LOCALES = ["zh-CN", "zh-TW"];
@@ -902,6 +903,10 @@ export default function APIPageClient({ machineId }) {
 
   return (
     <div className="flex flex-col gap-8">
+      {/* Today's traffic — the page's first question is whether anything is
+          actually routing through the endpoint it is about to hand out. */}
+      <TrafficStrip />
+
       {/* Endpoint Card */}
       <Card>
         <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
