@@ -171,10 +171,10 @@ export default function MitmServerCard({ apiKeys, cloudEnabled, onStatusChange }
           {/* Purpose & How it works */}
           <div className="px-2 py-2 rounded-lg bg-surface/50 border border-border/50 flex flex-col gap-2">
             <p className="text-[11px] text-text-muted leading-relaxed">
-              <span className="font-medium text-text-main">Purpose:</span> Use Antigravity IDE & GitHub Copilot → with ANY provider/model from kRouter
+              <span className="font-medium text-text-main">Purpose:</span> Use Antigravity, Claude Desktop and Kiro → with ANY provider/model from kRouter
             </p>
             <p className="text-[11px] text-text-muted leading-relaxed">
-              <span className="font-medium text-text-main">How it works:</span> Antigravity/Copilot IDE request → DNS redirect to localhost:443 → MITM proxy intercepts → kRouter → response to Antigravity/Copilot
+              <span className="font-medium text-text-main">How it works:</span> IDE request → DNS redirect to localhost:443 → MITM proxy intercepts → kRouter → response to the IDE
             </p>
           </div>
 
@@ -224,7 +224,7 @@ export default function MitmServerCard({ apiKeys, cloudEnabled, onStatusChange }
               <p className="text-[11px] text-text-muted leading-relaxed">
                 Interception redirects provider hostnames in the operating system&apos;s hosts file and
                 terminates TLS on port 443. In a container both belong to the container, while
-                Antigravity, Copilot, Kiro and Cursor run on your host and never read them — the server
+                Antigravity, Claude Desktop and Kiro run on your host and never read them — the server
                 would start and intercept nothing. Run kRouter directly on the host to use MITM, or point
                 those tools at this instance&apos;s base URL instead, which needs no interception.
               </p>

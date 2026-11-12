@@ -8,6 +8,8 @@ import ProviderIcon from "@/shared/components/ProviderIcon";
 import HeaderMenu from "@/shared/components/HeaderMenu";
 import HeaderLanguage from "@/shared/components/HeaderLanguage";
 import ThemeToggle from "@/shared/components/ThemeToggle";
+import { Icon } from "@/shared/components/icons";
+import { useCaptureStatus, describeCapture } from "@/shared/hooks/useCaptureStatus";
 import { useHeaderSearchStore } from "@/store/headerSearchStore";
 import { OAUTH_PROVIDERS, APIKEY_PROVIDERS } from "@/shared/constants/config";
 import { MEDIA_PROVIDER_KINDS, AI_PROVIDERS } from "@/shared/constants/providers";
@@ -234,7 +236,7 @@ export default function Header({ onMenuClick, showMenuButton = true }) {
             onClick={onMenuClick}
             className="text-text-main hover:text-primary transition-colors"
           >
-            <span className="material-symbols-outlined">menu</span>
+            <Icon name="menu" size={22} />
           </button>
         )}
       </div>
@@ -249,9 +251,7 @@ export default function Header({ onMenuClick, showMenuButton = true }) {
                 className="flex items-center gap-2"
               >
                 {index > 0 && (
-                  <span className="material-symbols-outlined text-text-muted text-base">
-                    chevron_right
-                  </span>
+                  <Icon name="chevron_right" size={16} className="text-text-muted" />
                 )}
                 {crumb.href ? (
                   <Link
@@ -283,9 +283,7 @@ export default function Header({ onMenuClick, showMenuButton = true }) {
           <div>
             <div className="flex items-center gap-2">
               {icon && (
-                <span className="material-symbols-outlined text-text-muted text-xl lg:text-[26px]">
-                  {icon}
-                </span>
+                <Icon name={icon} size={24} className="text-text-muted" />
               )}
               <h1 className="text-lg lg:text-[28px] lg:leading-9 font-semibold tracking-[-0.02em] truncate">
                 {translate(title)}
@@ -302,9 +300,14 @@ export default function Header({ onMenuClick, showMenuButton = true }) {
 
       {/* Right actions */}
       <div className="flex items-center gap-1 shrink-0">
+        {/* Capture state on every page, not only the capture page. Enabling
+            capture while a tool is already running looks identical to it
+            working, so "is kRouter intercepting right now" has to be
+            answerable without navigating away from whatever you are doing. */}
+        <CapturePill />
         {displayName && loginMethod === "OIDC" && (
           <div className="hidden sm:flex items-center max-w-[220px] px-3 py-1.5 rounded-full border border-border bg-surface/70 text-xs text-text-muted truncate">
-            <span className="material-symbols-outlined text-[14px] mr-1.5 text-primary">person</span>
+            <Icon name="person" size={14} className="mr-1.5 text-primary" />
             <span className="truncate">{displayName}</span>
             <span className="ml-2 shrink-0 rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-primary">
               OIDC
@@ -320,6 +323,49 @@ export default function Header({ onMenuClick, showMenuButton = true }) {
   );
 }
 
+/**
+ * Live capture state.
+ *
+ * Deliberately three states, not two: proxy-only capture covers Antigravity
+ * and leaves Claude Desktop and Kiro going straight to the vendors, so a plain
+ * on/off dot would read "on" for a setup that is half off.
+ */
+function CapturePill() {
+  const capture = useCaptureStatus();
+  const words = describeCapture(capture);
+  if (capture.loading) return null;
+
+  const tone = {
+    on: "border-green-500/30 bg-green-500/10 text-green-600 dark:text-green-400",
+    partial: "border-amber-500/30 bg-amber-500/10 text-amber-600 dark:text-amber-400",
+    off: "border-border bg-surface/70 text-text-muted",
+    idle: "border-border bg-surface/70 text-text-muted",
+  }[words.tone];
+
+  const dot = {
+    on: "bg-green-500",
+    partial: "bg-amber-500",
+    off: "bg-text-muted/50",
+    idle: "bg-text-muted/50",
+  }[words.tone];
+
+  return (
+    <Link
+      href="/dashboard/mitm"
+      title={words.long}
+      // On a phone the word is dropped but the dot stays. Hiding the pill
+      // outright was the first cut, and it meant the narrowest screen — the one
+      // most likely to be glanced at — was the only place that could not answer
+      // whether capture was on.
+      className={`flex items-center gap-1.5 rounded-full border py-1 text-[11px] font-medium transition-colors hover:border-primary/40 px-1.5 sm:px-2.5 ${tone}`}
+    >
+      <span aria-hidden="true" className={`size-1.5 rounded-full ${dot}`} />
+      <span className="hidden sm:inline">{words.short}</span>
+      <span className="sr-only">{words.long}</span>
+    </Link>
+  );
+}
+
 function HeaderSearch() {
   const visible = useHeaderSearchStore((s) => s.visible);
   const query = useHeaderSearchStore((s) => s.query);
@@ -330,9 +376,7 @@ function HeaderSearch() {
 
   return (
     <div className="relative w-[160px] sm:w-[220px]">
-      <span className="material-symbols-outlined absolute left-2 top-1/2 -translate-y-1/2 text-text-muted text-[16px] pointer-events-none">
-        search
-      </span>
+      <Icon name="search" size={16} className="absolute left-2 top-1/2 -translate-y-1/2 text-text-muted pointer-events-none" />
       <input
         type="text"
         value={query}
@@ -347,7 +391,7 @@ function HeaderSearch() {
           className="absolute right-1 top-1/2 -translate-y-1/2 text-text-muted hover:text-text-main p-0.5 rounded"
           aria-label="Clear search"
         >
-          <span className="material-symbols-outlined text-[16px]">close</span>
+          <Icon name="close" size={16} />
         </button>
       )}
     </div>

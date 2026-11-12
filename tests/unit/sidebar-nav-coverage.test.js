@@ -15,25 +15,42 @@ import path from "node:path";
  * test failure instead of a silent regression.
  */
 
-const SIDEBAR = "src/shared/components/Sidebar.js";
+// The nav data moved out of Sidebar.js when the flat list was grouped into
+// sections. Scanning the component for hrefs would now find none and quietly
+// pass every check below -- this guard has to follow the data.
+const NAV_DATA = "src/shared/components/nav/navSections.js";
 const DASHBOARD_DIR = "src/app/(dashboard)/dashboard";
 
-/** Pages deliberately absent from the sidebar, each with the reason it is reachable. */
+/** Pages deliberately absent from the sidebar, each with the reason. */
 const NOT_IN_SIDEBAR = {
-  profile: "reached from the account menu, not the nav list",
+  // Commented out of the nav list and left that way. The old version of this
+  // guard scanned the component source with a regex that matched the
+  // commented-out line, so this counted as covered while being unreachable --
+  // the exact failure mode the guard exists to catch.
+  "basic-chat": "deliberately hidden; the entry is commented out in navSections",
 };
-// media-providers needs no entry here: the sidebar links its /web sub-page, and the
-// slug match below counts a parent as covered when any of its sub-pages is linked.
+// `profile` was an exception while Settings was a hardcoded <Link> outside the
+// nav array, invisible to the scan. It is a normal System entry now.
+// `media-providers` is the accordion, which records a basePath instead of an
+// href; the scan reads both.
 
-const src = readFileSync(SIDEBAR, "utf8");
+const src = readFileSync(NAV_DATA, "utf8");
 const navSlugs = new Set(
-  [...src.matchAll(/href:\s*"\/dashboard\/([a-z0-9-]+)/g)].map((m) => m[1])
+  [...src.matchAll(/(?:href|basePath):\s*"\/dashboard\/([a-z0-9-]+)/g)].map((m) => m[1])
 );
 const pageSlugs = readdirSync(DASHBOARD_DIR, { withFileTypes: true })
   .filter((e) => e.isDirectory() && !e.name.startsWith("["))
   .map((e) => e.name);
 
 describe("sidebar navigation coverage", () => {
+  it("found the nav data at all", () => {
+    // Everything below is a set-difference against navSlugs, so an empty set
+    // makes the orphan and dangling checks vacuously pass. If the data moves
+    // again, fail here rather than go quiet.
+    expect(navSlugs.size, `no hrefs found in ${NAV_DATA} -- did the nav data move?`)
+      .toBeGreaterThan(5);
+  });
+
   it("links the MITM page", () => {
     expect(navSlugs.has("mitm")).toBe(true);
   });
