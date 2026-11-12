@@ -865,7 +865,7 @@ export default function BasicChatPageClient() {
                     <Icon name="chat" size={30} />
                   </div>
                   <div className="space-y-2">
-                    <h2 className="text-2xl font-semibold text-white">Start a conversation</h2>
+                    <h2 className="section-title text-white">Start a conversation</h2>
                     <p className="text-sm leading-6 text-white/60">
                       Simple chat interface to interact with any AI model from connected providers. Select a model and start chatting!
                     </p>

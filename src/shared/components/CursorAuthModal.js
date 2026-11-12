@@ -98,7 +98,7 @@ export default function CursorAuthModal({ isOpen, onSuccess, onClose }) {
             <div className="size-16 mx-auto mb-4 rounded-full bg-primary/10 flex items-center justify-center">
               <Icon name="progress_activity" size={30} className="text-primary animate-spin" />
             </div>
-            <h3 className="text-lg font-semibold mb-2">Auto-detecting tokens...</h3>
+            <h3 className="section-title mb-2">Auto-detecting tokens...</h3>
             <p className="text-sm text-text-muted">
               Reading from Cursor IDE database
             </p>

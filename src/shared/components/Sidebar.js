@@ -390,7 +390,7 @@ export default function Sidebar({ onClose }) {
               <div className="flex items-center justify-center size-16 rounded-full bg-red-500/20 text-red-500 mx-auto mb-4">
                 <Icon name="power_off" size={32} />
               </div>
-              <h2 className="text-xl font-semibold text-white mb-2">Server Disconnected</h2>
+              <h2 className="section-title text-white mb-2">Server Disconnected</h2>
               <p className="text-text-muted mb-6">The proxy server has been stopped.</p>
               <Button variant="secondary" onClick={() => globalThis.location.reload()}>
                 Reload Page
@@ -416,7 +416,7 @@ function ManualUpdatePanel({ latestVersion, installCmd, copied, onCopyAndShutdow
           <Icon name="content_copy" size={22} />
         </div>
         <div>
-          <h2 className="text-lg font-semibold">Update kRouter{latestVersion ? ` to v${latestVersion}` : ""}</h2>
+          <h2 className="section-title">Update kRouter{latestVersion ? ` to v${latestVersion}` : ""}</h2>
           <p className="text-xs text-white/60">
             {isDisconnected
               ? "Server stopped. Paste the command into a terminal to install."

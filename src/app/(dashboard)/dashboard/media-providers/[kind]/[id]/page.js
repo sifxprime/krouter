@@ -219,7 +219,7 @@ function EmbeddingExampleCard({ providerId, customAlias }) {
 
   return (
     <Card>
-      <h2 className="text-lg font-semibold mb-4">Example</h2>
+      <h2 className="section-title mb-4">Example</h2>
 
       <div className="flex flex-col gap-2.5">
         {/* Model — text input for custom node, dropdown otherwise */}
@@ -583,7 +583,7 @@ function TtsExampleCard({ providerId }) {
   return (
     <>
       <Card>
-        <h2 className="text-lg font-semibold mb-4">Example</h2>
+        <h2 className="section-title mb-4">Example</h2>
 
         <div className="flex flex-col gap-2.5">
           {/* Endpoint + API Key as read-only text */}
@@ -857,7 +857,7 @@ function TtsExampleCard({ providerId }) {
           >
             {/* Header */}
             <div className="flex items-center justify-between px-4 py-3 border-b border-border shrink-0 rounded-t-xl">
-              <h3 className="text-sm font-semibold">Select Language</h3>
+              <h3 className="section-title">Select Language</h3>
               <button onClick={() => setModalOpen(false)} className="text-text-muted hover:text-primary transition-colors">
                 <Icon name="close" size={20} />
               </button>
@@ -1109,7 +1109,7 @@ function GenericExampleCard({ providerId, kind }) {
 
   return (
     <Card>
-      <h2 className="text-lg font-semibold mb-4">Example</h2>
+      <h2 className="section-title mb-4">Example</h2>
       <div className="flex flex-col gap-2.5">
         {/* Model selector — dropdown if presets exist, else manual input for media kinds */}
         {kindModels.length > 0 ? (
@@ -1518,7 +1518,7 @@ function SttExampleCard({ providerId }) {
 
   return (
     <Card>
-      <h2 className="text-lg font-semibold mb-4">Example</h2>
+      <h2 className="section-title mb-4">Example</h2>
       <div className="flex flex-col gap-2.5">
         {/* Model */}
         {sttModels.length > 0 ? (

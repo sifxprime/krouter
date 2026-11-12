@@ -7,7 +7,7 @@ export default function HowItWorks() {
     <section className="py-24 border-y border-[#3a2f27] bg-[#23180f]/30" id="how-it-works">
       <div className="max-w-7xl mx-auto px-6">
         <div className="mb-16">
-          <h2 className="text-3xl md:text-4xl font-bold mb-4">How kRouter Works</h2>
+          <h2 className="section-title text-3xl md:text-4xl mb-4">How kRouter Works</h2>
           <p className="text-gray-400 max-w-xl text-lg">
             Data flows seamlessly from your application through our intelligent routing layer to the best provider for the job.
           </p>
@@ -23,7 +23,7 @@ export default function HowItWorks() {
               <Icon name="terminal" size={36} className="text-gray-300" />
             </div>
             <div>
-              <h3 className="text-xl font-bold mb-2">1. CLI &amp; SDKs</h3>
+              <h3 className="section-title mb-2">1. CLI &amp; SDKs</h3>
               <p className="text-sm text-gray-400">
                 Your requests start from your favorite tools or our unified SDK. Just change the base URL.
               </p>
@@ -36,7 +36,7 @@ export default function HowItWorks() {
               <Icon name="hub" size={36} className="text-[#f97815] animate-pulse" />
             </div>
             <div>
-              <h3 className="text-xl font-bold mb-2 text-[#f97815]">2. kRouter Hub</h3>
+              <h3 className="section-title mb-2 text-[#f97815]">2. kRouter Hub</h3>
               <p className="text-sm text-gray-400">
                 Our engine analyzes the prompt, checks provider health, and routes for lowest latency or cost.
               </p>
@@ -54,7 +54,7 @@ export default function HowItWorks() {
               </div>
             </div>
             <div>
-              <h3 className="text-xl font-bold mb-2">3. AI Providers</h3>
+              <h3 className="section-title mb-2">3. AI Providers</h3>
               <p className="text-sm text-gray-400">
                 The request is fulfilled by OpenAI, Anthropic, Gemini, or others instantly.
               </p>

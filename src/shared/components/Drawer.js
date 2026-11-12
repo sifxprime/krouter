@@ -61,7 +61,7 @@ export default function Drawer({
         <div className="flex items-center justify-between p-6 border-b border-border-subtle flex-shrink-0">
           <div className="flex items-center gap-3">
             {title && (
-              <h2 className="text-lg font-semibold text-text-main">{title}</h2>
+              <h2 className="section-title">{title}</h2>
             )}
           </div>
           <button

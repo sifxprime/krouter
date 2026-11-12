@@ -239,7 +239,7 @@ export default function DefaultToolCard({ toolId, tool, isExpanded, onToggle, ba
             {renderIcon()}
           </div>
           <div className="min-w-0">
-            <h3 className="font-medium text-sm">{tool.name}</h3>
+            <h3 className="section-title">{tool.name}</h3>
             <p className="text-xs text-text-muted truncate">{tool.description}</p>
           </div>
         </div>

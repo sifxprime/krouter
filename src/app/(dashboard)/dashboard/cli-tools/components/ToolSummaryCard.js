@@ -28,7 +28,7 @@ export default function ToolSummaryCard({ toolId, tool, status }) {
               ) : null}
             </div>
             <div className="min-w-0 flex-1">
-              <h3 className="font-medium text-sm truncate">{tool.name}</h3>
+              <h3 className="section-title truncate">{tool.name}</h3>
               <span className={`inline-block mt-1 px-1.5 py-0.5 text-[10px] font-medium rounded-full ${s.cls}`}>{s.label}</span>
             </div>
             <Icon name="chevron_right" size={18} className="text-text-muted shrink-0" />

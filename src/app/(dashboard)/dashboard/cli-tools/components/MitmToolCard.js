@@ -207,7 +207,7 @@ export default function MitmToolCard({
             </div>
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2">
-                <h3 className="font-medium text-sm">{tool.name}</h3>
+                <h3 className="section-title">{tool.name}</h3>
                 {!serverRunning ? (
                   <Badge variant="default" size="sm">Server off</Badge>
                 ) : dnsActive ? (
@@ -372,7 +372,7 @@ export default function MitmToolCard({
       {showPasswordModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
           <div className="mx-4 flex w-full max-w-sm flex-col gap-4 rounded-xl border border-border bg-surface p-5 shadow-xl sm:p-6">
-            <h3 className="font-semibold text-text-main">Sudo Password Required</h3>
+            <h3 className="section-title">Sudo Password Required</h3>
             <div className="flex items-start gap-3 p-3 bg-yellow-500/10 border border-yellow-500/30 rounded-lg">
               <Icon name="warning" size={20} className="text-yellow-500" />
               <p className="text-xs text-text-muted">Required to modify /etc/hosts and flush DNS cache</p>

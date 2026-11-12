@@ -71,7 +71,7 @@ function MediaProviderCard({ provider, kind, connections, isCustom, onToggle }) 
               />
             </div>
             <div className="min-w-0">
-              <h3 className="font-semibold text-sm">{provider.name}</h3>
+              <h3 className="section-title">{provider.name}</h3>
               <div className="flex items-center gap-2 mt-0.5 flex-wrap">
                 {isCustom && <Badge variant="default" size="sm">Custom</Badge>}
                 {renderStatus()}

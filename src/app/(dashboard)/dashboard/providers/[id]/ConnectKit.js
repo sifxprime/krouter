@@ -55,7 +55,7 @@ function OAuthKit({ capabilities: c, onOAuth, onBulkImport }) {
     <KitFrame accentColor={c.color}>
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="min-w-0">
-          <h3 className="text-base font-semibold">Sign in with {c.name}</h3>
+          <h3 className="section-title">Sign in with {c.name}</h3>
           <p className="mt-0.5 text-sm text-text-muted">
             One click. We handle the OAuth callback and store your session locally.
             You can add multiple accounts.
@@ -81,7 +81,7 @@ function ApiKeyKit({ capabilities: c, onApiKey }) {
     <KitFrame accentColor={c.color}>
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="min-w-0 flex-1">
-          <h3 className="text-base font-semibold">Paste your {c.name} API key</h3>
+          <h3 className="section-title">Paste your {c.name} API key</h3>
           <p className="mt-0.5 text-sm text-text-muted">
             {c.links.apiKey ? (
               <>
@@ -117,7 +117,7 @@ function FreeKit({ capabilities: c, onFree }) {
         <div className="min-w-0">
           <div className="mb-1 flex items-center gap-2">
             <Icon name="bolt" size={18} className="text-green-500" />
-            <h3 className="text-base font-semibold">{c.name} is free — one click to connect</h3>
+            <h3 className="section-title">{c.name} is free — one click to connect</h3>
           </div>
           <p className="text-sm text-text-muted">
             No key, no signup, no card. Just click connect and start using it.
@@ -138,7 +138,7 @@ function CookieKit({ capabilities: c, onCookie }) {
       <div className="flex flex-col gap-3">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
-            <h3 className="text-base font-semibold">Advanced: connect with session cookie</h3>
+            <h3 className="section-title">Advanced: connect with session cookie</h3>
             <p className="mt-0.5 text-sm text-text-muted">
               For power users. Extract the {c.name} cookie from your browser and paste it here.
             </p>
@@ -174,7 +174,7 @@ function CompatibleKit({ capabilities: c, onCompatible }) {
     <KitFrame accentColor={c.color}>
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="min-w-0">
-          <h3 className="text-base font-semibold">Use as OpenAI-compatible endpoint</h3>
+          <h3 className="section-title">Use as OpenAI-compatible endpoint</h3>
           <p className="mt-0.5 text-sm text-text-muted">
             Point at any OpenAI-shaped base URL (self-hosted, LiteLLM, custom proxy).
             Fetches the live model list after you connect.

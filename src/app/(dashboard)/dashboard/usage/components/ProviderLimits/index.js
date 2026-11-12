@@ -766,7 +766,7 @@ export default function ProviderLimits() {
       <Card padding="lg">
         <div className="text-center py-12">
           <Icon name="cloud_off" size={64} className="text-text-muted opacity-20" />
-          <h3 className="mt-4 text-lg font-semibold text-text-main">
+          <h3 className="section-title mt-4">
             No Providers Connected
           </h3>
           <p className="mt-2 text-sm text-text-muted max-w-md mx-auto">
@@ -783,7 +783,7 @@ export default function ProviderLimits() {
       <Card padding="lg">
         <div className="text-center py-12">
           <Icon name={emptyState.icon} size={64} className="text-text-muted opacity-20" />
-          <h3 className="mt-4 text-lg font-semibold text-text-main">
+          <h3 className="section-title mt-4">
             {emptyState.title}
           </h3>
           <p className="mt-2 text-sm text-text-muted max-w-md mx-auto">
@@ -1028,7 +1028,7 @@ export default function ProviderLimits() {
                       />
                     </div>
                     <div className="min-w-0">
-                      <h3 className="text-sm font-semibold text-text-main capitalize truncate">
+                      <h3 className="section-title capitalize truncate">
                         {conn.provider}
                       </h3>
                       {getConnectionLabel(conn) ? (

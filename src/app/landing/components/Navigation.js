@@ -20,7 +20,7 @@ export default function Navigation() {
           <div className="size-8 rounded bg-linear-to-br from-[#f97815] to-orange-700 flex items-center justify-center text-white">
             <Icon name="hub" size={20} />
           </div>
-          <h2 className="text-white text-xl font-bold tracking-tight">kRouter</h2>
+          <h2 className="section-title text-white tracking-tight">kRouter</h2>
         </button>
 
         {/* Desktop menu */}

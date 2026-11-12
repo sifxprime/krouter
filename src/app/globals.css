@@ -280,6 +280,26 @@ input, textarea {
 }
 
 /* ============================================================
+   Section headings
+
+   A card's heading was written twenty different ways across the pages —
+   text-lg/text-base/text-sm crossed with font-semibold/font-medium, some with
+   a colour and some without — so two cards side by side announced themselves
+   at different weights for no reason. One class, matching the canvas: 15px
+   display face, 600.
+   ============================================================ */
+@layer components {
+  .section-title {
+    font-family: var(--font-display);
+    font-size: 15px;
+    line-height: 1.35;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    color: var(--color-text-main);
+  }
+}
+
+/* ============================================================
    Data tables
 
    Eight tables were written by hand with eight different paddings —

@@ -38,7 +38,7 @@ export default function ProviderInfoCard({ config, provider, title = "Provider I
   return (
     <Card>
       <div className="flex items-center justify-between mb-3">
-        <h2 className="text-lg font-semibold">{title}</h2>
+        <h2 className="section-title">{title}</h2>
         {signupUrl && (
           <a
             href={signupUrl}

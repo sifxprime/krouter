@@ -106,7 +106,7 @@ export default function KiroSocialOAuthModal({ isOpen, provider, onSuccess, onCl
             <div className="size-16 mx-auto mb-4 rounded-full bg-primary/10 flex items-center justify-center">
               <Icon name="progress_activity" size={30} className="text-primary animate-spin" />
             </div>
-            <h3 className="text-lg font-semibold mb-2">Initializing...</h3>
+            <h3 className="section-title mb-2">Initializing...</h3>
             <p className="text-sm text-text-muted">Setting up {providerName} authentication</p>
           </div>
         )}
@@ -116,7 +116,7 @@ export default function KiroSocialOAuthModal({ isOpen, provider, onSuccess, onCl
             <div className="size-16 mx-auto mb-4 rounded-full bg-primary/10 flex items-center justify-center">
               <Icon name="open_in_browser" size={30} className="text-primary animate-pulse" />
             </div>
-            <h3 className="text-lg font-semibold mb-2">Open this link in an Incognito window</h3>
+            <h3 className="section-title mb-2">Open this link in an Incognito window</h3>
             <p className="text-sm text-text-muted mb-3">
               Use an Incognito/Private window to avoid session conflicts with existing accounts.
             </p>
@@ -168,7 +168,7 @@ export default function KiroSocialOAuthModal({ isOpen, provider, onSuccess, onCl
             <div className="size-16 mx-auto mb-4 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center">
               <Icon name="check_circle" size={30} className="text-green-600" />
             </div>
-            <h3 className="text-lg font-semibold mb-2">Connected Successfully!</h3>
+            <h3 className="section-title mb-2">Connected Successfully!</h3>
             <p className="text-sm text-text-muted mb-4">
               Your Kiro account via {providerName} has been connected.
             </p>
@@ -183,7 +183,7 @@ export default function KiroSocialOAuthModal({ isOpen, provider, onSuccess, onCl
             <div className="size-16 mx-auto mb-4 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center">
               <Icon name="error" size={30} className="text-red-600" />
             </div>
-            <h3 className="text-lg font-semibold mb-2">Connection Failed</h3>
+            <h3 className="section-title mb-2">Connection Failed</h3>
             <p className="text-sm text-red-600 mb-4">{error}</p>
             <Button onClick={handleClose} variant="ghost" fullWidth>
               Close

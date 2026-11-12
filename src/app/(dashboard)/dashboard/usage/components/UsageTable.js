@@ -150,7 +150,7 @@ export default function UsageTable({
   return (
     <Card className="overflow-hidden">
       <div className="p-4 border-b border-border bg-bg-alt/50">
-        <h3 className="font-semibold">{title}</h3>
+        <h3 className="section-title">{title}</h3>
       </div>
       <div className="overflow-x-auto">
         <table className="data-table">

@@ -149,7 +149,7 @@ export default function KiloToolCard({ tool, isExpanded, onToggle, baseUrl, apiK
           </div>
           <div className="min-w-0">
             <div className="flex min-w-0 flex-wrap items-center gap-2">
-              <h3 className="font-medium text-sm">{tool.name}</h3>
+              <h3 className="section-title">{tool.name}</h3>
               {configStatus === "configured" && <span className="px-1.5 py-0.5 text-[10px] font-medium bg-green-500/10 text-green-600 dark:text-green-400 rounded-full">Connected</span>}
               {configStatus === "not_configured" && <span className="px-1.5 py-0.5 text-[10px] font-medium bg-yellow-500/10 text-yellow-600 dark:text-yellow-400 rounded-full">Not configured</span>}
             </div>

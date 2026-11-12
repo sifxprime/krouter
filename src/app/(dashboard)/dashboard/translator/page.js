@@ -252,7 +252,7 @@ export default function TranslatorPage() {
                 <button onClick={() => toggle(step.id)} className="flex items-center gap-2 flex-1 text-left group">
                   <Icon name={isExpanded ? "expand_more" : "chevron_right"} size={20} className="text-text-muted group-hover:text-primary transition-colors" />
                   <span className="text-xs font-mono text-text-muted w-4">{step.id}</span>
-                  <h3 className="text-sm font-semibold text-text-main">{step.label}</h3>
+                  <h3 className="section-title">{step.label}</h3>
                   <span className="text-xs text-text-muted font-mono">{step.file}</span>
                   {content && <span className="text-xs text-green-500">({content.length} chars)</span>}
                 </button>

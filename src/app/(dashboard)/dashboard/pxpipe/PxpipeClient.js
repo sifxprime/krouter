@@ -105,7 +105,7 @@ export default function PxpipeClient() {
   return (
     <div className="space-y-6 p-6">
       <div className="flex items-center justify-between flex-wrap gap-3">
-        <h2 className="text-lg font-semibold flex items-center gap-2">
+        <h2 className="section-title flex items-center gap-2">
           <Icon name="image" size={24} className="text-primary" />
           PXPIPE Dashboard
         </h2>
@@ -135,7 +135,7 @@ export default function PxpipeClient() {
 
       <Card className="p-4">
         <div className="flex items-center justify-between flex-wrap gap-3 mb-4">
-          <h3 className="font-medium">Token savings (estimated)</h3>
+          <h3 className="section-title">Token savings (estimated)</h3>
           <div className="flex items-center gap-1 rounded-lg border border-border bg-bg-alt p-1">
             {WINDOW_TABS.map((tab) => (
               <button
@@ -179,7 +179,7 @@ export default function PxpipeClient() {
       </Card>
 
       <Card className="p-4">
-        <h3 className="font-medium mb-3">Tokens saved — last 30 days</h3>
+        <h3 className="section-title mb-3">Tokens saved — last 30 days</h3>
         {stats?.timeline?.some((d) => d.tokensSavedEst > 0) ? (
           <ResponsiveContainer width="100%" height={220}>
             <AreaChart data={stats.timeline} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
@@ -204,7 +204,7 @@ export default function PxpipeClient() {
       </Card>
 
       <Card className="p-4">
-        <h3 className="font-medium mb-3">History</h3>
+        <h3 className="section-title mb-3">History</h3>
         <div className="overflow-x-auto">
           <table className="data-table">
             <thead>
@@ -270,7 +270,7 @@ export default function PxpipeClient() {
       </Card>
 
       <Card className="p-4" id="logs">
-        <h3 className="font-medium mb-3">PXPIPE Logs</h3>
+        <h3 className="section-title mb-3">PXPIPE Logs</h3>
         {logs?.installLog ? (
           <pre className="rounded bg-black/5 dark:bg-white/5 p-3 text-xs font-mono overflow-x-auto max-h-64 overflow-y-auto whitespace-pre-wrap">
             {logs.installLog}

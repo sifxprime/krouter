@@ -48,7 +48,7 @@ function SkillRow({ skill }) {
 
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2 flex-wrap">
-          <h3 className="font-semibold text-sm text-text-main">{skill.name}</h3>
+          <h3 className="section-title">{skill.name}</h3>
           {skill.isEntry && (
             <Badge variant="primary" size="sm">START HERE</Badge>
           )}
@@ -94,7 +94,7 @@ export default function SkillsPage() {
       <Card padding="md">
         <div className="flex items-center justify-between gap-3 flex-wrap">
           <div>
-            <h2 className="text-sm font-semibold text-text-main">More on GitHub</h2>
+            <h2 className="section-title">More on GitHub</h2>
             <p className="text-xs text-text-muted mt-0.5">
               Browse source, README, and examples.
             </p>

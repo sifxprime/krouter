@@ -909,7 +909,7 @@ export default function APIPageClient({ machineId }) {
 
       {/* Endpoint Card */}
       <Card>
-        <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
+        <h2 className="section-title mb-4 flex items-center gap-2">
           <Icon name="api" size={24} className="text-primary" />
           API Endpoint
         </h2>
@@ -925,10 +925,7 @@ export default function APIPageClient({ machineId }) {
             onCopy={copy}
           />
           {/* Cloudflare Tunnel */}
-          <div className="flex items-center gap-2">
-            <span className={`text-xs font-mono px-1.5 py-0.5 rounded shrink-0 min-w-[88px] text-center ${
-              tunnelEnabled ? "bg-primary/10 text-primary" : "bg-surface-2 text-text-muted"
-            }`}>Tunnel</span>
+          <FieldShell label="Tunnel">
             {tunnelEnabled && !tunnelLoading && tunnelReachable ? (
               <>
                 <Input value={`${tunnelPublicUrl || tunnelUrl}/v1`} readOnly className="flex-1 font-mono text-sm" />
@@ -1015,12 +1012,9 @@ export default function APIPageClient({ machineId }) {
                 Enable
               </Button>
             )}
-          </div>
+          </FieldShell>
           {/* Tailscale */}
-          <div className="flex items-center gap-2">
-            <span className={`text-xs font-mono px-1.5 py-0.5 rounded shrink-0 min-w-[88px] text-center ${
-              tsEnabled ? "bg-primary/10 text-primary" : "bg-surface-2 text-text-muted"
-            }`}>Tailscale</span>
+          <FieldShell label="Tailscale">
             {tsEnabled && !tsLoading && tsReachable ? (
               <>
                 <Input value={`${tsUrl}/v1`} readOnly className="flex-1 font-mono text-sm" />
@@ -1099,7 +1093,7 @@ export default function APIPageClient({ machineId }) {
                 Enable
               </Button>
             )}
-          </div>
+          </FieldShell>
         </div>
 
         {/* Pre-enable security gate banner */}
@@ -1162,7 +1156,7 @@ export default function APIPageClient({ machineId }) {
       {/* Token Saver (RTK + Caveman) */}
       <Card id="rtk">
         <div className="flex items-center justify-between mb-2">
-          <h2 className="text-lg font-semibold flex items-center gap-2">
+          <h2 className="section-title flex items-center gap-2">
             <Icon name="bolt" size={24} className="text-primary" />
             Token Saver
           </h2>
@@ -1289,7 +1283,7 @@ export default function APIPageClient({ machineId }) {
       <Card id="response-cache">
         <div className="flex items-center justify-between mb-2 gap-3 flex-wrap">
           <div className="min-w-0 flex-1">
-            <h2 className="text-lg font-semibold flex items-center gap-2">
+            <h2 className="section-title flex items-center gap-2">
               <Icon name="memory" size={24} className="text-primary" />
               Response Cache
               <span className="text-xs font-normal text-text-muted">non-streaming only</span>
@@ -1358,7 +1352,7 @@ export default function APIPageClient({ machineId }) {
       {/* API Keys */}
       <Card id="require-api-key">
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-lg font-semibold flex items-center gap-2">
+          <h2 className="section-title flex items-center gap-2">
             <Icon name="vpn_key" size={24} className="text-primary" />
             API Keys
           </h2>
@@ -1693,21 +1687,51 @@ export default function APIPageClient({ machineId }) {
 }
 
 /** Reusable endpoint row component */
-function EndpointRow({ label, url, copyId, copied, onCopy, badge, actions }) {
+/**
+ * The shell every endpoint row sits in: a well recessed below the card, with
+ * its name as a caption inside it.
+ *
+ * The name used to be a pill floating to the left of a text input, which read
+ * as a tag applied to a form field rather than a label belonging to a value.
+ * Nothing here is editable — these are values to copy — so the input styling
+ * was also claiming an affordance the row does not have.
+ */
+export function FieldShell({ label, children, className = "" }) {
   return (
-    <div className="flex items-center gap-2">
-      <span className={`text-xs font-mono px-1.5 py-0.5 rounded shrink-0 min-w-[88px] text-center ${
-          (badge === "CF" || badge === "TS") ? "bg-primary/10 text-primary" : "bg-surface-2 text-text-muted"
-        }`}>{label}</span>
-      <Input value={url} readOnly className="flex-1 font-mono text-sm" />
+    <div
+      className={`flex items-center gap-3 rounded-[10px] border border-border bg-bg px-4 py-3 ${className}`}
+    >
+      <span className="shrink-0 text-[10px] font-semibold uppercase tracking-[0.08em] text-text-subtle">
+        {label}
+      </span>
+      {children}
+    </div>
+  );
+}
+
+FieldShell.propTypes = {
+  label: PropTypes.string.isRequired,
+  children: PropTypes.node,
+  className: PropTypes.string,
+};
+
+function EndpointRow({ label, url, copyId, copied, onCopy, actions }) {
+  const done = copied === copyId;
+  return (
+    <FieldShell label={label}>
+      {/* `code`, not an input: the value is read-only and monospaced, and a
+          real input invites a click that does nothing. */}
+      <code className="min-w-0 flex-1 truncate font-mono text-[13.5px] text-text-main">{url}</code>
       <button
+        type="button"
         onClick={() => onCopy(url, copyId)}
-        className="p-2 hover:bg-black/5 dark:hover:bg-white/5 rounded text-text-muted hover:text-primary transition-colors shrink-0"
+        aria-label={done ? `${label} copied` : `Copy ${label.toLowerCase()}`}
+        className="ml-auto grid size-8 shrink-0 place-items-center rounded-[7px] border border-border bg-surface-2 text-text-muted transition-colors hover:border-brand-500/40 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
       >
-        <Icon name={copied === copyId ? "check" : "content_copy"} size={18} />
+        <Icon name={done ? "check" : "content_copy"} size={15} className={done ? "text-success" : ""} />
       </button>
       {actions}
-    </div>
+    </FieldShell>
   );
 }
 

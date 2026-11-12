@@ -653,7 +653,7 @@ export default function OAuthModal({ isOpen, provider, providerInfo, onSuccess, 
             <div className="size-16 mx-auto mb-4 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center">
               <Icon name="check_circle" size={30} className="text-green-600" />
             </div>
-            <h3 className="text-lg font-semibold mb-2">Connected Successfully!</h3>
+            <h3 className="section-title mb-2">Connected Successfully!</h3>
             <p className="text-sm text-text-muted mb-4">
               Your {providerInfo.name} account has been connected.
             </p>
@@ -669,7 +669,7 @@ export default function OAuthModal({ isOpen, provider, providerInfo, onSuccess, 
             <div className="size-16 mx-auto mb-4 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center">
               <Icon name="error" size={30} className="text-red-600" />
             </div>
-            <h3 className="text-lg font-semibold mb-2">Connection Failed</h3>
+            <h3 className="section-title mb-2">Connection Failed</h3>
             <p className="text-sm text-red-600 mb-4">{error}</p>
             <div className="flex gap-2">
               <Button onClick={startOAuthFlow} variant="secondary" fullWidth>

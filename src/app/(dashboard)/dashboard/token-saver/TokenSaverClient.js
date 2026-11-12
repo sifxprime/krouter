@@ -192,7 +192,7 @@ export default function TokenSaverClient() {
     <div className="max-w-3xl mx-auto space-y-6 p-6">
       <Card id="rtk">
         <div className="flex items-center justify-between mb-2">
-          <h2 className="text-lg font-semibold flex items-center gap-2">
+          <h2 className="section-title flex items-center gap-2">
             <Icon name="bolt" size={24} className="text-primary" />
             Token Saver
           </h2>

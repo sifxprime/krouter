@@ -14,7 +14,7 @@ export default function GetStarted() {
         <div className="flex flex-col lg:flex-row gap-16 items-start">
           {/* Left: Steps */}
           <div className="flex-1">
-            <h2 className="text-3xl md:text-4xl font-bold mb-6">Get Started in 30 Seconds</h2>
+            <h2 className="section-title text-3xl md:text-4xl mb-6">Get Started in 30 Seconds</h2>
             <p className="text-gray-400 text-lg mb-8">
               Install kRouter, configure your providers via web dashboard, and start routing AI requests.
             </p>

@@ -81,7 +81,7 @@ export default function EnvironmentPage() {
             <Card key={cat.key} padding="sm">
               <div className="flex items-center gap-2 mb-3">
                 <Icon name={cat.icon} size={20} className="text-primary" />
-                <h2 className="text-base font-semibold">{cat.label}</h2>
+                <h2 className="section-title">{cat.label}</h2>
                 <span className="text-xs text-text-muted">({vars.length})</span>
               </div>
               <div className="flex flex-col gap-1.5">

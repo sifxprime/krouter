@@ -123,7 +123,7 @@ export default function CertManagementCard() {
         {/* Header row */}
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
-            <h3 className="font-medium text-sm">MITM Root Certificate</h3>
+            <h3 className="section-title">MITM Root Certificate</h3>
             <p className="text-xs text-text-muted mt-0.5 leading-relaxed">
               Installs the kRouter root CA into the OS trust store so IDE apps (Antigravity, Kiro, Claude Desktop)
               trust kRouter&apos;s self-signed certificate for HTTPS interception.

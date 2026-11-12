@@ -15,7 +15,7 @@ export default function Footer() {
           <div className="col-span-2 lg:col-span-2">
             <div className="flex items-center gap-3 mb-6">
               <img src="/favicon.svg" alt="kRouter" className="size-7" />
-              <h3 className="text-white text-lg font-bold">kRouter</h3>
+              <h3 className="section-title text-white">kRouter</h3>
               <span className="text-gray-500 text-xs">by Kodelyth</span>
             </div>
             <p className="text-gray-500 text-sm max-w-xs mb-6">
