@@ -18,6 +18,7 @@ const { DATA_DIR, MITM_DIR, IS_DEFAULT_DATA_DIR } = require("./paths");
 const { log, err } = require("./logger");
 const { LSOF_BIN } = require("./config");
 const { setLinuxNodeExtraCaCerts } = require("./linuxNodeCaCerts");
+const { setGoSslCertFile } = require("./goCaCerts");
 const { configureIdeCaTrust } = require("./ideCaTrust");
 
 const IS_LINUX = process.platform === "linux";
@@ -926,7 +927,33 @@ async function startServer(apiKey, sudoPassword, forceKillPort443 = false) {
         else log(`[setx] NODE_EXTRA_CA_CERTS set for current user`);
       });
     }
-  } else if (IS_LINUX) {
+  }
+
+  // Go CLIs read SSL_CERT_FILE, not NODE_EXTRA_CA_CERTS, and it REPLACES the
+  // system trust store instead of adding to it. Without this, Antigravity's agy
+  // rejects the MITM cert on a machine where anything already exported that
+  // variable -- which is how "Antigravity pins its CA" got into this codebase as
+  // a fact. Unix only: on Windows Go uses the cert store certutil already filled.
+  if (!IS_WIN) {
+    const rootCAPath = path.join(MITM_DIR, "rootCA.crt");
+    if (fs.existsSync(rootCAPath)) {
+      try {
+        const res = setGoSslCertFile(rootCAPath, MITM_DIR);
+        if (res.skipped) {
+          log(`[go-ca] SSL_CERT_FILE not wired: ${res.skipped}`);
+        } else if (res.written.length > 0) {
+          log(`[go-ca] SSL_CERT_FILE -> ${res.bundlePath} (${res.certCount} certs) in ${res.written.length} file(s)`);
+          log(`[go-ca] ⚠ Already-running Go tools keep the old value: restart them (Antigravity: Quit + reopen)`);
+        } else {
+          log(`[go-ca] SSL_CERT_FILE already wired, no changes needed`);
+        }
+      } catch (e) {
+        log(`[go-ca] Failed to wire SSL_CERT_FILE: ${e.message}`);
+      }
+    }
+  }
+
+  if (IS_LINUX) {
     const rootCAPath = path.join(MITM_DIR, "rootCA.crt");
     if (fs.existsSync(rootCAPath)) {
       try {

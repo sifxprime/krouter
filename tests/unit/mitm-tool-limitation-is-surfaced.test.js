@@ -1,20 +1,23 @@
 /**
  * 0.5.174 — a tool MITM cannot fully intercept must say so on its own card.
+ * 0.5.179 — and must STOP saying so once it can.
  *
- * kRouter offers Antigravity 24 MITM model slots. On Antigravity 2.x none of them can
- * ever route a chat turn: the IDE's agent is a separate Go process (`agy`) that builds
- * its own root pool (NewCertPool/RootCAs, 22 bundled PEM blocks) and reads no TLS, CA or
- * proxy environment variables, so it rejects the kRouter CA however the machine is set up.
- * `antigravity.caCertificates` exists only in @vscode/proxy-agent — the Electron side —
- * which is why setting it fixes sign-in and never the chat.
+ * Antigravity carried a note claiming chat could never route, because `agy`
+ * "builds its own root pool and reads no TLS, CA or proxy environment
+ * variables". That was wrong. agy honours SSL_CERT_FILE, and SSL_CERT_FILE
+ * REPLACES the system trust store instead of adding to it -- so a certifi
+ * bundle exported by the user's shell hid the System keychain where the kRouter
+ * CA was trusted, and every call failed to verify. The 38 "x509: certificate
+ * signed by unknown authority" lines that were taken as proof of pinning were
+ * that variable.
  *
- * Measured with the DNS redirect verifiably held for a whole capture: in the same window
- * on the same host, curl reached the MITM and wrote request dumps while the agent wrote
- * none and logged 38 "x509: certificate signed by unknown authority".
+ * src/mitm/goCaCerts.js now writes a bundle of system roots + kRouter CA and
+ * points SSL_CERT_FILE at it, and the chat routes end to end.
  *
- * Without a note on the card the UI is indistinguishable from a broken setup — the DNS
- * toggle goes green, the slots invite mapping, and nothing routes. A day went into
- * chasing that. The point of this test is that the explanation ships with the feature.
+ * The note is gone, and this test now guards the opposite property: a stale
+ * limitation is worse than none, because it tells users not to try something
+ * that works. The mechanism -- that a declared limitation reaches the card --
+ * is still tested below with the tools that have one.
  */
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
@@ -25,25 +28,19 @@ const card = readFileSync(
   "utf8",
 );
 
-describe("Antigravity declares what MITM cannot do", () => {
-  it("carries a limitation note", () => {
-    expect(typeof MITM_TOOLS.antigravity.mitmLimitation).toBe("string");
-    expect(MITM_TOOLS.antigravity.mitmLimitation.length).toBeGreaterThan(20);
-  });
-
-  it("the note says chat does not route", () => {
-    expect(MITM_TOOLS.antigravity.mitmLimitation).toMatch(/chat/i);
-  });
-
-  it("and that the provider is unaffected, so nobody disables the wrong thing", () => {
-    // ag/ over OAuth works normally; only the IDE-via-MITM path is blocked.
-    expect(MITM_TOOLS.antigravity.mitmLimitation).toMatch(/provider/i);
+describe("Antigravity no longer claims chat cannot route", () => {
+  it("carries no limitation note", () => {
+    // It routes. A note saying otherwise would send users away from a working
+    // feature -- the exact cost the original note was written to avoid.
+    const note = MITM_TOOLS.antigravity.mitmLimitation;
+    expect(note === undefined || note === "").toBe(true);
   });
 });
 
 describe("tools that DO intercept carry no note", () => {
-  it.each(["kiro", "claude"])("%s has no limitation", (id) => {
-    expect(MITM_TOOLS[id].mitmLimitation).toBeUndefined();
+  it.each(["kiro", "claude", "antigravity"])("%s has no limitation", (id) => {
+    const note = MITM_TOOLS[id].mitmLimitation;
+    expect(note === undefined || note === "").toBe(true);
   });
 });
 

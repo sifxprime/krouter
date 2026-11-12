@@ -13,21 +13,24 @@ export const MITM_TOOLS = {
     description: "Google Antigravity IDE with MITM",
     configType: "mitm",
     mitmDomain: "daily-cloudcode-pa.googleapis.com",
-    // 0.5.174 — MITM reaches Antigravity's Electron side only. The IDE's agent is a
-    // separate Go process (`agy`) which builds its own root pool (NewCertPool/RootCAs,
-    // 22 bundled PEM blocks) and reads no TLS, CA or proxy environment variables, so it
-    // rejects the kRouter CA however the machine is configured. `antigravity.caCertificates`
-    // lives only in @vscode/proxy-agent — the Electron side — which is why setting it
-    // fixes sign-in and never the chat.
+    // 0.5.179 — chat IS intercepted. The long-standing claim here, that agy
+    // "builds its own root pool ... and reads no TLS, CA or proxy environment
+    // variables, so it rejects the kRouter CA however the machine is
+    // configured", was wrong. agy honours SSL_CERT_FILE, and SSL_CERT_FILE
+    // REPLACES the system trust store rather than adding to it -- so a certifi
+    // bundle exported from the user's shell hid the System keychain, where the
+    // kRouter CA was trusted all along. Every call failed to verify, which read
+    // as pinning. Claude Code and Kiro are Node, read NODE_EXTRA_CA_CERTS which
+    // kRouter does set, and were never affected; that asymmetry is what made
+    // this one tool look impossible.
     //
-    // Measured with the DNS redirect verifiably held for a whole capture: in the same
-    // window on the same host, curl reached the MITM and produced request dumps while the
-    // agent produced none and logged 38 "x509: certificate signed by unknown authority".
-    // Seen on Antigravity IDE 2.6.0; the feature was built against 1.x, which is the most
-    // likely place the pinning appeared.
+    // src/mitm/goCaCerts.js now writes a bundle of the system roots plus the
+    // kRouter CA and points SSL_CERT_FILE at it, so this works without the user
+    // editing a shell profile by hand. Measured end to end: the IDE's chat
+    // reaches kRouter, routes to a provider, and returns a real answer.
     //
-    // The ag/ PROVIDER is unaffected and works normally — this is the IDE-via-MITM path.
-    mitmLimitation: "Chat is not intercepted on Antigravity 2.x: the IDE's agent pins its own CA. Sign-in and model listing route; chat does not. The ag/ provider is unaffected.",
+    // The ag/ PROVIDER is unaffected — this is the IDE-via-MITM path.
+    mitmLimitation: "",
     // 0.5.166 — Google retired the 3.5 Flash tiers, gemini-3-flash-agent and the
     // gemini-3-flash command model (upstream 24034f69). The mandatory Default slot
     // pointed at gemini-3.5-flash-low, so a fresh MITM setup mapped the IDE's

@@ -194,6 +194,18 @@ async function uninstallCert(sudoPassword, certPath) {
     await uninstallCertLinux(sudoPassword);
   }
 
+  // The SSL_CERT_FILE block points Go tools at a bundle built around a cert that
+  // no longer exists. Leaving it behind would pin every Go CLI on the machine to
+  // a stale trust store -- worse than never having written it, because
+  // SSL_CERT_FILE replaces the system store rather than adding to it.
+  try {
+    const { unsetGoSslCertFile } = require("../goCaCerts");
+    const { written } = unsetGoSslCertFile();
+    for (const f of written) log(`🔐 Cert: removed SSL_CERT_FILE block from ${f}`);
+  } catch (e) {
+    log(`🔐 Cert: could not remove SSL_CERT_FILE block: ${e.message}`);
+  }
+
   // 0.5.169 — the per-IDE trust settings point at a cert that no longer exists, so
   // they go with it. MITM stop deliberately leaves them alone; only this removes them.
   try {
