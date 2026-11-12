@@ -6,6 +6,7 @@ import { HTTP_STATUS } from "../../config/runtimeConfig.js";
 import { FORMATS } from "../../translator/formats.js";
 import { PROVIDERS } from "../../config/providers.js";
 import { buildRequestDetail, extractRequestConfig, saveUsageStats } from "./requestDetail.js";
+import { mitmToolFromRequest } from "../../utils/mitmTool.js";
 import { saveRequestDetail, appendRequestLog } from "@/lib/usageDb.js";
 
 function textFromResponsesMessageItem(item) {
@@ -157,7 +158,7 @@ export async function handleForcedSSEToJson({ providerResponse, sourceFormat, ta
       if (onRequestSuccess) await onRequestSuccess();
 
       const usage = jsonResponse.usage || {};
-      saveUsageStats({ provider, model, tokens: usage, connectionId, apiKey, endpoint: clientRawRequest?.endpoint });
+      saveUsageStats({ provider, model, tokens: usage, connectionId, apiKey, endpoint: clientRawRequest?.endpoint, tool: mitmToolFromRequest(clientRawRequest) });
 
       const { msgItem, textContent } = pickAssistantMessageForChatCompletion(jsonResponse.output);
 
@@ -283,7 +284,7 @@ export async function handleForcedSSEToJson({ providerResponse, sourceFormat, ta
       model,
     });
     appendLog({ tokens: usage, status: EMPTY_COMPLETION_STATUS(emptyDiagnosis) });
-    saveUsageStats({ provider, model, tokens: usage, connectionId, apiKey, endpoint: clientRawRequest?.endpoint });
+    saveUsageStats({ provider, model, tokens: usage, connectionId, apiKey, endpoint: clientRawRequest?.endpoint, tool: mitmToolFromRequest(clientRawRequest) });
 
     const totalLatency = Date.now() - requestStartTime;
     saveRequestDetail(buildRequestDetail({

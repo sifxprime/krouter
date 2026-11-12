@@ -106,7 +106,7 @@ export function buildRequestDetail(base, overrides = {}) {
   };
 }
 
-export function saveUsageStats({ provider, model, tokens, connectionId, apiKey, endpoint, label = "USAGE" }) {
+export function saveUsageStats({ provider, model, tokens, connectionId, apiKey, endpoint, tool = null, label = "USAGE" }) {
   if (!tokens || typeof tokens !== "object") return;
 
   const inTokens = tokens.input_tokens ?? tokens.prompt_tokens ?? 0;
@@ -131,6 +131,9 @@ export function saveUsageStats({ provider, model, tokens, connectionId, apiKey, 
     timestamp: new Date().toISOString(),
     connectionId: connectionId || undefined,
     apiKey: apiKey || undefined,
-    endpoint: endpoint || null
+    endpoint: endpoint || null,
+    // Which IDE this turn was captured from, when it was captured at all.
+    // `provider` says who served it; this says who asked.
+    tool: tool || null
   }).catch(() => {});
 }

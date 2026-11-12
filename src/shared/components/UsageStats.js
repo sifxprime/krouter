@@ -183,11 +183,23 @@ const ENDPOINT_COLUMNS = [
   { field: "lastUsed", label: "Last Used", align: "right" },
 ];
 
+// Captured requests only. The MITM rewrites the model before the router sees it,
+// so these rows are the only place a tool's own spend is visible — byModel and
+// byProvider show where the request was served, not which IDE it came from.
+const TOOL_COLUMNS = [
+  { field: "tool", label: "Captured From" },
+  { field: "rawModel", label: "Served As" },
+  { field: "provider", label: "Provider" },
+  { field: "requests", label: "Requests", align: "right" },
+  { field: "lastUsed", label: "Last Used", align: "right" },
+];
+
 const TABLE_OPTIONS = [
   { value: "model", label: "Usage by Model" },
   { value: "account", label: "Usage by Account" },
   { value: "apiKey", label: "Usage by API Key" },
   { value: "endpoint", label: "Usage by Endpoint" },
+  { value: "tool", label: "Usage by Captured Tool" },
 ];
 
 const PERIODS = [
@@ -396,6 +408,34 @@ export default function UsageStats({ period: periodProp, setPeriod: setPeriodPro
           renderDetailCells: (item) => (
             <>
               <td className="font-medium font-mono">{item.apiKeyMasked || item.keyName}</td>
+              <td>{item.rawModel}</td>
+              <td><Badge variant="neutral" size="sm">{item.provider}</Badge></td>
+              <td className="num">{fmt(item.requests)}</td>
+              <td className="num text-text-muted whitespace-nowrap">{fmtTime(item.lastUsed)}</td>
+            </>
+          ),
+        };
+      }
+      case "tool": {
+        return {
+          columns: TOOL_COLUMNS,
+          groupedData: groupDataByKey(sortData(stats.byTool, {}, sortBy, sortOrder), "tool"),
+          storageKey: "usage-stats:expanded-tools",
+          // Says "none captured", not "none recorded": an empty table here with
+          // a busy byModel means MITM capture is off, which is a different thing
+          // from no traffic and the distinction the old stats could not show.
+          emptyMessage: "No MITM-captured usage yet. Requests that did not come through a captured tool are not listed here.",
+          renderSummaryCells: (group) => (
+            <>
+              <td className="text-text-muted">—</td>
+              <td className="text-text-muted">—</td>
+              <td className="num">{fmt(group.summary.requests)}</td>
+              <td className="num text-text-muted whitespace-nowrap">{fmtTime(group.summary.lastUsed)}</td>
+            </>
+          ),
+          renderDetailCells: (item) => (
+            <>
+              <td className="font-medium">{item.tool}</td>
               <td>{item.rawModel}</td>
               <td><Badge variant="neutral" size="sm">{item.provider}</Badge></td>
               <td className="num">{fmt(item.requests)}</td>

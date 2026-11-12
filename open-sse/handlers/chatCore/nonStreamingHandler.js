@@ -9,6 +9,7 @@ import { HTTP_STATUS } from "../../config/runtimeConfig.js";
 import { parseSSEToOpenAIResponse, streamErrorStatus } from "./sseToJsonHandler.js";
 import { openAICompletionToClaudeMessage, openAICompletionToResponsesObject } from "./completionConverters.js";
 import { buildRequestDetail, extractRequestConfig, extractUsageFromResponse, saveUsageStats } from "./requestDetail.js";
+import { mitmToolFromRequest } from "../../utils/mitmTool.js";
 import { appendRequestLog, saveRequestDetail } from "@/lib/usageDb.js";
 import { decloakToolNames } from "../../utils/claudeCloaking.js";
 import { detectEmptyCompletion, readCompletionShape, EMPTY_COMPLETION_STATUS } from "../../utils/emptyCompletion.js";
@@ -294,7 +295,7 @@ export async function handleNonStreamingResponse({ providerResponse, provider, m
   // a clean "200 OK". That is what made the retirement case invisible: billed, logged as
   // a success, and shown to the user as the model's own words.
   appendLog({ tokens: usage, status: EMPTY_COMPLETION_STATUS(emptyDiagnosis) });
-  saveUsageStats({ provider, model, tokens: usage, connectionId, apiKey, endpoint: clientRawRequest?.endpoint });
+  saveUsageStats({ provider, model, tokens: usage, connectionId, apiKey, endpoint: clientRawRequest?.endpoint, tool: mitmToolFromRequest(clientRawRequest) });
 
   const translatedResponse = needsTranslation(targetFormat, sourceFormat)
     ? translateNonStreamingResponse(responseBody, targetFormat, sourceFormat)

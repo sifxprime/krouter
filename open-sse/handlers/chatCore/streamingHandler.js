@@ -7,6 +7,7 @@ import { HTTP_STATUS, STREAM_STALL_TIMEOUT_MS } from "../../config/runtimeConfig
 import { buildAbortedResponsesTerminalBytes } from "../../utils/responsesStreamHelpers.js";
 import { buildStreamErrorBytes } from "../../utils/streamHelpers.js";
 import { buildRequestDetail, extractRequestConfig, saveUsageStats } from "./requestDetail.js";
+import { mitmToolFromRequest } from "../../utils/mitmTool.js";
 import { saveRequestDetail } from "@/lib/usageDb.js";
 import { detectEmptyCompletion } from "../../utils/emptyCompletion.js";
 
@@ -124,7 +125,7 @@ export function buildOnStreamComplete({ provider, model, connectionId, apiKey, r
       console.error("[RequestDetail] Failed to update streaming content:", err.message);
     });
 
-    saveUsageStats({ provider, model, tokens: usage, connectionId, apiKey, endpoint: clientRawRequest?.endpoint, label: "STREAM USAGE" });
+    saveUsageStats({ provider, model, tokens: usage, connectionId, apiKey, endpoint: clientRawRequest?.endpoint, tool: mitmToolFromRequest(clientRawRequest), label: "STREAM USAGE" });
   };
 
   return { onStreamComplete, streamDetailId };

@@ -118,7 +118,15 @@ export function createSSEStream(options = {}) {
     }
 
     if (hasValidUsage(finalUsage)) {
-      logUsage(isPassthrough ? provider : (state?.provider || targetFormat), finalUsage, model, connectionId, apiKey);
+      // onStreamComplete routes to saveUsageStats, which records this turn with
+      // its captured tool. Recording here as well is what double-counted every
+      // stream; see logUsage. Without that callback nothing else records, so the
+      // write stays (tool-less — this path has no client request in scope).
+      logUsage(
+        isPassthrough ? provider : (state?.provider || targetFormat),
+        finalUsage, model, connectionId, apiKey,
+        { record: !onStreamComplete }
+      );
     } else {
       appendRequestLog({ model, provider, connectionId, tokens: null, status: "200 OK" }).catch(() => { });
     }

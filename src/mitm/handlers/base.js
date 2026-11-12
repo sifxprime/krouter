@@ -1,4 +1,6 @@
 const { log, err } = require("../logger");
+const { getToolForHost } = require("../config");
+const { MITM_TOOL_HEADER } = require("../../shared/constants/mitmToolHosts.js");
 
 // ─── AWS EventStream exception-frame builder (self-contained) ─────────────────
 // Used to surface upstream HTTP errors to Kiro as a parseable EventStream frame
@@ -87,9 +89,16 @@ const API_KEY = process.env.ROUTER_API_KEY;
 // fetchRouter re-serializes the body with JSON.stringify, so a forwarded
 // `content-encoding: gzip` from the client would tell kRouter to gunzip plain
 // JSON and the request would fail to parse.
+//
+// MITM_TOOL_HEADER is stripped so that the value the router sees is always the
+// one derived below. The client's headers are forwarded wholesale, so without
+// this a tool that happened to send `X-Krouter-Mitm-Tool` would arrive under a
+// different-cased key and survive alongside ours — two values for one header,
+// and whichever the router read first would win.
 const STRIP_HEADERS = new Set([
   "host", "content-length", "connection", "transfer-encoding",
-  "content-type", "content-encoding", "authorization"
+  "content-type", "content-encoding", "authorization",
+  MITM_TOOL_HEADER
 ]);
 
 /**
@@ -102,11 +111,18 @@ async function fetchRouter(openaiBody, path = "/v1/chat/completions", clientHead
     if (!STRIP_HEADERS.has(k.toLowerCase())) forwarded[k] = v;
   }
 
+  // Which tool this turn came from, so usage can be attributed to it rather than
+  // to whatever provider ends up serving the rewritten model. Derived from the
+  // host for the same reason decideRoute derives it from the host: that is what
+  // chose this handler, so there is no second source of truth to drift from.
+  const tool = getToolForHost(clientHeaders?.host);
+
   const response = await fetch(`${ROUTER_BASE}${path}`, {
     method: "POST",
     headers: {
       ...forwarded,
       "Content-Type": "application/json",
+      ...(tool && { [MITM_TOOL_HEADER]: tool }),
       ...(API_KEY && { "Authorization": `Bearer ${API_KEY}` })
     },
     body: JSON.stringify(openaiBody)

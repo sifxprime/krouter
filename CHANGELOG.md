@@ -1,3 +1,59 @@
+# v0.5.183 (2026-11-12) — usage can finally tell you which IDE spent the money
+
+Two accounting bugs. Both were silent, and both made the usage page actively
+misleading rather than merely incomplete.
+
+**Captured requests were filed under whoever served them.** The MITM rewrites the
+model on the way through — an Antigravity `gemini-*` turn leaves as whatever
+alias serves it — so by the time the router recorded usage, the only thing left
+to attribute by was the serving provider. Measured on a live install: Kiro and
+Antigravity were being captured and answered on every turn, while usage read
+"kiro: 1 request, 18h ago". Nothing was lost; it was all booked under `claude`.
+Anyone checking usage to answer "is my Kiro traffic being captured?" would have
+concluded it was not.
+
+The tool was known at interception time and thrown away. It now travels one hop
+to the router in `x-krouter-mitm-tool`, derived from the host that already chose
+the handler so there is no second source of truth to drift from. The router
+validates it against the known tool list — the header arrives on an ordinary
+client request, so anything that can reach `/v1/*` can set it, and the worst a
+forged value can now do is mislabel its own request as one of five real tools.
+It lands in `meta`, a column that had been written as a literal `{}` on every row
+since it was added, so existing databases need no migration: an older row reads
+back with no tool, which is the truth about it.
+
+`byTool` is keyed `tool|model|provider`, like `byEndpoint`, so a tool breaks down
+by the model that actually served it — the interesting part, given the model is
+what got rewritten. It is deliberately not a partition of the day: only captured
+requests have a tool. An empty table there beside a busy `byModel` now means
+"capture is off", a distinction the old stats could not express. Exposed for
+every period, as a `tool` field on history rows, and as a new "Usage by Captured
+Tool" view on the usage page. Both aggregation paths report it — the raw-row scan
+that serves `today`/`24h` was not selecting `meta` at all, so without that fix
+the dashboard's default period would have shown no tools while the longer-period
+rollup showed them correctly.
+
+**Every streaming request was counted twice.** Found while tracing where usage
+gets written. `finalizeStream` recorded through `logUsage` and again through
+`onStreamComplete -> saveUsageStats`: two `usageHistory` rows with identical
+tokens milliseconds apart, two increments of the daily rollup and of
+`totalRequestsLifetime`, double the cost. The tell in the table is the pair of
+rows where one has an endpoint and one does not. So `totalRequests` and spend
+have been roughly 2x for streaming traffic. `logUsage` no longer writes when a
+recorder already owns the turn, and keeps the write when nothing else records, so
+a stream nobody tracks is still counted once rather than zero times.
+
+Measured before and after on a real provider through the dev server: the same
+streaming request wrote two rows with `meta={}`, then one row with
+`meta={"tool":"kiro"}`. `byTool` agrees across both aggregation paths, and a
+forged `x-krouter-mitm-tool: evil-corp` was dropped while the request still
+served normally. Both MITM entrypoints were rebuilt and confirmed to carry the
+new header, so DNS capture and proxy capture label traffic identically.
+
+Not verified on screen: `/dashboard` requires a login, so the new table is
+covered by lint, the production build and the API data behind it rather than by
+eyes.
+
 # v0.5.182 (2026-11-12) — the dashboard stops shipping a 3.9 MB font, and dialogs become dialogs
 
 Mostly the dashboard, measured against the design canvas rather than by eye. Four of

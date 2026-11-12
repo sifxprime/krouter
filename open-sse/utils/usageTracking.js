@@ -306,7 +306,19 @@ export function estimateUsage(body, contentLength, targetFormat = FORMATS.OPENAI
 /**
  * Log usage with cache info (green color)
  */
-export function logUsage(provider, usage, model = null, connectionId = null, apiKey = null) {
+/**
+ * Log usage, and optionally record it.
+ *
+ * `record: false` makes this console-only. It exists because this function also
+ * wrote a usageHistory row, and for a stream so did `saveUsageStats` via
+ * onStreamComplete — so every streaming request with usable usage was counted
+ * TWICE: two rows with identical tokens milliseconds apart, two increments of
+ * the daily rollup and of totalRequestsLifetime, double the cost. The giveaway
+ * in the table is the pair of rows where one has an endpoint and one does not.
+ * The caller that has a recorder passes false; the one that does not keeps the
+ * write, so a stream nobody tracks is still counted once rather than zero times.
+ */
+export function logUsage(provider, usage, model = null, connectionId = null, apiKey = null, { record = true, tool = null } = {}) {
   if (!usage || typeof usage !== "object") return;
 
   const p = provider?.toUpperCase() || "UNKNOWN";
@@ -345,6 +357,8 @@ export function logUsage(provider, usage, model = null, connectionId = null, api
     cache_creation_input_tokens: cacheCreation || 0,
     reasoning_tokens: reasoning || 0
   };
-  saveRequestUsage({ model, provider, connectionId, tokens, apiKey: apiKey || undefined }).catch(() => { });
+  if (record) {
+    saveRequestUsage({ model, provider, connectionId, tokens, apiKey: apiKey || undefined, tool }).catch(() => { });
+  }
   appendRequestLog({ model, provider, connectionId, tokens, status: "200 OK" }).catch(() => { });
 }
