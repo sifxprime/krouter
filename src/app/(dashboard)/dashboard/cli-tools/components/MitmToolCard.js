@@ -5,6 +5,7 @@ import { Card, Button, Badge, Input, ModelSelectModal } from "@/shared/component
 import { TOOL_HOSTS } from "@/shared/constants/mitmToolHosts";
 import Image from "next/image";
 import Icon from "../../../../../shared/components/icons/Icon";
+import useDialog from "@/shared/hooks/useDialog";
 
 /**
  * Per-tool MITM card — shows DNS status + model mappings.
@@ -39,6 +40,12 @@ export default function MitmToolCard({
   const [proxyError, setProxyError] = useState(null);
   const supportsProxy = (tool.captureModes || ["dns"]).includes("proxy");
   const [showPasswordModal, setShowPasswordModal] = useState(false);
+  // Escape and the focus trap come from the hook; the cancel button below
+  // still owns clearing the typed password.
+  const sudoDialog = useDialog({
+    isOpen: showPasswordModal,
+    onClose: () => { setShowPasswordModal(false); setSudoPassword(""); setModalError(null); },
+  });
   const [sudoPassword, setSudoPassword] = useState("");
   const [pendingDnsAction, setPendingDnsAction] = useState(null);
   const [modalError, setModalError] = useState(null);
@@ -371,8 +378,8 @@ export default function MitmToolCard({
       {/* Password Modal */}
       {showPasswordModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-          <div className="mx-4 flex w-full max-w-sm flex-col gap-4 rounded-xl border border-border bg-surface p-5 shadow-xl sm:p-6">
-            <h3 className="section-title">Sudo Password Required</h3>
+          <div {...sudoDialog.panelProps} className="mx-4 flex w-full max-w-sm flex-col gap-4 rounded-xl border border-border bg-surface p-5 shadow-xl outline-none sm:p-6">
+            <h3 id={sudoDialog.titleId} className="section-title">Sudo Password Required</h3>
             <div className="flex items-start gap-3 p-3 bg-yellow-500/10 border border-yellow-500/30 rounded-lg">
               <Icon name="warning" size={20} className="text-yellow-500" />
               <p className="text-xs text-text-muted">Required to modify /etc/hosts and flush DNS cache</p>

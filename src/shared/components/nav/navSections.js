@@ -15,7 +15,15 @@ export const NAV_SECTIONS = Object.freeze([
     label: "Route",
     items: [
       { href: "/dashboard/endpoint", label: "Endpoint", icon: "api" },
-      { href: "/dashboard/providers", label: "Providers", icon: "dns" },
+      {
+      href: "/dashboard/providers",
+      label: "Providers",
+      icon: "dns",
+      // Named, not computed here: this module is plain data, read by tests and
+      // by anything that wants the nav without pulling the provider registry
+      // in behind it. The Sidebar resolves the number.
+      countKey: "providers",
+    },
       { href: "/dashboard/combos", label: "Combos", icon: "layers" },
       // An accordion, so it has no href of its own; its children are built from
       // MEDIA_PROVIDER_KINDS at render time. basePath records where it leads,

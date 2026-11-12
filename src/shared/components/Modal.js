@@ -1,9 +1,10 @@
 "use client";
 
-import { useCallback, useEffect, useId, useRef } from "react";
+import { useId } from "react";
 import { cn } from "@/shared/utils/cn";
 import Button from "./Button";
 import Icon from "./icons/Icon";
+import useDialog from "@/shared/hooks/useDialog";
 
 const SIZES = {
   sm: "max-w-sm",
@@ -12,38 +13,6 @@ const SIZES = {
   xl: "max-w-xl",
   full: "max-w-4xl",
 };
-
-/**
- * The element that had focus before any dialog opened.
- *
- * A dialog cannot work this out for itself. React commits the panel's DOM —
- * applying `autoFocus` on whatever field is inside it — before any of the
- * dialog's own effects run, so by the time an effect looks at
- * `document.activeElement` the answer is already a control inside the dialog,
- * and the opener is gone. Tracking it from a document-level listener catches
- * it while it is still true.
- */
-let lastFocusOutsideDialog = null;
-if (typeof document !== "undefined") {
-  document.addEventListener(
-    "focusin",
-    (e) => {
-      const el = e.target;
-      if (!(el instanceof Element) || el.closest('[role="dialog"]')) return;
-      lastFocusOutsideDialog = el;
-    },
-    true
-  );
-}
-
-const FOCUSABLE = [
-  "a[href]",
-  "button:not([disabled])",
-  "input:not([disabled]):not([type='hidden'])",
-  "select:not([disabled])",
-  "textarea:not([disabled])",
-  "[tabindex]:not([tabindex='-1'])",
-].join(",");
 
 /**
  * A dialog.
@@ -70,83 +39,8 @@ export default function Modal({
   closeOnOverlay = true,
   className,
 }) {
-  const panelRef = useRef(null);
-  const restoreRef = useRef(null);
-  const titleId = useId();
   const descId = useId();
-
-  // Captured here, during the render that opens the dialog, because this is the
-  // last moment the opener still holds focus: React applies `autoFocus` while
-  // committing the panel, so any effect — layout or passive — already finds a
-  // control inside the dialog instead. The tracker above is preferred when it
-  // has something, since it is right even if the opener was never focusable.
-  const wasOpen = useRef(false);
-  if (isOpen && !wasOpen.current) {
-    wasOpen.current = true;
-    if (typeof document !== "undefined") {
-      const active = document.activeElement;
-      const fallback =
-        active && active !== document.body && active !== document.documentElement ? active : null;
-      restoreRef.current =
-        lastFocusOutsideDialog?.isConnected ? lastFocusOutsideDialog : fallback;
-    }
-  } else if (!isOpen && wasOpen.current) {
-    wasOpen.current = false;
-  }
-
-  const focusables = useCallback(
-    () => (panelRef.current ? [...panelRef.current.querySelectorAll(FOCUSABLE)].filter((el) => el.offsetParent !== null) : []),
-    []
-  );
-
-  // Lock the page behind the dialog, and give focus to the dialog itself
-  // rather than its first control: landing on "Delete" is a trap, and the
-  // panel is labelled, so a screen reader reads the title on arrival.
-  useEffect(() => {
-    if (!isOpen) return undefined;
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    panelRef.current?.focus();
-    return () => {
-      document.body.style.overflow = previousOverflow;
-      // By the time this runs the panel is already unmounted, so the focused
-      // node is gone and the browser has dropped focus to the root. Which root
-      // varies: Chrome leaves it on <body> here but <html> in other paths, and
-      // checking only for <body> meant the restore silently did nothing.
-      // Anything else means a caller moved focus deliberately — leave it.
-      const active = document.activeElement;
-      const loose = !active || active === document.body || active === document.documentElement;
-      if (loose && restoreRef.current?.isConnected) restoreRef.current.focus();
-    };
-  }, [isOpen]);
-
-  useEffect(() => {
-    if (!isOpen) return undefined;
-    const onKeyDown = (e) => {
-      if (e.key === "Escape") {
-        e.stopPropagation();
-        onClose();
-        return;
-      }
-      if (e.key !== "Tab") return;
-      const items = focusables();
-      if (items.length === 0) {
-        e.preventDefault();
-        return;
-      }
-      const first = items[0];
-      const last = items[items.length - 1];
-      if (e.shiftKey && document.activeElement === first) {
-        e.preventDefault();
-        last.focus();
-      } else if (!e.shiftKey && document.activeElement === last) {
-        e.preventDefault();
-        first.focus();
-      }
-    };
-    document.addEventListener("keydown", onKeyDown, true);
-    return () => document.removeEventListener("keydown", onKeyDown, true);
-  }, [isOpen, onClose, focusables]);
+  const { titleId, panelProps } = useDialog({ isOpen, onClose, labelled: Boolean(title) });
 
   if (!isOpen) return null;
 
@@ -164,12 +58,8 @@ export default function Modal({
       />
 
       <div
-        ref={panelRef}
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby={title ? titleId : undefined}
+        {...panelProps}
         aria-describedby={description ? descId : undefined}
-        tabIndex={-1}
         className={cn(
           "relative w-full flex flex-col max-h-[88vh] outline-none",
           "bg-surface border border-border-subtle",

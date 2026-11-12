@@ -6,6 +6,7 @@ import Image from "next/image";
 import BaseUrlSelect from "./BaseUrlSelect";
 import ApiKeySelect from "./ApiKeySelect";
 import Icon from "../../../../../shared/components/icons/Icon";
+import useDialog from "@/shared/hooks/useDialog";
 
 const ENDPOINT = "/api/cli-tools/cowork-settings";
 
@@ -49,6 +50,7 @@ export default function CoworkToolCard({
   const [modelSelectOpen, setModelSelectOpen] = useState(false);
   const [marketplaceOpen, setMarketplaceOpen] = useState(false);
   const [addMcpOpen, setAddMcpOpen] = useState(false);
+  const mcpDialog = useDialog({ isOpen: addMcpOpen, onClose: () => setAddMcpOpen(false) });
   const [addMcpForm, setAddMcpForm] = useState({ name: "", url: "" });
 
   useEffect(() => {
@@ -547,9 +549,9 @@ export default function CoworkToolCard({
       {/* Add Custom MCP modal */}
       {addMcpOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => setAddMcpOpen(false)}>
-          <div className="bg-surface border border-border rounded-xl shadow-xl w-full max-w-sm mx-4 p-5 flex flex-col gap-4" onClick={(e) => e.stopPropagation()}>
+          <div {...mcpDialog.panelProps} className="bg-surface border border-border rounded-xl shadow-xl w-full max-w-sm mx-4 p-5 flex flex-col gap-4 outline-none" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between">
-              <h3 className="section-title">Add Custom MCP</h3>
+              <h3 id={mcpDialog.titleId} className="section-title">Add Custom MCP</h3>
               <button onClick={() => setAddMcpOpen(false)} className="text-text-muted hover:text-text-main">
                 <Icon name="close" size={18} />
               </button>

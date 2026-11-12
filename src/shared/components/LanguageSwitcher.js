@@ -5,6 +5,7 @@ import { createPortal } from "react-dom";
 import { LOCALES, LOCALE_COOKIE, normalizeLocale } from "@/i18n/config";
 import { reloadTranslations } from "@/i18n/runtime";
 import Icon from "./icons/Icon";
+import useDialog from "@/shared/hooks/useDialog";
 
 function getLocaleFromCookie() {
   if (typeof document === "undefined") return "en";
@@ -59,7 +60,6 @@ export default function LanguageSwitcher({ className = "", isOpen: controlledOpe
   const [locale, setLocale] = useState("en");
   const [isPending, setIsPending] = useState(false);
   const [internalOpen, setInternalOpen] = useState(false);
-  const modalRef = useRef(null);
 
   const isControlled = typeof controlledOpen === "boolean";
   const isOpen = isControlled ? controlledOpen : internalOpen;
@@ -71,6 +71,8 @@ export default function LanguageSwitcher({ className = "", isOpen: controlledOpe
     }
   };
 
+  const { titleId, panelRef, panelProps } = useDialog({ isOpen, onClose: () => setIsOpen(false) });
+
   useEffect(() => {
     setLocale(getLocaleFromCookie());
   }, []);
@@ -78,7 +80,7 @@ export default function LanguageSwitcher({ className = "", isOpen: controlledOpe
   // Close modal when clicking outside
   useEffect(() => {
     function handleClickOutside(event) {
-      if (modalRef.current && !modalRef.current.contains(event.target)) {
+      if (panelRef.current && !panelRef.current.contains(event.target)) {
         setIsOpen(false);
       }
     }
@@ -138,12 +140,12 @@ export default function LanguageSwitcher({ className = "", isOpen: controlledOpe
 
           {/* Modal content */}
           <div
-            ref={modalRef}
+            {...panelProps}
             className="relative w-full bg-surface border border-black/10 dark:border-white/10 rounded-xl shadow-2xl animate-in fade-in zoom-in-95 duration-200 max-w-2xl flex flex-col max-h-[80vh]"
           >
             {/* Modal header */}
             <div className="flex items-center justify-between p-3 border-b border-black/5 dark:border-white/5">
-              <h2 className="section-title">Select Language</h2>
+              <h2 id={titleId} className="section-title">Select Language</h2>
               <button
                 onClick={() => setIsOpen(false)}
                 className="p-1.5 rounded-lg text-text-muted hover:bg-black/5 dark:hover:bg-white/5 transition-colors"

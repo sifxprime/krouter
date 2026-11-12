@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { Card, Button, Badge, Input } from "@/shared/components";
 import Icon from "../../../../../shared/components/icons/Icon";
+import useDialog from "@/shared/hooks/useDialog";
 
 const DEFAULT_MITM_ROUTER_BASE = "http://localhost:20128";
 
@@ -21,6 +22,15 @@ export default function MitmServerCard({ apiKeys, cloudEnabled, onStatusChange }
   const [actionError, setActionError] = useState(null);
   const [mitmRouterBaseUrl, setMitmRouterBaseUrl] = useState(DEFAULT_MITM_ROUTER_BASE);
   const [port443Conflict, setPort443Conflict] = useState(null);
+
+  const sudoDialog = useDialog({
+    isOpen: showPasswordModal,
+    onClose: () => { setShowPasswordModal(false); setModalError(null); },
+  });
+  const conflictDialog = useDialog({
+    isOpen: Boolean(port443Conflict),
+    onClose: () => setPort443Conflict(null),
+  });
 
   const serverIsWindows = status?.isWin === true;
   const canRunWithoutPassword = serverIsWindows || status?.hasCachedPassword || status?.needsSudoPassword === false;
@@ -287,8 +297,8 @@ export default function MitmServerCard({ apiKeys, cloudEnabled, onStatusChange }
       {/* Password Modal */}
       {showPasswordModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-          <div className="mx-4 flex w-full max-w-sm flex-col gap-4 rounded-xl border border-border bg-surface p-5 shadow-xl sm:p-6">
-            <h3 className="section-title">Sudo Password Required</h3>
+          <div {...sudoDialog.panelProps} className="mx-4 flex w-full max-w-sm flex-col gap-4 rounded-xl border border-border bg-surface p-5 shadow-xl outline-none sm:p-6">
+            <h3 id={sudoDialog.titleId} className="section-title">Sudo Password Required</h3>
             <div className="flex items-start gap-3 p-3 bg-yellow-500/10 border border-yellow-500/30 rounded-lg">
               <Icon name="warning" size={20} className="text-yellow-500" />
               <p className="text-xs text-text-muted">Required for SSL certificate and server startup</p>
@@ -321,8 +331,8 @@ export default function MitmServerCard({ apiKeys, cloudEnabled, onStatusChange }
       {/* Port 443 Conflict Modal */}
       {port443Conflict && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-          <div className="mx-4 flex w-full max-w-md flex-col gap-4 rounded-xl border border-border bg-surface p-5 shadow-xl sm:p-6">
-            <h3 className="section-title">Port 443 Already In Use</h3>
+          <div {...conflictDialog.panelProps} className="mx-4 flex w-full max-w-md flex-col gap-4 rounded-xl border border-border bg-surface p-5 shadow-xl outline-none sm:p-6">
+            <h3 id={conflictDialog.titleId} className="section-title">Port 443 Already In Use</h3>
             <div className="flex items-start gap-3 p-3 bg-yellow-500/10 border border-yellow-500/30 rounded-lg">
               <Icon name="warning" size={20} className="text-yellow-500" />
               <div className="flex flex-col gap-1 text-xs text-text-muted">

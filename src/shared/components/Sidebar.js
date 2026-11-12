@@ -15,13 +15,24 @@ import * as collapseStore from "./nav/collapseStore";
 import Button from "./Button";
 import { ConfirmModal } from "./Modal";
 import SupportMenu from "./SupportMenu";
+import useDialog from "@/shared/hooks/useDialog";
+import { AI_PROVIDERS } from "@/shared/constants/providers";
 
 const VISIBLE_MEDIA_KINDS = ["embedding", "image", "video", "tts", "stt"];
 // Combined entry: webSearch + webFetch share one page at /dashboard/media-providers/web
 const COMBINED_WEB_ITEM = { id: "web", label: "Web Fetch & Search", icon: "travel_explore", href: "/dashboard/media-providers/web" };
 
 /** One nav row, in both the full and the rail form. */
-function NavRow({ href, icon, label, active, collapsed, badge, onClick }) {
+/** Numbers a nav item can show, by the `countKey` it names. */
+const NAV_COUNTS = Object.freeze({
+  // The catalog's size, not how many are connected: the page is a catalogue
+  // you pick from, so its size is what is useful before opening it, and "how
+  // many have I connected" is on the page itself, per provider, where it can
+  // say which.
+  providers: Object.keys(AI_PROVIDERS).length,
+});
+
+function NavRow({ href, icon, label, active, collapsed, badge, count, onClick }) {
   return (
     <Link
       href={href}
@@ -52,6 +63,12 @@ function NavRow({ href, icon, label, active, collapsed, badge, onClick }) {
       <Icon name={icon} size={18} className={cn("shrink-0", active ? "text-primary" : "group-hover:text-primary transition-colors")} />
       {collapsed ? null : <span className="text-[13px] font-medium truncate">{label}</span>}
       {badge && !collapsed ? <span className="ml-auto">{badge}</span> : null}
+      {/* A plain count, not a pill: it never changes, so giving it a pill's
+          weight would make a static fact compete with the live capture badge
+          two rows down. */}
+      {!badge && !collapsed && count != null ? (
+        <span className="ml-auto text-[11px] tabular-nums text-text-subtle">{count}</span>
+      ) : null}
       {badge && collapsed ? (
         <span aria-hidden="true" className="absolute top-1 right-1 size-[7px] rounded-full bg-green-500 ring-2 ring-sidebar" />
       ) : null}
@@ -66,6 +83,7 @@ NavRow.propTypes = {
   active: PropTypes.bool,
   collapsed: PropTypes.bool,
   badge: PropTypes.node,
+  count: PropTypes.number,
   onClick: PropTypes.func,
 };
 
@@ -140,6 +158,14 @@ export default function Sidebar({ onClose }) {
     setIsUpdating(false);
     setShutdownCountdown(0);
   };
+
+  const blockingDialog = useDialog({
+    isOpen: isDisconnected || isUpdating,
+    onClose: isUpdating ? handleCancelUpdate : () => {},
+    // There is no single heading across both states, so the panel carries an
+    // aria-label instead of pointing at one.
+    labelled: false,
+  });
 
   const visible = (item) => !item.requires || (item.requires === "enableTranslator" && enableTranslator);
 
@@ -313,6 +339,7 @@ export default function Sidebar({ onClose }) {
                         label={item.label}
                         active={isNavItemActive(item.href, pathname)}
                         collapsed={railed}
+                        count={NAV_COUNTS[item.countKey]}
                         onClick={onClose}
                         badge={
                           item.showsCaptureState && captureWords.tone !== "off" && captureWords.tone !== "idle" ? (
@@ -375,6 +402,16 @@ export default function Sidebar({ onClose }) {
       {/* Disconnected / Updating Overlay */}
       {(isDisconnected || isUpdating) && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-6">
+          {/* A blocking state, not a dismissible dialog: while the server is
+              gone there is nothing behind this to go back to. It still needs
+              the role and the focus trap, so a keyboard does not Tab away into
+              a page that cannot respond. Escape cancels an update, which is a
+              real action; when disconnected it does nothing, correctly. */}
+          <div
+            {...blockingDialog.panelProps}
+            aria-label={isUpdating ? "Update kRouter" : "Server disconnected"}
+            className="outline-none"
+          >
           {isUpdating ? (
             <ManualUpdatePanel
               latestVersion={updateInfo?.latestVersion}
@@ -397,6 +434,7 @@ export default function Sidebar({ onClose }) {
               </Button>
             </div>
           )}
+          </div>
         </div>
       )}
     </>

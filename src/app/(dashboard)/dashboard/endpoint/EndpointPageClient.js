@@ -7,6 +7,7 @@ import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
 import { getCurrentLocale, onLocaleChange } from "@/i18n/runtime";
 import Icon from "../../../../shared/components/icons/Icon";
 import TrafficStrip from "./components/TrafficStrip";
+import QuickConnect from "./components/QuickConnect";
 
 // Locales that unlock wenyan (classical Chinese) caveman levels
 const WENYAN_LOCALES = ["zh-CN", "zh-TW"];
@@ -1151,6 +1152,13 @@ export default function APIPageClient({ machineId }) {
             </div>
           </div>
         )}
+        {/* The card hands out a URL; this is what you do with it. Kept inside
+            the same card because a snippet that lives apart from the endpoint
+            it references goes stale the moment the endpoint changes. */}
+        <div className="mt-5 border-t border-border-subtle pt-5">
+          <QuickConnect baseUrl={currentEndpoint} requireApiKey={requireApiKey} />
+        </div>
+
       </Card>
 
       {/* Token Saver (RTK + Caveman) */}

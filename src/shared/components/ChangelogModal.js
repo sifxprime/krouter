@@ -6,6 +6,7 @@ import PropTypes from "prop-types";
 import { marked } from "marked";
 import { GITHUB_CONFIG } from "@/shared/constants/config";
 import Icon from "./icons/Icon";
+import useDialog from "@/shared/hooks/useDialog";
 
 marked.setOptions({ gfm: true, breaks: true });
 
@@ -13,7 +14,7 @@ export default function ChangelogModal({ isOpen, onClose }) {
   const [html, setHtml] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const modalRef = useRef(null);
+  const { titleId, panelRef, panelProps } = useDialog({ isOpen, onClose });
 
   useEffect(() => {
     if (!isOpen || html) return;
@@ -31,7 +32,7 @@ export default function ChangelogModal({ isOpen, onClose }) {
 
   useEffect(() => {
     const handleClickOutside = (e) => {
-      if (modalRef.current && !modalRef.current.contains(e.target)) {
+      if (panelRef.current && !panelRef.current.contains(e.target)) {
         onClose();
       }
     };
@@ -53,12 +54,12 @@ export default function ChangelogModal({ isOpen, onClose }) {
 
       {/* Modal content */}
       <div
-        ref={modalRef}
+        {...panelProps}
         className="relative w-full bg-surface border border-black/10 dark:border-white/10 rounded-xl shadow-2xl animate-in fade-in zoom-in-95 duration-200 max-w-3xl flex flex-col max-h-[85vh]"
       >
         {/* Header */}
         <div className="flex items-center justify-between p-3 border-b border-black/5 dark:border-white/5">
-          <h2 className="section-title">Change Log</h2>
+          <h2 id={titleId} className="section-title">Change Log</h2>
           <button
             onClick={onClose}
             className="p-1.5 rounded-lg text-text-muted hover:bg-black/5 dark:hover:bg-white/5 transition-colors"

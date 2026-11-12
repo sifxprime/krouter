@@ -14,6 +14,7 @@ import { TTS_PROVIDER_CONFIG } from "@/shared/constants/ttsProviders";
 import { getTtsVoicesForModel } from "open-sse/config/ttsModels.js";
 import { GOOGLE_TTS_LANGUAGES } from "open-sse/config/googleTtsLanguages.js";
 import Icon from "../../../../../../shared/components/icons/Icon";
+import useDialog from "@/shared/hooks/useDialog";
 
 // Shared row layout — defined outside components to avoid re-mount on re-render
 function Row({ label, children }) {
@@ -403,6 +404,7 @@ function TtsExampleCard({ providerId }) {
 
   // Country picker modal state
   const [modalOpen, setModalOpen]           = useState(false);
+  const pickerDialog = useDialog({ isOpen: modalOpen, onClose: () => setModalOpen(false) });
   const [languages, setLanguages]           = useState([]);
   const [modalLoading, setModalLoading]     = useState(false);
   const [modalSearch, setModalSearch]       = useState("");
@@ -851,13 +853,14 @@ function TtsExampleCard({ providerId }) {
           onClick={() => setModalOpen(false)}
         >
           <div
-            className="border border-border rounded-xl shadow-2xl w-full max-w-md mx-4 flex flex-col max-h-[80vh]"
+            {...pickerDialog.panelProps}
+            className="border border-border rounded-xl shadow-2xl w-full max-w-md mx-4 flex flex-col max-h-[80vh] outline-none"
             style={{ backgroundColor: "var(--color-bg)", isolation: "isolate" }}
             onClick={(e) => e.stopPropagation()}
           >
             {/* Header */}
             <div className="flex items-center justify-between px-4 py-3 border-b border-border shrink-0 rounded-t-xl">
-              <h3 className="section-title">Select Language</h3>
+              <h3 id={pickerDialog.titleId} className="section-title">Select Language</h3>
               <button onClick={() => setModalOpen(false)} className="text-text-muted hover:text-primary transition-colors">
                 <Icon name="close" size={20} />
               </button>

@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect } from "react";
 import { cn } from "@/shared/utils/cn";
 import Icon from "./icons/Icon";
+import useDialog from "@/shared/hooks/useDialog";
 
 export default function Drawer({
   isOpen,
@@ -12,6 +12,12 @@ export default function Drawer({
   width = "md",
   className
 }) {
+  // A drawer is a dialog that happens to slide rather than sit in the middle:
+  // while it is open the page behind it is inert, so it needs the same role,
+  // focus trap and restore. It had none of them — Tab ran straight out into
+  // the page it was covering.
+  const { titleId, panelProps } = useDialog({ isOpen, onClose, labelled: Boolean(title) });
+
   const widths = {
     sm: "w-[400px]",
     md: "w-[500px]",
@@ -19,23 +25,6 @@ export default function Drawer({
     xl: "w-[800px]",
     full: "w-full",
   };
-
-  useEffect(() => {
-    if (isOpen) {
-      document.body.style.overflow = "hidden";
-    } else {
-      document.body.style.overflow = "";
-    }
-    return () => { document.body.style.overflow = ""; };
-  }, [isOpen]);
-
-  useEffect(() => {
-    const handleEscape = (e) => {
-      if (e.key === "Escape" && isOpen) onClose();
-    };
-    document.addEventListener("keydown", handleEscape);
-    return () => document.removeEventListener("keydown", handleEscape);
-  }, [isOpen, onClose]);
 
   if (!isOpen) return null;
 
@@ -49,24 +38,29 @@ export default function Drawer({
       />
 
       {/* Drawer panel */}
-      <div className={cn(
-        "absolute right-0 top-0 h-full bg-surface flex flex-col",
-        "shadow-[var(--shadow-elev)]",
-        "slide-in-right",
-        "border-l border-border-subtle",
-        widths[width] || widths.md,
-        className
-      )}>
+      <div
+        {...panelProps}
+        className={cn(
+          "outline-none",
+          "absolute right-0 top-0 h-full bg-surface flex flex-col",
+          "shadow-[var(--shadow-elev)]",
+          "slide-in-right",
+          "border-l border-border-subtle",
+          widths[width] || widths.md,
+          className
+        )}
+      >
         {/* Header */}
         <div className="flex items-center justify-between p-6 border-b border-border-subtle flex-shrink-0">
           <div className="flex items-center gap-3">
             {title && (
-              <h2 className="section-title">{title}</h2>
+              <h2 id={titleId} className="section-title">{title}</h2>
             )}
           </div>
           <button
             type="button"
             onClick={onClose}
+            aria-label="Close"
             className="p-1.5 rounded-[10px] text-text-muted hover:bg-surface-2 hover:text-text-main transition-colors"
           >
             <Icon name="close" size={20} />
