@@ -30,6 +30,50 @@ function shellQuoteSingle(str) {
   return `'${String(str).replace(/'/g, "'\\''")}'`;
 }
 
+// Env vars forwarded to the sudo-spawned MITM server when they are set.
+//
+// The server reads these; the four it always needs are set unconditionally at
+// the call site. Keep this in sync with what src/mitm/* reads from process.env
+// — a var missing here is not an error, it is a switch that silently does
+// nothing, which is how MITM_FILE_LOG went unnoticed.
+const SUDO_FORWARDED_ENV = Object.freeze([
+  "MITM_FILE_LOG",
+  "MITM_MAX_DUMP_FILES",
+  "DEBUG_MITM",
+  "DATA_DIR",
+  "KROUTER_DATA_DIR",
+  "NODE_EXTRA_CA_CERTS",
+  "SSL_CERT_FILE",
+]);
+
+// Sentinels framing the env block on the child's stdin. Not configurable: they
+// only have to be text no shell `read` would produce from a password.
+const ENV_BEGIN = "__KROUTER_ENV_BEGIN__";
+const ENV_END = "__KROUTER_ENV_END__";
+
+/**
+ * The bytes written to the sudo child's stdin: password, then the env block.
+ *
+ * A value containing a newline would end the line early and the rest would be
+ * exported as a separate assignment, so such a value is rejected rather than
+ * silently truncated. Nothing legitimate here contains one.
+ *
+ * @param {string} password sudo password (may be empty when sudo is passwordless)
+ * @param {Record<string,string>} env  variables for the child
+ */
+function buildSudoEnvStdin(password, env) {
+  const lines = [`${password == null ? "" : password}`, ENV_BEGIN];
+  for (const [k, v] of Object.entries(env)) {
+    const value = v == null ? "" : String(v);
+    if (/[\r\n]/.test(value) || /[\r\n=]/.test(k)) {
+      throw new Error(`Refusing to pass ${k} to the MITM server: newline in name or value`);
+    }
+    lines.push(`${k}=${value}`);
+  }
+  lines.push(ENV_END, "");
+  return lines.join("\n");
+}
+
 async function resolveMitmRouterBaseUrl() {
   if (!_getSettings) return DEFAULT_MITM_ROUTER_BASE;
   try {
@@ -846,21 +890,46 @@ async function startServer(apiKey, sudoPassword, forceKillPort443 = false) {
 
     if (_updateSettings) await _updateSettings({ mitmCertInstalled: true }).catch(() => { });
   } else if (isSudoAvailable()) {
-    // Pass HOME explicitly so os.homedir() resolves to the unprivileged user's home
-    // instead of /root when sudo resets the environment.
+    // The environment goes down stdin, not argv.
+    //
+    // Two reasons. argv is world-readable: `ROUTER_API_KEY=sk-...` on the
+    // command line showed the key to every local process in `ps`. And the old
+    // inline list was a fixed four variables, so MITM_FILE_LOG and DEBUG_MITM
+    // never reached the child on macOS — file logging looked enabled and wrote
+    // nothing, which is the worst way for an observability switch to fail.
+    //
+    // HOME is in the list because sudo resets it; without it os.homedir()
+    // resolves to /root and the server writes its state to the wrong place.
+    const childEnv = {
+      HOME: os.homedir(),
+      NODE_ENV: "production",
+      ROUTER_API_KEY: apiKey,
+      MITM_ROUTER_BASE: mitmRouterBase,
+    };
+    // Forwarded only when set, so an unset var stays unset in the child rather
+    // than arriving as the empty string, which several of these treat as on.
+    for (const k of SUDO_FORWARDED_ENV) {
+      if (process.env[k] != null && process.env[k] !== "") childEnv[k] = process.env[k];
+    }
+
+    // Read past whatever sudo did or did not consume before taking the vars.
+    //
+    // `sudo -S` reads the password line only when it actually prompts; with a
+    // cached timestamp or NOPASSWD it reads nothing, and a script that blindly
+    // took the first line would then export the password as the API key and
+    // fail in a way that reads like a bad key. Skipping to a sentinel is
+    // correct either way.
     const inlineCmd = [
-      `HOME=${shellQuoteSingle(os.homedir())}`,
-      `ROUTER_API_KEY=${shellQuoteSingle(apiKey)}`,
-      `MITM_ROUTER_BASE=${shellQuoteSingle(mitmRouterBase)}`,
-      "NODE_ENV=production",
-      shellQuoteSingle(process.execPath),
-      shellQuoteSingle(effectiveServerPath),
-    ].join(" ");
+      `while IFS= read -r l; do [ "$l" = "${ENV_BEGIN}" ] && break; done`,
+      `while IFS= read -r l; do [ "$l" = "${ENV_END}" ] && break; export "$l"; done`,
+      `exec ${shellQuoteSingle(process.execPath)} ${shellQuoteSingle(effectiveServerPath)}`,
+    ].join("; ");
+
     serverProcess = spawn(
       "sudo", ["-S", "-E", "sh", "-c", inlineCmd],
       { detached: false, windowsHide: true, stdio: ["pipe", "pipe", "pipe"] }
     );
-    serverProcess.stdin.write(`${sudoPassword}\n`);
+    serverProcess.stdin.write(buildSudoEnvStdin(sudoPassword, childEnv));
     serverProcess.stdin.end();
   } else {
     // Docker/minimal images: no sudo — same as Windows-style direct spawn
@@ -1151,6 +1220,10 @@ const startMitm = startServer;
 const stopMitm = stopServer;
 
 module.exports = {
+  buildSudoEnvStdin,
+  SUDO_FORWARDED_ENV,
+  ENV_BEGIN,
+  ENV_END,
   getMitmStatus,
   startProxyCapture,
   stopProxyCapture,
