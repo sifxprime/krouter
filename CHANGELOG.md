@@ -1,3 +1,50 @@
+# v0.5.187 (2026-11-13) — the background bootstrap no longer waits for someone to log in
+
+This is the release that actually fixes MITM auto-start. v0.5.185 and v0.5.186
+fixed two things that were genuinely broken on that path and neither was ever
+reached, because `initializeApp` was not running at all.
+
+It was reachable only as a side effect of importing `app/layout.js`, which Next
+evaluates while rendering a page. `/login` is prerendered — `○ /login` in the
+build, `server/app/login.html` in the output — so it is served as static HTML
+without evaluating the layout, and `/dashboard` is redirected by middleware
+before it renders. On a boot where nobody is signed in, nothing renders a
+dynamic page, so none of this started:
+
+  - MITM auto-start (the reported symptom: capture never came back after a
+    reboot, and the watchdog then stripped the DNS redirects it could not serve)
+  - the connection watchdog and the network monitor
+  - tunnel and Tailscale auto-resume
+  - the token warmer and background quota refresh
+
+All of it was waiting for someone to open the dashboard and log in. Measured on
+the published v0.5.186: service up, `/login` 200, `/api/health` 200,
+`/dashboard` 307, and not one `[InitApp]` line in four minutes with :443 down.
+
+`src/instrumentation.js` exports Next's `register()` hook, which runs once when
+the server process starts — what this work always needed. The layout keeps its
+import; bootstrap.js is guarded by `global.__appBootstrapped`, so whichever path
+arrives first wins and the other is a no-op, and dev HMR behaves as before. The
+edge runtime returns immediately: no filesystem, no child processes, no business
+starting a MITM server.
+
+Verified on the same boot that failed before — launchd's exact PATH, and not one
+page loaded:
+
+    [InitApp] MITM was enabled, auto-starting...
+    [MITM] 🚀 Starting server... (router: http://localhost:20128)
+    [InitApp] MITM auto-started
+    [InitApp] DNS restored from saved state
+
+Port 443 came up immediately, DNS was restored for all three enabled tools, and
+a plain curl to api.anthropic.com was captured and answered.
+
+A note on how this was missed: the v0.5.185 boot test passed against a build run
+by hand, and a leftover instance of that build kept holding port 20128
+afterwards — so the follow-up check that was supposed to confirm the published
+package was talking to the hand-built one instead. A test now fails if
+`app/layout.js` ever becomes the only importer of the bootstrap again.
+
 # v0.5.186 (2026-11-13) — the build stops phoning Google for fonts
 
 Carries everything in v0.5.185, which npm accepted and then left staged: the
