@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from "react";
 import PropTypes from "prop-types";
 import { Modal, Button } from "@/shared/components";
 import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
+import Icon from "./icons/Icon";
 
 /**
  * Kiro Social OAuth Modal (Google / GitHub) — device-code flow.
@@ -103,9 +104,7 @@ export default function KiroSocialOAuthModal({ isOpen, provider, onSuccess, onCl
         {step === "loading" && (
           <div className="text-center py-6">
             <div className="size-16 mx-auto mb-4 rounded-full bg-primary/10 flex items-center justify-center">
-              <span className="material-symbols-outlined text-3xl text-primary animate-spin">
-                progress_activity
-              </span>
+              <Icon name="progress_activity" size={30} className="text-primary animate-spin" />
             </div>
             <h3 className="text-lg font-semibold mb-2">Initializing...</h3>
             <p className="text-sm text-text-muted">Setting up {providerName} authentication</p>
@@ -115,9 +114,7 @@ export default function KiroSocialOAuthModal({ isOpen, provider, onSuccess, onCl
         {step === "polling" && (
           <div className="text-center py-6">
             <div className="size-16 mx-auto mb-4 rounded-full bg-primary/10 flex items-center justify-center">
-              <span className="material-symbols-outlined text-3xl text-primary animate-pulse">
-                open_in_browser
-              </span>
+              <Icon name="open_in_browser" size={30} className="text-primary animate-pulse" />
             </div>
             <h3 className="text-lg font-semibold mb-2">Open this link in an Incognito window</h3>
             <p className="text-sm text-text-muted mb-3">
@@ -140,9 +137,7 @@ export default function KiroSocialOAuthModal({ isOpen, provider, onSuccess, onCl
                     className="shrink-0 p-1 rounded hover:bg-sidebar"
                     title={copied ? "Copied!" : "Copy link"}
                   >
-                    <span className="material-symbols-outlined text-base">
-                      {copied ? "check" : "content_copy"}
-                    </span>
+                    <Icon name={copied ? "check" : "content_copy"} size={16} />
                   </button>
                 </div>
               </div>
@@ -156,9 +151,7 @@ export default function KiroSocialOAuthModal({ isOpen, provider, onSuccess, onCl
             )}
 
             <div className="flex items-center justify-center gap-2 text-sm text-text-muted">
-              <span className="material-symbols-outlined text-base animate-spin">
-                progress_activity
-              </span>
+              <Icon name="progress_activity" size={16} className="animate-spin" />
               Waiting for authorization...
             </div>
 
@@ -173,9 +166,7 @@ export default function KiroSocialOAuthModal({ isOpen, provider, onSuccess, onCl
         {step === "success" && (
           <div className="text-center py-6">
             <div className="size-16 mx-auto mb-4 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center">
-              <span className="material-symbols-outlined text-3xl text-green-600">
-                check_circle
-              </span>
+              <Icon name="check_circle" size={30} className="text-green-600" />
             </div>
             <h3 className="text-lg font-semibold mb-2">Connected Successfully!</h3>
             <p className="text-sm text-text-muted mb-4">
@@ -190,7 +181,7 @@ export default function KiroSocialOAuthModal({ isOpen, provider, onSuccess, onCl
         {step === "error" && (
           <div className="text-center py-6">
             <div className="size-16 mx-auto mb-4 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center">
-              <span className="material-symbols-outlined text-3xl text-red-600">error</span>
+              <Icon name="error" size={30} className="text-red-600" />
             </div>
             <h3 className="text-lg font-semibold mb-2">Connection Failed</h3>
             <p className="text-sm text-red-600 mb-4">{error}</p>

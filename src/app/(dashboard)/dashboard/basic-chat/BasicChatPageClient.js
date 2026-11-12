@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Badge, Button } from "@/shared/components";
 import { getModelsByProviderId } from "@/shared/constants/models";
 import { isAnthropicCompatibleProvider, isOpenAICompatibleProvider } from "@/shared/constants/providers";
+import Icon from "../../../../shared/components/icons/Icon";
 
 const STORAGE_KEYS = {
   sessions: "basic-chat.sessions",
@@ -751,7 +752,7 @@ export default function BasicChatPageClient() {
               <div className="min-w-0">
                 <div className="flex items-center gap-2">
                   <span className="text-sm font-semibold text-white">{modelLabel}</span>
-                  <span className="material-symbols-outlined text-[18px] text-white/70">expand_more</span>
+                  <Icon name="expand_more" size={18} className="text-white/70" />
                 </div>
                 <p className="truncate text-xs text-white/55">{modelSubLabel}</p>
               </div>
@@ -785,7 +786,7 @@ export default function BasicChatPageClient() {
                                   <p className="truncate text-sm font-medium text-white">{model.name}</p>
                                   <p className="truncate text-[11px] text-white/45">{model.requestModel}</p>
                                 </div>
-                                {isActive ? <span className="material-symbols-outlined text-[18px] text-blue-300">check_circle</span> : null}
+                                {isActive ? <Icon name="check_circle" size={18} className="text-blue-300" /> : null}
                               </div>
                             </button>
                           );
@@ -849,7 +850,7 @@ export default function BasicChatPageClient() {
         {loadError ? (
           <div className="mt-4 rounded-[18px] border border-rose-500/20 bg-rose-500/10 px-4 py-3 text-rose-100">
             <div className="flex items-start gap-3">
-              <span className="material-symbols-outlined text-[20px]">error</span>
+              <Icon name="error" size={20} />
               <p className="text-sm leading-6">{loadError}</p>
             </div>
           </div>
@@ -861,7 +862,7 @@ export default function BasicChatPageClient() {
               <div className="flex min-h-[50vh] items-center justify-center px-4 text-center">
                 <div className="max-w-xl space-y-4">
                   <div className="mx-auto flex size-16 items-center justify-center rounded-[20px] border border-white/10 bg-white/5 text-white/80">
-                    <span className="material-symbols-outlined text-[30px]">chat</span>
+                    <Icon name="chat" size={30} />
                   </div>
                   <div className="space-y-2">
                     <h2 className="text-2xl font-semibold text-white">Start a conversation</h2>
@@ -915,7 +916,7 @@ export default function BasicChatPageClient() {
                   <div key={attachment.id} className="flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-2">
                     <span className="text-xs text-white/80 max-w-[12rem] truncate">{attachment.name}</span>
                     <button type="button" onClick={() => removeAttachment(attachment.id)} className="text-white/55 hover:text-white" aria-label="Remove attachment">
-                      <span className="material-symbols-outlined text-[18px]">close</span>
+                      <Icon name="close" size={18} />
                     </button>
                   </div>
                 ))}
@@ -936,7 +937,7 @@ export default function BasicChatPageClient() {
                 <div className="mt-2 flex items-center justify-between gap-3">
                   <div className="flex items-center gap-2">
                     <button type="button" onClick={() => fileInputRef.current?.click()} disabled={!activeModel || loadingData} className="p-2 text-white/50 hover:text-white transition rounded-full hover:bg-white/5">
-                      <span className="material-symbols-outlined text-[20px]">attach_file</span>
+                      <Icon name="attach_file" size={20} />
                     </button>
                     <input ref={fileInputRef} type="file" accept="image/*" multiple className="hidden" onChange={handleAttachFiles} />
                     <span className="text-xs font-medium text-white/30 truncate max-w-[120px]">{activeModel ? activeModel.name : "No model"}</span>
@@ -945,11 +946,11 @@ export default function BasicChatPageClient() {
                   <div className="flex items-center gap-2">
                     {isSending ? (
                       <button type="button" onClick={handleStop} className="p-2 text-white bg-white/10 hover:bg-white/20 transition rounded-full h-8 w-8 flex items-center justify-center">
-                        <span className="material-symbols-outlined text-[16px]">stop</span>
+                        <Icon name="stop" size={16} />
                       </button>
                     ) : null}
                     <button onClick={sendMessage} disabled={!canSend} className={`h-8 w-8 rounded-full flex items-center justify-center transition ${canSend ? 'bg-white text-black hover:opacity-90' : 'bg-white/10 text-white/30 cursor-not-allowed'}`}>
-                      <span className="material-symbols-outlined text-[16px]">arrow_upward</span>
+                      <Icon name="arrow_upward" size={16} />
                     </button>
                   </div>
                 </div>

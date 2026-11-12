@@ -8,6 +8,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import PropTypes from "prop-types";
+import Icon from "../../../../../shared/components/icons/Icon";
 
 function timeAgo(ms) {
   const s = Math.floor((Date.now() - ms) / 1000);
@@ -49,13 +50,11 @@ export default function ZenithDecisionLog({ providerId }) {
         className="flex w-full items-center justify-between px-3 py-2 text-xs text-text-muted hover:text-text-main"
       >
         <span className="inline-flex items-center gap-1.5">
-          <span className="material-symbols-outlined text-sm">history</span>
+          <Icon name="history" size={14} />
           Routing decisions
           {entries.length > 0 && <span className="text-text-muted">({entries.length})</span>}
         </span>
-        <span className="material-symbols-outlined text-sm">
-          {open ? "expand_less" : "expand_more"}
-        </span>
+        <Icon name={open ? "expand_less" : "expand_more"} size={14} />
       </button>
       {open && (
         <div className="max-h-64 overflow-y-auto border-t border-border/50 px-3 py-2">

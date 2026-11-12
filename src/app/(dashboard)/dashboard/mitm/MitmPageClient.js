@@ -6,6 +6,7 @@ import { getModelsByProviderId } from "@/shared/constants/models";
 import { isOpenAICompatibleProvider, isAnthropicCompatibleProvider, AI_PROVIDERS } from "@/shared/constants/providers";
 import { MitmServerCard, MitmToolCard } from "@/app/(dashboard)/dashboard/cli-tools/components";
 import CertManagementCard from "./CertManagementCard";
+import Icon from "../../../../shared/components/icons/Icon";
 
 export default function MitmPageClient() {
   const [connections, setConnections] = useState([]);
@@ -84,7 +85,7 @@ export default function MitmPageClient() {
   return (
     <div className="flex w-full flex-col gap-6">
       <div className="flex items-start gap-2 px-3 py-2 rounded-lg bg-yellow-500/10 border border-yellow-500/30">
-        <span className="material-symbols-outlined text-[16px] text-yellow-500 mt-0.5 shrink-0">warning</span>
+        <Icon name="warning" size={16} className="text-yellow-500 mt-0.5 shrink-0" />
         <p className="text-xs text-red-600 dark:text-yellow-400 leading-relaxed">
           ⚠️ MITM intercepts HTTPS traffic of IDE tools (Antigravity, Claude Desktop, Kiro) via local CA to redirect requests to your providers. May violate ToS → account ban. Use at your own risk.
         </p>

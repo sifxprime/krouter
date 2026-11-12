@@ -5,6 +5,7 @@ import PropTypes from "prop-types";
 import { useTheme } from "@/shared/hooks/useTheme";
 import ChangelogModal from "./ChangelogModal";
 import { ConfirmModal } from "./Modal";
+import Icon from "./icons/Icon";
 
 function MenuItem({ icon, label, onClick, trailing, danger }) {
   return (
@@ -16,9 +17,7 @@ function MenuItem({ icon, label, onClick, trailing, danger }) {
           : "text-text-main hover:bg-black/5 dark:hover:bg-white/5"
       }`}
     >
-      <span className={`material-symbols-outlined text-[20px] ${danger ? "" : "text-text-muted"}`}>
-        {icon}
-      </span>
+      <Icon name={icon} size={20} className={`${danger ? "" : "text-text-muted"}`} />
       <span className="flex-1 text-left">{label}</span>
       {trailing && <span className="text-base">{trailing}</span>}
     </button>
@@ -74,7 +73,7 @@ export default function HeaderMenu({ onLogout }) {
           className="flex items-center justify-center p-2 rounded-lg text-text-muted hover:text-text-main hover:bg-black/5 dark:hover:bg-white/5 transition-all"
           title="Menu"
         >
-          <span className="material-symbols-outlined">grid_view</span>
+          <Icon name="grid_view" size={24} />
         </button>
 
         {isOpen && (

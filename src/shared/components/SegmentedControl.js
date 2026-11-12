@@ -1,6 +1,7 @@
 "use client";
 
 import { cn } from "@/shared/utils/cn";
+import Icon from "./icons/Icon";
 
 export default function SegmentedControl({
   options = [],
@@ -36,9 +37,7 @@ export default function SegmentedControl({
           )}
         >
           {option.icon && (
-            <span className="material-symbols-outlined text-[16px] mr-1.5">
-              {option.icon}
-            </span>
+            <Icon name={option.icon} size={16} className="mr-1.5" />
           )}
           {option.label}
         </button>

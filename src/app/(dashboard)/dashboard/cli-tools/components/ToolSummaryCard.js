@@ -3,6 +3,7 @@
 import Link from "next/link";
 import Image from "next/image";
 import { Card } from "@/shared/components";
+import Icon from "../../../../../shared/components/icons/Icon";
 
 // Derive simple connected/configured/not-installed status from API payload
 function getStatus(status) {
@@ -23,14 +24,14 @@ export default function ToolSummaryCard({ toolId, tool, status }) {
               {tool.image ? (
                 <Image src={tool.image} alt={tool.name} width={32} height={32} className="size-8 object-contain rounded-lg" sizes="32px" onError={(e) => { e.target.style.display = "none"; }} />
               ) : tool.icon ? (
-                <span className="material-symbols-outlined text-[28px]" style={{ color: tool.color }}>{tool.icon}</span>
+                <Icon name={tool.icon} size={28} style={{ color: tool.color }} />
               ) : null}
             </div>
             <div className="min-w-0 flex-1">
               <h3 className="font-medium text-sm truncate">{tool.name}</h3>
               <span className={`inline-block mt-1 px-1.5 py-0.5 text-[10px] font-medium rounded-full ${s.cls}`}>{s.label}</span>
             </div>
-            <span className="material-symbols-outlined text-text-muted text-[18px] shrink-0">chevron_right</span>
+            <Icon name="chevron_right" size={18} className="text-text-muted shrink-0" />
           </div>
         </div>
       </Card>

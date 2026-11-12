@@ -1,5 +1,7 @@
 "use client";
 
+import Icon from "../../../shared/components/icons/Icon";
+
 const FEATURES = [
   { 
     icon: "link", 
@@ -117,7 +119,7 @@ export default function Features() {
               className={`p-6 rounded-xl bg-[#23180f] border border-[#3a2f27] ${feature.colors.border} ${feature.colors.bg} transition-all duration-300 group`}
             >
               <div className={`w-10 h-10 rounded-lg ${feature.colors.iconBg} flex items-center justify-center mb-4 ${feature.colors.iconText} group-hover:scale-110 transition-transform duration-300`}>
-                <span className="material-symbols-outlined">{feature.icon}</span>
+                <Icon name={feature.icon} size={24} />
               </div>
               <h3 className={`text-lg font-bold mb-2 ${feature.colors.titleHover} transition-colors`}>
                 {feature.title}

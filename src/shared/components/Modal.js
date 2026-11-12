@@ -4,6 +4,7 @@ import { useEffect } from "react";
 import { cn } from "@/shared/utils/cn";
 import Button from "./Button";
 import Tooltip from "./Tooltip";
+import Icon from "./icons/Icon";
 
 export default function Modal({
   isOpen,
@@ -93,7 +94,7 @@ export default function Modal({
               aria-label="Close"
               className="md:hidden p-1.5 rounded-[10px] text-text-muted hover:bg-surface-2 hover:text-text-main transition-colors"
             >
-              <span className="material-symbols-outlined text-[20px]">close</span>
+              <Icon name="close" size={20} />
             </button>
           </div>
         )}

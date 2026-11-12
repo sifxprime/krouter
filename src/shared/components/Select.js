@@ -1,6 +1,7 @@
 "use client";
 
 import { cn } from "@/shared/utils/cn";
+import Icon from "./icons/Icon";
 
 export default function Select({
   label,
@@ -50,12 +51,12 @@ export default function Select({
           ))}
         </select>
         <div className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none text-text-muted">
-          <span className="material-symbols-outlined text-[20px]">expand_more</span>
+          <Icon name="expand_more" size={20} />
         </div>
       </div>
       {error && (
         <p className="text-xs text-red-500 flex items-center gap-1">
-          <span className="material-symbols-outlined text-[14px]">error</span>
+          <Icon name="error" size={14} />
           {error}
         </p>
       )}

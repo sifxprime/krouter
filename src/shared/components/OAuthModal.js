@@ -4,6 +4,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import PropTypes from "prop-types";
 import { Modal, Button, Input } from "@/shared/components";
 import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
+import Icon from "./icons/Icon";
 
 /**
  * OAuth Modal Component
@@ -539,9 +540,7 @@ export default function OAuthModal({ isOpen, provider, providerInfo, onSuccess, 
           <>
             {/* Option A: Auto via popup */}
             <div className="flex items-center gap-2 px-3 py-2 border border-border rounded-lg bg-sidebar/50">
-              <span className="material-symbols-outlined text-base text-primary animate-spin">
-                progress_activity
-              </span>
+              <Icon name="progress_activity" size={16} className="text-primary animate-spin" />
               <span className="text-sm">
                 {isXaiProvider ? "Waiting for Grok Build OAuth…" : "Waiting for popup authorization…"}
               </span>
@@ -641,7 +640,7 @@ export default function OAuthModal({ isOpen, provider, providerInfo, onSuccess, 
             </div>
             {polling && (
               <div className="flex items-center justify-center gap-2 text-sm text-text-muted">
-                <span className="material-symbols-outlined animate-spin">progress_activity</span>
+                <Icon name="progress_activity" size={24} className="animate-spin" />
                 Waiting for authorization...
               </div>
             )}
@@ -652,7 +651,7 @@ export default function OAuthModal({ isOpen, provider, providerInfo, onSuccess, 
         {step === "success" && (
           <div className="text-center py-6">
             <div className="size-16 mx-auto mb-4 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center">
-              <span className="material-symbols-outlined text-3xl text-green-600">check_circle</span>
+              <Icon name="check_circle" size={30} className="text-green-600" />
             </div>
             <h3 className="text-lg font-semibold mb-2">Connected Successfully!</h3>
             <p className="text-sm text-text-muted mb-4">
@@ -668,7 +667,7 @@ export default function OAuthModal({ isOpen, provider, providerInfo, onSuccess, 
         {step === "error" && (
           <div className="text-center py-6">
             <div className="size-16 mx-auto mb-4 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center">
-              <span className="material-symbols-outlined text-3xl text-red-600">error</span>
+              <Icon name="error" size={30} className="text-red-600" />
             </div>
             <h3 className="text-lg font-semibold mb-2">Connection Failed</h3>
             <p className="text-sm text-red-600 mb-4">{error}</p>

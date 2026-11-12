@@ -6,10 +6,11 @@ import { cn } from "@/shared/utils/cn";
 import { SUPPORT_CHANNELS } from "@/shared/constants/support";
 
 /**
- * Brand marks are inline SVG rather than the Material Symbols font used by the nav:
- * the icon font has no WhatsApp glyph, and a recognisable brand mark is the whole
- * point of the affordance. `currentColor` keeps them on the same theme tokens as
- * everything around them.
+ * Brand marks live here rather than in the drawn icon set: that set is one
+ * stroke weight on one grid, and a brand mark has to match its owner's artwork
+ * instead, so holding them to the set's geometry would make them wrong. A
+ * recognisable mark is the whole point of the affordance. `currentColor` still
+ * keeps them on the same theme tokens as everything around them.
  *
  * The WhatsApp viewBox is padded 0.69 units a side: the official path is drawn
  * edge-to-edge, so at an equal box size it out-measures the envelope and reads as

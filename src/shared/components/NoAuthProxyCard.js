@@ -7,6 +7,7 @@ import Input from "./Input";
 import Select from "./Select";
 import Badge from "./Badge";
 import { AI_PROVIDERS } from "@/shared/constants/providers";
+import Icon from "./icons/Icon";
 
 const NONE_PROXY_POOL_VALUE = "__none__";
 
@@ -98,7 +99,7 @@ export default function NoAuthProxyCard({ providerId }) {
     <Card>
       <div className="flex items-center gap-3 mb-4">
         <div className="inline-flex items-center justify-center w-10 h-10 rounded-full bg-green-500/10 text-green-500">
-          <span className="material-symbols-outlined text-[20px]">lock_open</span>
+          <Icon name="lock_open" size={20} />
         </div>
         <div className="flex-1">
           <p className="text-sm font-medium">No authentication required</p>
@@ -146,7 +147,7 @@ export default function NoAuthProxyCard({ providerId }) {
               disabled={refreshing}
               className="inline-flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-medium bg-surface-elevated border border-border hover:bg-surface-hover disabled:opacity-50"
             >
-              <span className="material-symbols-outlined text-[16px]">refresh</span>
+              <Icon name="refresh" size={16} />
               {refreshing ? "Refreshing..." : "Refresh Models"}
             </button>
           </div>

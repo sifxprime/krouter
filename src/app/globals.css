@@ -3,24 +3,6 @@
 
 @custom-variant dark (&:where(.dark, .dark *));
 
-/* Hide icon ligature text until font is ready */
-/* Inside @layer base on purpose. Unlayered rules beat every layered one, so when
-   these lived outside a layer they overrode Tailwind's own utilities (which live in
-   @layer utilities): `opacity-20` and `opacity-50` on an icon stopped dimming it,
-   and the `transition` shorthand reset transition-property to opacity alone, which
-   killed `transition-transform` on every chevron. Layered here, utilities win. */
-@layer base {
-  .material-symbols-outlined { opacity: 0; }
-  .fonts-loaded .material-symbols-outlined {
-    opacity: 1;
-    /* Longhands, not the shorthand: `transition: opacity` would reset
-       transition-property and clobber a utility's own transition. */
-    transition-property: opacity;
-    transition-duration: .12s;
-    transition-timing-function: ease-out;
-  }
-}
-
 /* ============================================================
    kRouter (Kodelyth) palette
    Brand orange (dark) / soft coral (light), neutral warm bases
@@ -316,27 +298,6 @@ input, textarea {
 .traffic-light.yellow { background: #FFBD2E; }
 .traffic-light.green { background: #27C93F; }
 
-/* Material Symbols */
-.material-symbols-outlined {
-  font-family: 'Material Symbols Outlined', sans-serif;
-  font-weight: normal;
-  font-style: normal;
-  font-size: 24px;
-  line-height: 1;
-  letter-spacing: normal;
-  text-transform: none;
-  display: inline-block;
-  white-space: nowrap;
-  word-wrap: normal;
-  direction: ltr;
-  font-feature-settings: 'liga';
-  -webkit-font-feature-settings: 'liga';
-  -webkit-font-smoothing: antialiased;
-  font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
-}
-.material-symbols-outlined.fill-1 {
-  font-variation-settings: 'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 24;
-}
 
 /* Disable text selection on buttons */
 button {

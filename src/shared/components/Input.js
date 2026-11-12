@@ -1,6 +1,7 @@
 "use client";
 
 import { cn } from "@/shared/utils/cn";
+import Icon from "./icons/Icon";
 
 export default function Input({
   label,
@@ -28,7 +29,7 @@ export default function Input({
       <div className="relative">
         {icon && (
           <div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none text-text-muted">
-            <span className="material-symbols-outlined text-[20px]">{icon}</span>
+            <Icon name={icon} size={20} />
           </div>
         )}
         <input
@@ -53,7 +54,7 @@ export default function Input({
       </div>
       {error && (
         <p className="text-xs text-red-500 flex items-center gap-1">
-          <span className="material-symbols-outlined text-[14px]">error</span>
+          <Icon name="error" size={14} />
           {error}
         </p>
       )}

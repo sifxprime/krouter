@@ -14,6 +14,7 @@ import Link from "next/link";
 import { useState } from "react";
 import PropTypes from "prop-types";
 import { Badge } from "@/shared/components";
+import Icon from "../../../../../shared/components/icons/Icon";
 
 const TIER_META = {
   free:      { label: "Free",        variant: "success", accent: "green"   },
@@ -46,7 +47,7 @@ export default function ProviderHero({ capabilities, connectionCount = 0, header
         href="/dashboard/providers"
         className="inline-flex items-center gap-1 text-sm text-text-muted hover:text-primary transition-colors"
       >
-        <span className="material-symbols-outlined text-lg">arrow_back</span>
+        <Icon name="arrow_back" size={18} />
         Back to Providers
       </Link>
 
@@ -110,7 +111,7 @@ export default function ProviderHero({ capabilities, connectionCount = 0, header
                   rel="noopener noreferrer"
                   className="inline-flex items-center gap-1 rounded-full border border-border bg-bg/60 px-2.5 py-1 text-xs text-text-main hover:border-primary hover:text-primary transition-colors backdrop-blur"
                 >
-                  <span className="material-symbols-outlined text-sm">{chip.icon}</span>
+                  <Icon name={chip.icon} size={14} />
                   {chip.label}
                 </a>
               ))}
@@ -129,9 +130,7 @@ export default function ProviderHero({ capabilities, connectionCount = 0, header
       {/* Deprecation banner — always separate, always visible */}
       {c.deprecated && c.notices.warning && (
         <div className="flex items-start gap-2 rounded-lg border border-yellow-500/30 bg-yellow-500/10 px-3 py-2">
-          <span className="material-symbols-outlined mt-0.5 shrink-0 text-[16px] text-yellow-500">
-            warning
-          </span>
+          <Icon name="warning" size={16} className="mt-0.5 shrink-0 text-yellow-500" />
           <p className="text-xs leading-relaxed text-red-600 dark:text-yellow-400">
             {c.notices.warning}
           </p>

@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import Card from "@/shared/components/Card";
 import { getPresidioSettings, updatePresidioSettings, validateYamlLocally, debounce } from "./lib/presidioApi";
+import Icon from "../../../../shared/components/icons/Icon";
 
 /**
  * PresidioSettingsCard Component
@@ -137,7 +138,7 @@ export default function PresidioSettingsCard() {
       {/* Loading State */}
       {isLoading && (
         <div className="flex items-center justify-center py-8 text-text-muted">
-          <span className="material-symbols-outlined animate-spin mr-2">refresh</span>
+          <Icon name="refresh" size={24} className="animate-spin mr-2" />
           Loading settings...
         </div>
       )}
@@ -146,7 +147,7 @@ export default function PresidioSettingsCard() {
       {error && (
         <div className="mb-4 p-4 bg-error/10 border border-error/30 rounded-lg text-error text-sm">
           <div className="flex items-center gap-2">
-            <span className="material-symbols-outlined text-lg">error</span>
+            <Icon name="error" size={18} />
             {error}
           </div>
         </div>
@@ -220,12 +221,12 @@ export default function PresidioSettingsCard() {
                     </label>
                     {validationError ? (
                       <span className="flex items-center gap-1 text-xs text-error">
-                        <span className="material-symbols-outlined text-sm">error</span>
+                        <Icon name="error" size={14} />
                         {validationError}
                       </span>
                     ) : (
                       <span className="flex items-center gap-1 text-xs text-success">
-                        <span className="material-symbols-outlined text-sm">check_circle</span>
+                        <Icon name="check_circle" size={14} />
                         Valid
                       </span>
                     )}
@@ -257,17 +258,17 @@ export default function PresidioSettingsCard() {
                     >
                       {isSaving ? (
                         <span className="flex items-center gap-2">
-                          <span className="material-symbols-outlined animate-spin text-sm">refresh</span>
+                          <Icon name="refresh" size={14} className="animate-spin" />
                           Saving...
                         </span>
                       ) : saveStatus === 'success' ? (
                         <span className="flex items-center gap-2">
-                          <span className="material-symbols-outlined text-sm">check</span>
+                          <Icon name="check" size={14} />
                           Saved
                         </span>
                       ) : saveStatus === 'error' ? (
                         <span className="flex items-center gap-2">
-                          <span className="material-symbols-outlined text-sm">close</span>
+                          <Icon name="close" size={14} />
                           Failed
                         </span>
                       ) : (

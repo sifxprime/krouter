@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { formatResetTime, getRemainingPercentage } from "./utils";
+import Icon from "../../../../../../shared/components/icons/Icon";
 
 const PAGE_SIZE = 10;
 
@@ -175,7 +176,7 @@ export default function QuotaTable({
                           title={`Hide "${quota.name}"`}
                           aria-label={`Hide ${quota.name}`}
                         >
-                          <span className="material-symbols-outlined text-[13px] align-middle">visibility_off</span>
+                          <Icon name="visibility_off" size={13} className="align-middle" />
                         </button>
                       )}
                     </div>

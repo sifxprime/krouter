@@ -87,20 +87,20 @@ describe("no theme flash, and no bare ligature text", () => {
     expect(cfg).toContain('storageKey: "theme"');
   });
 
-  it("waits for the icon font itself, with a failsafe", () => {
-    const src = read("src/app/layout.js");
-    // document.fonts.ready settles on the text faces alone; the icon woff2 is lazy.
-    expect(src).toContain("d.fonts.load('24px \"Material Symbols Outlined\"')");
-    expect(src).toContain("setTimeout(f,3000)");
+  // The ligature text flashed because the markup held the literal word `settings`
+  // until the woff2 arrived. The fix was to wait for that font and reveal the
+  // icons behind it; the icons are drawn SVG now, so the word never enters the
+  // DOM and there is nothing to wait for. Assert the cause is gone.
+  it("renders no ligature text that would need hiding", () => {
+    const layout = read("src/app/layout.js");
+    expect(layout, "an icon webfont is being loaded again").not.toContain("Material Symbols");
+    expect(layout, "the font-reveal class is being set again").not.toContain("fonts-loaded");
   });
 
-  it("reveals icons by opacity, layered so utilities still win", () => {
+  it("has no icon-font rules left in the stylesheet", () => {
     const css = read("src/app/globals.css");
-    expect(css).toContain("opacity: 0;");
-    // The shorthand reset transition-property and broke transition-transform;
-    // being unlayered, it also outranked Tailwind's own opacity utilities.
-    expect(css).toContain("transition-property: opacity");
-    expect(css).toContain("@layer base {");
+    expect(css).not.toContain("material-symbols");
+    expect(css).not.toContain("fonts-loaded");
   });
 });
 

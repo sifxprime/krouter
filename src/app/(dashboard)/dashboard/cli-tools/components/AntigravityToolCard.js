@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { Card, Button, Badge, Modal, Input, ModelSelectModal } from "@/shared/components";
 import Image from "next/image";
+import Icon from "../../../../../shared/components/icons/Icon";
 
 export default function AntigravityToolCard({
   tool,
@@ -257,7 +258,7 @@ export default function AntigravityToolCard({
             <p className="text-xs text-text-muted truncate">{tool.description}</p>
           </div>
         </div>
-        <span className={`material-symbols-outlined text-text-muted text-[20px] transition-transform ${isExpanded ? "rotate-180" : ""}`}>expand_more</span>
+        <Icon name="expand_more" size={20} className={`text-text-muted transition-transform${isExpanded ? "rotate-180" : ""}`} />
       </div>
 
       {isExpanded && (
@@ -274,17 +275,15 @@ export default function AntigravityToolCard({
                 <div key={key} className="flex items-center">
                   <div className="flex items-center gap-1 px-2 py-1 rounded-md">
                     {isLoading ? (
-                      <span className="material-symbols-outlined text-[14px] text-primary animate-spin">progress_activity</span>
+                      <Icon name="progress_activity" size={14} className="text-primary animate-spin" />
                     ) : (
-                      <span className={`material-symbols-outlined text-[14px] ${ok ? "text-green-500" : "text-text-muted"}`}>
-                        {ok ? "check_circle" : "radio_button_unchecked"}
-                      </span>
+                      <Icon name={ok ? "check_circle" : "radio_button_unchecked"} size={14} className={`${ok ? "text-green-500" : "text-text-muted"}`} />
                     )}
                     <span className={`text-xs font-medium ${isLoading ? "text-primary" : ok ? "text-green-500" : "text-text-muted"}`}>
                       {label}
                     </span>
                   </div>
-                  {i < 2 && <span className="material-symbols-outlined text-[12px] text-text-muted">arrow_forward</span>}
+                  {i < 2 && <Icon name="arrow_forward" size={12} className="text-text-muted" />}
                 </div>
               );
             })}
@@ -298,7 +297,7 @@ export default function AntigravityToolCard({
                 disabled={loading}
                 className="px-4 py-2 rounded-lg bg-red-500/10 border border-red-500/30 text-red-500 font-medium text-sm flex items-center gap-2 hover:bg-red-500/20 transition-colors disabled:opacity-50"
               >
-                <span className="material-symbols-outlined text-[18px]">stop_circle</span>
+                <Icon name="stop_circle" size={18} />
                 Stop MITM
               </button>
             ) : (
@@ -307,7 +306,7 @@ export default function AntigravityToolCard({
                 disabled={loading || !hasActiveProviders}
                 className="px-4 py-2 rounded-lg bg-primary/10 border border-primary/30 text-primary font-medium text-sm flex items-center gap-2 hover:bg-primary/20 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                <span className="material-symbols-outlined text-[18px]">play_circle</span>
+                <Icon name="play_circle" size={18} />
                 Start MITM
               </button>
             )}
@@ -315,7 +314,7 @@ export default function AntigravityToolCard({
 
           {message?.type === "error" && (
             <div className="flex items-center gap-2 px-2 py-1.5 rounded text-xs bg-red-500/10 text-red-600">
-              <span className="material-symbols-outlined text-[14px]">error</span>
+              <Icon name="error" size={14} />
               <span>{message.text}</span>
             </div>
           )}
@@ -325,7 +324,7 @@ export default function AntigravityToolCard({
             <>
               <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-[8rem_auto_1fr_auto] sm:items-center sm:gap-2">
                 <span className="text-xs font-semibold text-text-main sm:text-right sm:text-sm">API Key</span>
-                <span className="material-symbols-outlined hidden text-text-muted text-[14px] sm:inline">arrow_forward</span>
+                <Icon name="arrow_forward" size={14} className="hidden text-text-muted sm:inline" />
                 {apiKeys.length > 0 ? (
                   <select
                     value={selectedApiKey}
@@ -344,7 +343,7 @@ export default function AntigravityToolCard({
               {tool.defaultModels.map((model) => (
                 <div key={model.alias} className="grid grid-cols-1 gap-1.5 sm:grid-cols-[8rem_auto_1fr_auto] sm:items-center sm:gap-2">
                   <span className="text-xs font-semibold text-text-main sm:text-right sm:text-sm">{model.name}</span>
-                  <span className="material-symbols-outlined hidden text-text-muted text-[14px] sm:inline">arrow_forward</span>
+                  <Icon name="arrow_forward" size={14} className="hidden text-text-muted sm:inline" />
                   <div className="relative w-full min-w-0">
                     <input
                       type="text"
@@ -359,7 +358,7 @@ export default function AntigravityToolCard({
                         className="absolute right-1 top-1/2 -translate-y-1/2 p-0.5 text-text-muted hover:text-red-500 rounded transition-colors"
                         title="Clear"
                       >
-                        <span className="material-symbols-outlined text-[14px]">close</span>
+                        <Icon name="close" size={14} />
                       </button>
                     )}
                   </div>
@@ -380,7 +379,7 @@ export default function AntigravityToolCard({
                   onClick={handleSaveMappings}
                   disabled={loading || Object.keys(modelMappings).length === 0}
                 >
-                  <span className="material-symbols-outlined text-[14px] mr-1">save</span>
+                  <Icon name="save" size={14} className="mr-1" />
                   Save Mappings
                 </Button>
               </div>
@@ -390,7 +389,7 @@ export default function AntigravityToolCard({
           {/* Windows admin warning */}
           {!isRunning && serverIsWindows && (
             <div className="flex items-center gap-2 px-2 py-1.5 rounded text-xs bg-yellow-500/10 text-yellow-600 border border-yellow-500/20">
-              <span className="material-symbols-outlined text-[14px]">warning</span>
+              <Icon name="warning" size={14} />
               <span>Windows: Run terminal (kRouter) as Administrator to enable MITM</span>
             </div>
           )}
@@ -424,7 +423,7 @@ export default function AntigravityToolCard({
       >
         <div className="flex flex-col gap-4">
           <div className="flex items-start gap-3 p-3 bg-yellow-500/10 border border-yellow-500/30 rounded-lg">
-            <span className="material-symbols-outlined text-yellow-500 text-[20px]">warning</span>
+            <Icon name="warning" size={20} className="text-yellow-500" />
             <p className="text-xs text-text-muted">Required for SSL certificate and DNS configuration</p>
           </div>
 
@@ -440,7 +439,7 @@ export default function AntigravityToolCard({
 
           {message && (
             <div className={`flex items-center gap-2 px-2 py-1.5 rounded text-xs ${message.type === "success" ? "bg-green-500/10 text-green-600" : "bg-red-500/10 text-red-600"}`}>
-              <span className="material-symbols-outlined text-[14px]">{message.type === "success" ? "check_circle" : "error"}</span>
+              <Icon name={message.type === "success" ? "check_circle" : "error"} size={14} />
               <span>{message.text}</span>
             </div>
           )}

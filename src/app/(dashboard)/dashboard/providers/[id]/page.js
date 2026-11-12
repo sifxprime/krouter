@@ -24,6 +24,7 @@ import ConnectKit from "./ConnectKit";
 import ZenithRoutePreview from "./ZenithRoutePreview";
 import ZenithDecisionLog from "./ZenithDecisionLog";
 import { getProviderCapabilities } from "@/shared/constants/providerCapabilities";
+import Icon from "../../../../../shared/components/icons/Icon";
 
 const ONE_BY_ONE_DELAY_MS = 1000;
 
@@ -1029,7 +1030,7 @@ export default function ProviderDetailPage() {
             disabled={bulkUpdatingProxy || activePools.length === 0}
             className="flex items-center gap-2 rounded-lg px-3 py-2 text-left transition-colors hover:bg-black/[0.04] dark:hover:bg-white/[0.04] disabled:cursor-not-allowed disabled:opacity-50"
           >
-            <span className="material-symbols-outlined text-text-muted text-[18px]">sync_alt</span>
+            <Icon name="sync_alt" size={18} className="text-text-muted" />
             <span className="text-sm text-text-main">One-to-one (rotate)</span>
           </button>
           <button
@@ -1037,7 +1038,7 @@ export default function ProviderDetailPage() {
             disabled={bulkUpdatingProxy}
             className="flex items-center gap-2 rounded-lg px-3 py-2 text-left transition-colors hover:bg-black/[0.04] dark:hover:bg-white/[0.04] disabled:cursor-not-allowed disabled:opacity-50"
           >
-            <span className="material-symbols-outlined text-text-muted text-[18px]">link_off</span>
+            <Icon name="link_off" size={18} className="text-text-muted" />
             <span className="text-sm text-text-main">None (unbind all)</span>
           </button>
           {proxyPools.map((pool) => (
@@ -1047,7 +1048,7 @@ export default function ProviderDetailPage() {
               disabled={bulkUpdatingProxy || pool.isActive !== true}
               className="flex items-center gap-2 rounded-lg px-3 py-2 text-left transition-colors hover:bg-black/[0.04] dark:hover:bg-white/[0.04] disabled:cursor-not-allowed disabled:opacity-50"
             >
-              <span className="material-symbols-outlined text-text-muted text-[18px]">lan</span>
+              <Icon name="lan" size={18} className="text-text-muted" />
               <span className="truncate text-sm text-text-main">{pool.name}</span>
               {pool.isActive !== true && (
                 <span className="text-[10px] text-text-muted">(inactive)</span>
@@ -1218,7 +1219,7 @@ export default function ProviderDetailPage() {
           onClick={() => setShowAddCustomModel(true)}
           className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-dashed border-primary/40 px-3 py-2 text-xs text-primary transition-colors hover:border-primary hover:bg-primary/5 sm:w-auto"
         >
-          <span className="material-symbols-outlined text-sm">add</span>
+          <Icon name="add" size={14} />
           Add Model
         </button>
 
@@ -1229,9 +1230,7 @@ export default function ProviderDetailPage() {
             disabled={importingQoderModels}
             className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-dashed border-blue-500/40 px-3 py-2 text-xs text-blue-600 dark:text-blue-400 transition-colors hover:border-blue-500 hover:bg-blue-500/5 sm:w-auto disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            <span className="material-symbols-outlined text-sm" style={importingQoderModels ? { animation: "spin 1s linear infinite" } : undefined}>
-              {importingQoderModels ? "progress_activity" : "download"}
-            </span>
+            <Icon name={importingQoderModels ? "progress_activity" : "download"} size={14} style={importingQoderModels ? { animation: "spin 1s linear infinite" } : undefined} />
             {importingQoderModels ? translate("Fetching...") : translate("Fetch Qoder Models")}
           </button>
         )}
@@ -1295,7 +1294,7 @@ export default function ProviderDetailPage() {
 
                 {/* Search */}
                 <div className="relative flex-1 min-w-0">
-                  <span className="material-symbols-outlined absolute left-2.5 top-1/2 -translate-y-1/2 text-[13px] text-text-muted pointer-events-none select-none">search</span>
+                  <Icon name="search" size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-text-muted pointer-events-none select-none" />
                   <input
                     type="text"
                     value={liveModelsSearch}
@@ -1305,7 +1304,7 @@ export default function ProviderDetailPage() {
                   />
                   {liveModelsSearch && (
                     <button onClick={() => setLiveModelsSearch("")} className="absolute right-2 top-1/2 -translate-y-1/2 text-text-muted hover:text-text-muted transition-colors">
-                      <span className="material-symbols-outlined text-[13px]">close</span>
+                      <Icon name="close" size={13} />
                     </button>
                   )}
                 </div>
@@ -1317,7 +1316,7 @@ export default function ProviderDetailPage() {
                   title="Refresh"
                   className="shrink-0 h-7 w-7 flex items-center justify-center rounded-lg border border-border-subtle text-text-muted hover:text-primary hover:border-primary/40 hover:bg-primary/5 transition-colors disabled:opacity-40"
                 >
-                  <span className={`material-symbols-outlined text-[14px] ${liveModelsLoading ? "animate-spin" : ""}`}>refresh</span>
+                  <Icon name="refresh" size={14} className={`${liveModelsLoading ? "animate-spin" : ""}`} />
                 </button>
 
                 {/* Test All (only non-dropped models) */}
@@ -1328,9 +1327,7 @@ export default function ProviderDetailPage() {
                     title={`Test up to ${testableModels.length} models and auto-add passing ones`}
                     className="shrink-0 h-7 flex items-center gap-1 px-2.5 rounded-lg border border-border-subtle text-xs text-text-muted hover:text-green-600 hover:border-green-500/40 hover:bg-green-500/5 transition-colors disabled:opacity-40"
                   >
-                    <span className={`material-symbols-outlined text-[13px] ${testAllRunning ? "animate-spin" : ""}`}>
-                      {testAllRunning ? "progress_activity" : "play_circle"}
-                    </span>
+                    <Icon name={testAllRunning ? "progress_activity" : "play_circle"} size={13} className={`${testAllRunning ? "animate-spin" : ""}`} />
                     {testAllRunning ? "Testing..." : "Test All"}
                   </button>
                 )}
@@ -1342,7 +1339,7 @@ export default function ProviderDetailPage() {
               {/* Loading state */}
               {liveModelsLoading ? (
                 <div className="flex items-center gap-2 py-4 text-xs text-text-muted">
-                  <span className="material-symbols-outlined text-[15px] animate-spin">progress_activity</span>
+                  <Icon name="progress_activity" size={15} className="animate-spin" />
                   Fetching models from provider API...
                 </div>
               ) : groupEntries.length === 0 ? (
@@ -1373,7 +1370,7 @@ export default function ProviderDetailPage() {
                             </span>
                           )}
                           <span className="px-1.5 py-0.5 rounded-md bg-black/[0.06] dark:bg-white/[0.06] text-text-muted tabular-nums font-medium">{groupModels.length}</span>
-                          <span className="material-symbols-outlined text-[15px] text-text-muted">{isExpanded ? "expand_less" : "expand_more"}</span>
+                          <Icon name={isExpanded ? "expand_less" : "expand_more"} size={15} className="text-text-muted" />
                         </button>
                         {isExpanded && (
                           <div className="px-3 pt-2 pb-3 flex flex-wrap gap-1.5 border-t border-border-subtle bg-surface/50">
@@ -1394,7 +1391,7 @@ export default function ProviderDetailPage() {
                                     title={`Recently Dropped — click to restore: ${m.id}`}
                                     className="group flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-amber-400/40 bg-amber-500/5 text-amber-700 dark:text-amber-400 text-xs hover:bg-amber-500/10 hover:border-amber-400/60 transition-colors"
                                   >
-                                    <span className="material-symbols-outlined text-[12px]">history</span>
+                                    <Icon name="history" size={12} />
                                     <span>{label}</span>
                                     {m.contextLength > 0 && <span className="opacity-50 text-[10px] ml-0.5">{(m.contextLength / 1000).toFixed(0)}k</span>}
                                   </button>
@@ -1420,13 +1417,13 @@ export default function ProviderDetailPage() {
                                   ].join(" ")}
                                 >
                                   {testing ? (
-                                    <span className="material-symbols-outlined text-[12px] animate-spin">progress_activity</span>
+                                    <Icon name="progress_activity" size={12} className="animate-spin" />
                                   ) : status === "ok" ? (
-                                    <span className="material-symbols-outlined text-[12px]">check</span>
+                                    <Icon name="check" size={12} />
                                   ) : status === "error" ? (
-                                    <span className="material-symbols-outlined text-[12px]">close</span>
+                                    <Icon name="close" size={12} />
                                   ) : (
-                                    <span className="material-symbols-outlined text-[12px] opacity-50 group-hover:opacity-100">add</span>
+                                    <Icon name="add" size={12} className="opacity-50 group-hover:opacity-100" />
                                   )}
                                   <span>{label}</span>
                                   {m.contextLength > 0 && <span className="opacity-40 text-[10px] ml-0.5">{(m.contextLength / 1000).toFixed(0)}k</span>}
@@ -1493,7 +1490,7 @@ export default function ProviderDetailPage() {
             href="/dashboard/providers"
             className="inline-flex items-center gap-1 text-sm text-text-muted hover:text-primary transition-colors mb-4"
           >
-            <span className="material-symbols-outlined text-lg">arrow_back</span>
+            <Icon name="arrow_back" size={18} />
             Back to Providers
           </Link>
           <div className="flex min-w-0 items-center gap-3 sm:gap-4">
@@ -1696,7 +1693,7 @@ export default function ProviderDetailPage() {
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div className="flex items-center gap-3">
                   <div className="inline-flex items-center justify-center w-9 h-9 rounded-full bg-primary/10 text-primary shrink-0">
-                    <span className="material-symbols-outlined text-[18px]">key</span>
+                    <Icon name="key" size={18} />
                   </div>
                   <p className="text-sm text-text-muted">No connections yet</p>
                 </div>

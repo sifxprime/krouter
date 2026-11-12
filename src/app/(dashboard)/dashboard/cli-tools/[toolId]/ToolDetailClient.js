@@ -6,6 +6,7 @@ import { CardSkeleton } from "@/shared/components";
 import { CLI_TOOLS } from "@/shared/constants/cliTools";
 import { getModelsByProviderId, PROVIDER_ID_TO_ALIAS } from "@/shared/constants/models";
 import { AI_PROVIDERS } from "@/shared/constants/providers";
+import Icon from "../../../../../shared/components/icons/Icon";
 import {
   ClaudeToolCard, CodexToolCard, DroidToolCard, OpenClawToolCard,
   HermesToolCard, DefaultToolCard, OpenCodeToolCard, CoworkToolCard,
@@ -155,7 +156,7 @@ export default function ToolDetailClient({ toolId, machineId }) {
     return (
       <div className="mx-auto flex w-full max-w-5xl flex-col gap-4 px-1 sm:px-0">
         <Link href="/dashboard/cli-tools" className="inline-flex items-center gap-1 text-sm text-text-muted hover:text-primary w-fit">
-          <span className="material-symbols-outlined text-[18px]">arrow_back</span>
+          <Icon name="arrow_back" size={18} />
           Back to CLI Tools
         </Link>
         <p className="text-sm text-text-muted">Tool not found or disabled.</p>
@@ -166,7 +167,7 @@ export default function ToolDetailClient({ toolId, machineId }) {
   return (
     <div className="mx-auto flex w-full max-w-5xl flex-col gap-4 px-1 sm:px-0">
       <Link href="/dashboard/cli-tools" className="inline-flex items-center gap-1 text-sm text-text-muted hover:text-primary w-fit">
-        <span className="material-symbols-outlined text-[18px]">arrow_back</span>
+        <Icon name="arrow_back" size={18} />
         Back to CLI Tools
       </Link>
       <div className="flex flex-col gap-1">

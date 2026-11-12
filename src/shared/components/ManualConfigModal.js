@@ -4,6 +4,7 @@ import { useState } from "react";
 import Modal from "./Modal";
 import Button from "./Button";
 import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
+import Icon from "./icons/Icon";
 
 export default function ManualConfigModal({ isOpen, onClose, title = "Manual Configuration", configs = [] }) {
   const { copy } = useCopyToClipboard();
@@ -27,9 +28,7 @@ export default function ManualConfigModal({ isOpen, onClose, title = "Manual Con
                 size="sm"
                 onClick={() => copyConfig(config.content, index)}
               >
-                <span className="material-symbols-outlined text-[14px] mr-1">
-                  {copiedIndex === index ? "check" : "content_copy"}
-                </span>
+                <Icon name={copiedIndex === index ? "check" : "content_copy"} size={14} className="mr-1" />
                 {copiedIndex === index ? "Copied!" : "Copy"}
               </Button>
             </div>

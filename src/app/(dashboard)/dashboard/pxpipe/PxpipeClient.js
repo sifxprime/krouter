@@ -11,6 +11,7 @@ import {
   ResponsiveContainer,
 } from "recharts";
 import { Card, Button } from "@/shared/components";
+import Icon from "../../../../shared/components/icons/Icon";
 
 const fmtTokens = (n) => {
   if (n >= 1000000) return `${(n / 1000000).toFixed(2)}M`;
@@ -105,7 +106,7 @@ export default function PxpipeClient() {
     <div className="space-y-6 p-6">
       <div className="flex items-center justify-between flex-wrap gap-3">
         <h2 className="text-lg font-semibold flex items-center gap-2">
-          <span className="material-symbols-outlined text-primary">image</span>
+          <Icon name="image" size={24} className="text-primary" />
           PXPIPE Dashboard
         </h2>
         <div className="flex items-center gap-2">

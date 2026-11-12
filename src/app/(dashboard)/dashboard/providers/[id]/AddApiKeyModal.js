@@ -5,6 +5,7 @@ import PropTypes from "prop-types";
 import { Button, Badge, Input, Modal, Select } from "@/shared/components";
 import { AI_PROVIDERS } from "@/shared/constants/providers";
 import { planBulkAdd } from "@/shared/utils/bulkAdd";
+import Icon from "../../../../../shared/components/icons/Icon";
 
 // 0.5.86 — Live preview debounce window.
 // Providers rate-limit /v1/models, so we only fire after the user has stopped
@@ -286,26 +287,26 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
           <div className="flex flex-wrap items-center gap-2 text-xs">
             {previewState.status === "loading" && (
               <span className="inline-flex items-center gap-1.5 text-text-muted">
-                <span className="material-symbols-outlined animate-spin text-sm">progress_activity</span>
+                <Icon name="progress_activity" size={14} className="animate-spin" />
                 Checking key + fetching catalog…
               </span>
             )}
             {previewState.status === "ok" && (
               <span className="inline-flex items-center gap-1.5 text-green-500">
-                <span className="material-symbols-outlined text-sm">check_circle</span>
+                <Icon name="check_circle" size={14} />
                 Fetched {previewState.count} model{previewState.count === 1 ? "" : "s"} from {providerName || provider}
                 {previewState.cached && <span className="text-text-muted">· cached</span>}
               </span>
             )}
             {previewState.status === "error" && (
               <span className="inline-flex items-center gap-1.5 text-red-500">
-                <span className="material-symbols-outlined text-sm">error</span>
+                <Icon name="error" size={14} />
                 {previewState.error}
               </span>
             )}
             {previewState.status === "unsupported" && (
               <span className="inline-flex items-center gap-1.5 text-text-muted">
-                <span className="material-symbols-outlined text-sm">info</span>
+                <Icon name="info" size={14} />
                 No live catalog for this provider — you can still save the key.
               </span>
             )}

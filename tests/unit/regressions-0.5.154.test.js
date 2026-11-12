@@ -32,22 +32,26 @@ describe("sqlite engine is chosen by Node-API level, not major version", () => {
   });
 });
 
-describe("the icon reveal does not override Tailwind utilities", () => {
-  const css = () => read("src/app/globals.css");
-
-  it("lives inside a cascade layer", () => {
-    // Unlayered rules beat every layered one, so an unlayered .material-symbols
-    // rule outranked .opacity-20 and .transition-transform from @layer utilities.
-    const m = css().match(/@layer base \{[\s\S]*?\.material-symbols-outlined \{[\s\S]*?\}/);
-    expect(m, "icon reveal must be wrapped in @layer base").toBeTruthy();
+describe("the icon reveal cannot override Tailwind utilities", () => {
+  // This pair of bugs came from one rule: `.material-symbols-outlined` hid every
+  // icon at `opacity: 0` until the webfont loaded. Unlayered, it outranked
+  // `.opacity-20` from @layer utilities; written as the `transition` shorthand, it
+  // reset transition-property and killed `transition-transform` on every chevron.
+  //
+  // Both were fixed by layering it and using longhands. Both are now impossible
+  // instead: the icons are drawn SVG, so there is no font to wait for and no rule
+  // to hide them with. Guarding the absence is strictly stronger than guarding the
+  // careful version of a rule that should not exist — and if the font ever returns,
+  // this failure is where the history is written down.
+  it("has no ligature-font reveal rule at all", () => {
+    const css = read("src/app/globals.css");
+    expect(css, "globals.css styles a ligature icon font again").not.toContain("material-symbols");
   });
 
-  it("sets transition longhands rather than the shorthand", () => {
-    // `transition: opacity ...` resets transition-property, which silently killed
-    // transition-transform on every chevron that is also an icon.
-    const start = css().indexOf("@layer base {");
-    const block = css().slice(start, start + 600);
-    expect(block).toContain("transition-property: opacity");
-    expect(block).not.toMatch(/^\s*transition:\s/m);
+  it("ships no icon webfont for a reveal rule to wait on", () => {
+    const layout = read("src/app/layout.js");
+    expect(layout, "layout.js imports an icon font again").not.toContain("material-symbols");
+    const pkg = JSON.parse(read("package.json"));
+    expect(Object.keys(pkg.dependencies || {})).not.toContain("material-symbols");
   });
 });

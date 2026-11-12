@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import { LOCALES, LOCALE_COOKIE, normalizeLocale } from "@/i18n/config";
 import { reloadTranslations } from "@/i18n/runtime";
+import Icon from "./icons/Icon";
 
 function getLocaleFromCookie() {
   if (typeof document === "undefined") return "en";
@@ -120,7 +121,7 @@ export default function LanguageSwitcher({ className = "", isOpen: controlledOpe
           title="Language"
           data-i18n-skip="true"
         >
-          <span className="material-symbols-outlined text-[20px]">language</span>
+          <Icon name="language" size={20} />
           <span className="text-sm font-medium">{getLocaleInfo(locale).name}</span>
           <span className="text-lg">{getLocaleInfo(locale).flag}</span>
         </button>
@@ -148,7 +149,7 @@ export default function LanguageSwitcher({ className = "", isOpen: controlledOpe
                 className="p-1.5 rounded-lg text-text-muted hover:bg-black/5 dark:hover:bg-white/5 transition-colors"
                 aria-label="Close"
               >
-                <span className="material-symbols-outlined text-[20px]">close</span>
+                <Icon name="close" size={20} />
               </button>
             </div>
 
@@ -174,7 +175,7 @@ export default function LanguageSwitcher({ className = "", isOpen: controlledOpe
                       {/* Fixed 2-line height so all cards are uniform */}
                       <span className="text-center leading-tight line-clamp-2 h-8 flex items-center">{info.name}</span>
                       {active && (
-                        <span className="material-symbols-outlined text-sm">check</span>
+                        <Icon name="check" size={14} />
                       )}
                     </button>
                   );

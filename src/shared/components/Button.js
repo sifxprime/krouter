@@ -1,6 +1,7 @@
 "use client";
 
 import { cn } from "@/shared/utils/cn";
+import Icon from "./icons/Icon";
 
 const variants = {
   primary: "bg-brand-500 hover:bg-brand-600 text-white shadow-sm disabled:bg-surface-3 disabled:text-text-muted",
@@ -43,13 +44,13 @@ export default function Button({
       {...props}
     >
       {loading ? (
-        <span className="material-symbols-outlined animate-spin text-[18px]">progress_activity</span>
+        <Icon name="progress_activity" size={18} className="animate-spin" />
       ) : icon ? (
-        <span className="material-symbols-outlined text-[18px]">{icon}</span>
+        <Icon name={icon} size={18} />
       ) : null}
       {children}
       {iconRight && !loading && (
-        <span className="material-symbols-outlined text-[18px]">{iconRight}</span>
+        <Icon name={iconRight} size={18} />
       )}
     </button>
   );

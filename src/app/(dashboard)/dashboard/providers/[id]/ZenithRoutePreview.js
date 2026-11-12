@@ -9,6 +9,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import PropTypes from "prop-types";
+import Icon from "../../../../../shared/components/icons/Icon";
 
 const REFRESH_MS = 10_000;
 
@@ -47,7 +48,7 @@ export default function ZenithRoutePreview({ providerId, models = [] }) {
   return (
     <div className="mb-3 flex flex-wrap items-center gap-2 rounded-lg border border-primary/20 bg-primary/[0.04] px-3 py-2 text-xs">
       <span className="inline-flex items-center gap-1 text-primary font-medium">
-        <span className="material-symbols-outlined text-sm">route</span>
+        <Icon name="route" size={14} />
         Next request →
       </span>
       <span className="font-medium text-text-main">{w.name}</span>

@@ -21,6 +21,7 @@
 import { useState } from "react";
 import PropTypes from "prop-types";
 import { Button } from "@/shared/components";
+import Icon from "../../../../../shared/components/icons/Icon";
 
 const MODE_META = {
   oauth:      { icon: "lock",            label: "Sign in with OAuth",  tabLabel: "OAuth" },
@@ -115,7 +116,7 @@ function FreeKit({ capabilities: c, onFree }) {
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="min-w-0">
           <div className="mb-1 flex items-center gap-2">
-            <span className="material-symbols-outlined text-[18px] text-green-500">bolt</span>
+            <Icon name="bolt" size={18} className="text-green-500" />
             <h3 className="text-base font-semibold">{c.name} is free — one click to connect</h3>
           </div>
           <p className="text-sm text-text-muted">
@@ -228,7 +229,7 @@ export default function ConnectKit({ capabilities, onOAuth, onApiKey, onFree, on
                     : "text-text-muted hover:text-text-main"
                 }`}
               >
-                <span className="material-symbols-outlined text-sm">{meta.icon}</span>
+                <Icon name={meta.icon} size={14} />
                 {meta.tabLabel}
               </button>
             );

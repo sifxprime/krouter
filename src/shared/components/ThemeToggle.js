@@ -2,6 +2,7 @@
 
 import { useTheme } from "@/shared/hooks/useTheme";
 import { cn } from "@/shared/utils/cn";
+import Icon from "./icons/Icon";
 
 export default function ThemeToggle({ className, variant = "default" }) {
   const { isDark, toggleTheme } = useTheme();
@@ -29,14 +30,10 @@ export default function ThemeToggle({ className, variant = "default" }) {
       aria-label={`Switch to ${isDark ? "light" : "dark"} mode`}
       title={`Switch to ${isDark ? "light" : "dark"} mode`}
     >
-      <span
-        className={cn(
-          "material-symbols-outlined text-[22px]",
+      <Icon name={isDark ? "light_mode" : "dark_mode"} size={22} className={cn(
+          "",
           variant === "card" && "transition-transform duration-300 group-hover:rotate-12"
-        )}
-      >
-        {isDark ? "light_mode" : "dark_mode"}
-      </span>
+        )} />
     </button>
   );
 }

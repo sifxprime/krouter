@@ -7,6 +7,7 @@ import Drawer from "@/shared/components/Drawer";
 import Pagination from "@/shared/components/Pagination";
 import { cn } from "@/shared/utils/cn";
 import { AI_PROVIDERS, getProviderByAlias } from "@/shared/constants/providers";
+import Icon from "../../../../../shared/components/icons/Icon";
 
 let providerNameCache = null;
 let providerNodesCache = null;
@@ -62,15 +63,13 @@ function CollapsibleSection({ title, children, defaultOpen = false, icon = null 
         className="w-full flex items-center justify-between p-3 bg-black/[0.02] dark:bg-white/[0.02] hover:bg-black/[0.04] dark:hover:bg-white/[0.04] transition-colors"
       >
         <div className="flex items-center gap-2">
-          {icon && <span className="material-symbols-outlined text-[18px] text-text-muted">{icon}</span>}
+          {icon && <Icon name={icon} size={18} className="text-text-muted" />}
           <span className="font-semibold text-sm text-text-main">{title}</span>
         </div>
-        <span className={cn(
-          "material-symbols-outlined text-[20px] text-text-muted transition-transform duration-200",
+        <Icon name="chevron_right" size={20} className={cn(
+          "text-text-muted transition-transform duration-200",
           isOpen ? "rotate-90" : ""
-        )}>
-          chevron_right
-        </span>
+        )} />
       </button>
       
       {isOpen && (
@@ -255,7 +254,7 @@ export default function RequestDetailsTab() {
                 <tr>
                   <td colSpan="7" className="p-8 text-center text-text-muted">
                     <div className="flex items-center justify-center gap-2">
-                      <span className="material-symbols-outlined animate-spin text-[20px]">progress_activity</span>
+                      <Icon name="progress_activity" size={20} className="animate-spin" />
                       Loading...
                     </div>
                   </td>
@@ -408,7 +407,7 @@ export default function RequestDetailsTab() {
                 {selectedDetail.response?.thinking && (
                   <div className="mb-4">
                     <h4 className="font-semibold text-text-main mb-2 flex items-center gap-2 text-xs uppercase tracking-wide opacity-70">
-                      <span className="material-symbols-outlined text-[16px]">psychology</span>
+                      <Icon name="psychology" size={16} />
                       Thinking Process
                     </h4>
                     <pre className="max-h-[200px] max-w-full overflow-auto rounded-lg border border-amber-200 bg-amber-50 p-3 font-mono text-xs text-amber-900 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-100 sm:p-4">

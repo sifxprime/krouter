@@ -8,6 +8,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { Modal, Button } from "@/shared/components";
+import Icon from "../../../../shared/components/icons/Icon";
 
 export default function ZenithStrip() {
   const [state, setState] = useState({ status: "idle" });
@@ -41,7 +42,7 @@ export default function ZenithStrip() {
     <>
       <div className="mb-4 flex flex-wrap items-center gap-2 rounded-xl border border-primary/20 bg-gradient-to-r from-primary/[0.06] via-primary/[0.02] to-transparent px-4 py-2.5 text-sm">
         <span className="inline-flex items-center gap-1.5 font-medium text-primary">
-          <span className="material-symbols-outlined text-base">bolt</span>
+          <Icon name="bolt" size={16} />
           Zenith
         </span>
         <span className="text-text-muted">·</span>

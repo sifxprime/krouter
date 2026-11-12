@@ -1,5 +1,7 @@
 "use client";
 
+import Icon from "../../../shared/components/icons/Icon";
+
 export default function HowItWorks() {
   return (
     <section className="py-24 border-y border-[#3a2f27] bg-[#23180f]/30" id="how-it-works">
@@ -18,7 +20,7 @@ export default function HowItWorks() {
           {/* Step 1: CLI & SDKs */}
           <div className="flex flex-col gap-6 relative group">
             <div className="w-24 h-24 rounded-2xl bg-[#181411] border border-[#3a2f27] flex items-center justify-center shadow-xl group-hover:border-gray-500 transition-colors z-10 mx-auto md:mx-0">
-              <span className="material-symbols-outlined text-4xl text-gray-300">terminal</span>
+              <Icon name="terminal" size={36} className="text-gray-300" />
             </div>
             <div>
               <h3 className="text-xl font-bold mb-2">1. CLI &amp; SDKs</h3>
@@ -31,7 +33,7 @@ export default function HowItWorks() {
           {/* Step 2: kRouter Hub */}
           <div className="flex flex-col gap-6 relative group md:items-center md:text-center">
             <div className="w-24 h-24 rounded-2xl bg-[#181411] border-2 border-[#f97815] flex items-center justify-center shadow-[0_0_30px_rgba(249,120,21,0.2)] z-10 mx-auto">
-              <span className="material-symbols-outlined text-4xl text-[#f97815] animate-pulse">hub</span>
+              <Icon name="hub" size={36} className="text-[#f97815] animate-pulse" />
             </div>
             <div>
               <h3 className="text-xl font-bold mb-2 text-[#f97815]">2. kRouter Hub</h3>

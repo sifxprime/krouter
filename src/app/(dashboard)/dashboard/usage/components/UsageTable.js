@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useMemo, Fragment } from "react";
 import PropTypes from "prop-types";
 import Card from "@/shared/components/Card";
 import Badge from "@/shared/components/Badge";
+import Icon from "../../../../../shared/components/icons/Icon";
 
 const fmt = (n) => new Intl.NumberFormat().format(n || 0);
 const fmtCost = (n) => `$${(n || 0).toFixed(2)}`;
@@ -187,9 +188,7 @@ export default function UsageTable({
                 >
                   <td className="px-6 py-3">
                     <div className="flex items-center gap-2">
-                      <span className={`material-symbols-outlined text-[18px] text-text-muted transition-transform ${expanded.has(group.groupKey) ? "rotate-90" : ""}`}>
-                        chevron_right
-                      </span>
+                      <Icon name="chevron_right" size={18} className={`text-text-muted transition-transform${expanded.has(group.groupKey) ? "rotate-90" : ""}`} />
                       <span className={`font-medium transition-colors ${group.summary.pending > 0 ? "text-primary" : ""}`}>
                         {group.groupKey}
                       </span>

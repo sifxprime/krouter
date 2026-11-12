@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { Card, Button, Input, Modal, Toggle } from "@/shared/components";
 import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
 import { getCurrentLocale, onLocaleChange } from "@/i18n/runtime";
+import Icon from "../../../../shared/components/icons/Icon";
 import {
   WENYAN_LOCALES,
   CAVEMAN_LEVELS,
@@ -192,9 +193,7 @@ export default function TokenSaverClient() {
       <Card id="rtk">
         <div className="flex items-center justify-between mb-2">
           <h2 className="text-lg font-semibold flex items-center gap-2">
-            <span className="material-symbols-outlined text-primary">
-              bolt
-            </span>
+            <Icon name="bolt" size={24} className="text-primary" />
             Token Saver
           </h2>
         </div>

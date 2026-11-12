@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { Card, Button, Input } from "@/shared/components";
+import Icon from "../../../../shared/components/icons/Icon";
 
 /**
  * Cert install / uninstall card for the MITM dashboard page.
@@ -128,7 +129,7 @@ export default function CertManagementCard() {
               trust kRouter&apos;s self-signed certificate for HTTPS interception.
             </p>
           </div>
-          <span className={`material-symbols-outlined text-[20px] shrink-0 ${mainBadge.color}`}>{mainBadge.icon}</span>
+          <Icon name={mainBadge.icon} size={20} className={`shrink-0${mainBadge.color}`} />
         </div>
 
         {/* Status grid */}
