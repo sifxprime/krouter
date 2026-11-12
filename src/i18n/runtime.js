@@ -55,7 +55,11 @@ export function onLocaleChange(callback) {
 }
 
 // Process text node
-function processTextNode(node) {
+//
+// Exported for tests: the stale-cache bug this guards against is only
+// reproducible by calling it twice around a text change, which is what React
+// does and what no higher-level entry point exposes.
+export function processTextNode(node) {
   if (!node.nodeValue || !node.nodeValue.trim()) return;
   
   // Skip if parent is script, style, code, or structural elements
@@ -82,8 +86,26 @@ function processTextNode(node) {
   
   if (skipTags.includes(tagName)) return;
   
-  // Store original text if not already stored
-  if (!node._originalText) {
+  // The source string for this node, remembered so a language switch can
+  // re-translate from the original rather than from an already-translated
+  // string.
+  //
+  // It has to be re-captured when React changes the text. React updates a text
+  // node in place when a conditional swaps two elements of the same type at the
+  // same position -- `{on ? <Badge>Running</Badge> : <Badge>Stopped</Badge>}`
+  // is one node whose value changes. The cache is keyed on the node object, so
+  // it survived that change; the next walk (triggered by any sibling being
+  // added, since the observer watches childList on the whole body) then
+  // translated the STALE original and wrote it back over React's update.
+  //
+  // Seen live: the MITM card rendered with variant="success" -- green, the
+  // running style -- while its text read "Stopped", because "Stopped" was the
+  // value this node happened to have the first time i18n saw it.
+  //
+  // `_i18nApplied` is what this function last wrote. If the node no longer
+  // holds that, something else (React) changed it, and that new value is the
+  // new original.
+  if (!node._originalText || node.nodeValue !== node._i18nApplied) {
     node._originalText = node.nodeValue;
   }
   
@@ -95,6 +117,7 @@ function processTextNode(node) {
   if (translated !== node.nodeValue) {
     node.nodeValue = translated;
   }
+  node._i18nApplied = translated;
 }
 
 // Process all text nodes in element
