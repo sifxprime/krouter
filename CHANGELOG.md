@@ -1,3 +1,47 @@
+# v0.5.186 (2026-11-13) — the build stops phoning Google for fonts
+
+Carries everything in v0.5.185, which npm accepted and then left staged: the
+registry has not served it, so `npm install` cannot reach it. Cut again here with
+the font fix on top.
+
+**`next/font/google` resolved its CSS during `next build`,** so a production build
+only succeeded while fonts.googleapis.com answered the machine doing the
+building. It did not, twice in one day — the first v0.5.183 npm publish and the
+v0.5.185 Docker image — both dying as:
+
+    src/app/layout.js
+    An error occurred in `next/font`.
+    TypeError: Cannot read properties of null (reading '1')
+        at .../@next/font/dist/google/loader.js:122:78
+
+Both recovered on a blind re-run, which is the worst shape a release step can
+have: it fails for a reason nothing in the diff explains, and retrying looks like
+a fix. Inter and Space Grotesk are now committed as latin-subset variable woff2
+and read with `next/font/local`. Verified by building with both Google font hosts
+blocked at the socket layer — exit 0, compiled successfully.
+
+Nothing changes for visitors. `next/font/google` already self-hosted these files,
+and the two the build emits are byte-identical to the ones v0.5.184 shipped —
+same sha256, same content-hashed name:
+
+    36966cca54120369-s.p.woff2   shipped=a0d054c4af55  new=a0d054c4af55
+    e4af272ccee01ff0-s.p.woff2   shipped=c940764593d0  new=c940764593d0
+
+It also drops 204 KB of fonts nothing renders. The google loader pulled every
+unicode-range subset — latin-ext, cyrillic, greek, vietnamese — for a latin-only
+UI: 10 woff2 totalling 276 KB, against 2 totalling 72 KB now.
+
+One subtlety is pinned by a test rather than left to luck. `--font-sans` names the
+literal `'Inter'`, not `var(--font-inter)`. `next/font/local` names the family
+after the binding it is assigned to, so `const inter` emits
+`@font-face{font-family:inter}`, and CSS matches family names ASCII
+case-insensitively — rename that one binding and the body silently falls to
+-apple-system with nothing erroring. (The old loader emitted the real `Inter`,
+confirmed in the shipped v0.5.184 CSS, so the rendered typeface is unchanged.)
+
+Both families are OFL-1.1, which permits redistributing the files; provenance,
+source URLs and axis ranges are in src/app/fonts/README.md.
+
 # v0.5.185 (2026-11-13) — MITM comes back after a reboot
 
 Three bugs, all silent. The first two stacked: MITM never auto-started after a
