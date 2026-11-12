@@ -131,21 +131,21 @@ export default function PricingModal({ isOpen, onClose, onSave }) {
                       {provider.toUpperCase()}
                     </div>
                     <div className="overflow-x-auto">
-                      <table className="w-full text-sm">
-                        <thead className="bg-surface-2 text-text-muted uppercase text-xs">
+                      <table className="data-table">
+                        <thead>
                           <tr>
-                            <th className="px-3 py-2 text-left">Model</th>
-                            <th className="px-3 py-2 text-right">Input</th>
-                            <th className="px-3 py-2 text-right">Output</th>
-                            <th className="px-3 py-2 text-right">Cached</th>
-                            <th className="px-3 py-2 text-right">Reasoning</th>
-                            <th className="px-3 py-2 text-right">Cache Creation</th>
+                            <th className="text-left">Model</th>
+                            <th className="num">Input</th>
+                            <th className="num">Output</th>
+                            <th className="num">Cached</th>
+                            <th className="num">Reasoning</th>
+                            <th className="num">Cache Creation</th>
                           </tr>
                         </thead>
-                        <tbody className="divide-y divide-border">
+                        <tbody>
                           {models.map(model => (
                             <tr key={model} className="hover:bg-bg-alt/50">
-                              <td className="px-3 py-2 font-medium">{model}</td>
+                              <td className="font-medium">{model}</td>
                               {pricingFields.map(field => (
                                 <td key={field} className="px-3 py-2">
                                   <input

@@ -68,34 +68,34 @@ export default function ZenithStrip() {
 
       <Modal isOpen={modalOpen} title="Zenith Leaderboard" onClose={() => setModalOpen(false)}>
         <div className="max-h-[60vh] overflow-y-auto">
-          <table className="w-full text-sm">
-            <thead className="sticky top-0 bg-bg text-text-muted">
+          <table className="data-table">
+            <thead className="sticky top-0">
               <tr className="text-left text-xs">
-                <th className="py-2 pr-2">#</th>
-                <th className="py-2 pr-2">Connection</th>
-                <th className="py-2 pr-2 text-right">Health</th>
-                <th className="py-2 pr-2 text-right">Quota</th>
-                <th className="py-2 pr-2 text-right">Priority</th>
-                <th className="py-2 pl-2 text-right">Zenith</th>
+                <th>#</th>
+                <th>Connection</th>
+                <th className="num">Health</th>
+                <th className="num">Quota</th>
+                <th className="num">Priority</th>
+                <th className="num">Zenith</th>
               </tr>
             </thead>
             <tbody>
               {state.leaderboard.map((e) => (
                 <tr key={e.connectionId} className="border-t border-border/50">
-                  <td className="py-1.5 pr-2 text-text-muted">{e.rank}</td>
-                  <td className="py-1.5 pr-2">
+                  <td className="text-text-muted">{e.rank}</td>
+                  <td>
                     <div className="font-medium">{e.name}</div>
                     <div className="text-[10px] text-text-muted">{e.provider}</div>
                   </td>
-                  <td className="py-1.5 pr-2 text-right font-mono text-xs">{e.healthScore}</td>
-                  <td className="py-1.5 pr-2 text-right font-mono text-xs">
+                  <td className="num font-mono">{e.healthScore}</td>
+                  <td className="num font-mono">
                     ×{e.quotaFactor}
                     {e.quotaRemainingPct != null && (
                       <span className="ml-1 text-text-muted">({e.quotaRemainingPct}%)</span>
                     )}
                   </td>
-                  <td className="py-1.5 pr-2 text-right font-mono text-xs">+{e.priorityBonus}</td>
-                  <td className="py-1.5 pl-2 text-right">
+                  <td className="num font-mono">+{e.priorityBonus}</td>
+                  <td className="num">
                     <span className={`inline-flex items-center rounded-md border px-1.5 py-0.5 font-mono text-[11px] ${
                       e.finalScore >= 750
                         ? "bg-green-500/10 text-green-700 dark:text-green-400 border-green-500/30"

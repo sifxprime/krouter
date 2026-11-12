@@ -65,19 +65,19 @@ export default function RequestLogger() {
           ) : logs.length === 0 ? (
             <div className="p-8 text-center text-text-muted">No logs recorded yet.</div>
           ) : (
-            <table className="w-full text-left border-collapse whitespace-nowrap">
-              <thead className="sticky top-0 bg-bg-alt border-b border-border z-10">
+            <table className="data-table whitespace-nowrap">
+              <thead className="sticky top-0 z-10">
                 <tr>
-                  <th className="px-3 py-2 border-r border-border">DateTime</th>
-                  <th className="px-3 py-2 border-r border-border">Model</th>
-                  <th className="px-3 py-2 border-r border-border">Provider</th>
-                  <th className="px-3 py-2 border-r border-border">Account</th>
-                  <th className="px-3 py-2 border-r border-border">In</th>
-                  <th className="px-3 py-2 border-r border-border">Out</th>
-                  <th className="px-3 py-2">Status</th>
+                  <th>DateTime</th>
+                  <th>Model</th>
+                  <th>Provider</th>
+                  <th>Account</th>
+                  <th>In</th>
+                  <th>Out</th>
+                  <th>Status</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-border/50">
+              <tbody>
                 {logs.map((log, i) => {
                   const parts = log.split(" | ");
                   if (parts.length < 7) return null;
@@ -89,16 +89,16 @@ export default function RequestLogger() {
 
                   return (
                     <tr key={i} className={`hover:bg-primary/5 transition-colors ${isPending ? 'bg-primary/5' : ''}`}>
-                      <td className="px-3 py-1.5 border-r border-border text-text-muted">{parts[0]}</td>
-                      <td className="px-3 py-1.5 border-r border-border font-medium">{parts[1]}</td>
-                      <td className="px-3 py-1.5 border-r border-border">
+                      <td className="text-text-muted">{parts[0]}</td>
+                      <td className="font-medium">{parts[1]}</td>
+                      <td>
                         <span className="px-1.5 py-0.5 rounded bg-bg-alt border border-border text-[10px] uppercase font-bold">
                           {parts[2]}
                         </span>
                       </td>
-                      <td className="px-3 py-1.5 border-r border-border truncate max-w-[150px]" title={parts[3]}>{parts[3]}</td>
-                      <td className="px-3 py-1.5 border-r border-border text-right text-primary">{parts[4]}</td>
-                      <td className="px-3 py-1.5 border-r border-border text-right text-success">{parts[5]}</td>
+                      <td className="truncate max-w-[150px]" title={parts[3]}>{parts[3]}</td>
+                      <td className="num text-primary">{parts[4]}</td>
+                      <td className="num text-success">{parts[5]}</td>
                       <td className={`px-3 py-1.5 font-bold ${isSuccess ? 'text-success' :
                           isFailed ? 'text-error' :
                             'text-primary animate-pulse'

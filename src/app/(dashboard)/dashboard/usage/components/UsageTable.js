@@ -36,13 +36,13 @@ function ValueCells({ item, viewMode, isSummary = false }) {
   if (viewMode === "tokens") {
     return (
       <>
-        <td className="px-6 py-3 text-right text-text-muted">
+        <td className="num text-text-muted">
           {isSummary && item.promptTokens === undefined ? "—" : fmt(item.promptTokens)}
         </td>
-        <td className="px-6 py-3 text-right text-text-muted">
+        <td className="num text-text-muted">
           {isSummary && item.completionTokens === undefined ? "—" : fmt(item.completionTokens)}
         </td>
-        <td className="px-6 py-3 text-right font-medium">
+        <td className="num font-medium">
           {fmt(item.totalTokens)}
         </td>
       </>
@@ -50,13 +50,13 @@ function ValueCells({ item, viewMode, isSummary = false }) {
   }
   return (
     <>
-      <td className="px-6 py-3 text-right text-text-muted">
+      <td className="num text-text-muted">
         {isSummary && item.inputCost === undefined ? "—" : fmtCost(item.inputCost)}
       </td>
-      <td className="px-6 py-3 text-right text-text-muted">
+      <td className="num text-text-muted">
         {isSummary && item.outputCost === undefined ? "—" : fmtCost(item.outputCost)}
       </td>
-      <td className="px-6 py-3 text-right font-medium text-warning">
+      <td className="num font-medium text-warning">
         {fmtCost(item.totalCost || item.cost)}
       </td>
     </>
@@ -153,8 +153,8 @@ export default function UsageTable({
         <h3 className="font-semibold">{title}</h3>
       </div>
       <div className="overflow-x-auto">
-        <table className="w-full text-sm text-left">
-          <thead className="bg-bg-alt/30 text-text-muted uppercase text-xs">
+        <table className="data-table">
+          <thead>
             <tr>
               {columns.map((col) => (
                 <th
@@ -178,7 +178,7 @@ export default function UsageTable({
               ))}
             </tr>
           </thead>
-          <tbody className="divide-y divide-border">
+          <tbody>
             {groupedData.map((group) => (
               <Fragment key={group.groupKey}>
                 {/* Group summary row */}
@@ -186,7 +186,7 @@ export default function UsageTable({
                   className="group-summary cursor-pointer hover:bg-bg-alt/50 transition-colors"
                   onClick={() => toggleGroup(group.groupKey)}
                 >
-                  <td className="px-6 py-3">
+                  <td>
                     <div className="flex items-center gap-2">
                       <Icon name="chevron_right" size={18} className={`text-text-muted transition-transform${expanded.has(group.groupKey) ? "rotate-90" : ""}`} />
                       <span className={`font-medium transition-colors ${group.summary.pending > 0 ? "text-primary" : ""}`}>

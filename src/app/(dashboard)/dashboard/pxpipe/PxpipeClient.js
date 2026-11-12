@@ -206,42 +206,42 @@ export default function PxpipeClient() {
       <Card className="p-4">
         <h3 className="font-medium mb-3">History</h3>
         <div className="overflow-x-auto">
-          <table className="w-full text-sm">
+          <table className="data-table">
             <thead>
               <tr className="text-left text-xs text-text-muted border-b border-border">
-                <th className="py-2 pr-3">Time</th>
-                <th className="py-2 pr-3">Model</th>
-                <th className="py-2 pr-3 text-right">Original</th>
-                <th className="py-2 pr-3 text-right">Compressed</th>
-                <th className="py-2 pr-3 text-right">Saved</th>
-                <th className="py-2 pr-3 text-right">%</th>
-                <th className="py-2 pr-3 text-right">Duration</th>
-                <th className="py-2">Status</th>
+                <th>Time</th>
+                <th>Model</th>
+                <th className="num">Original</th>
+                <th className="num">Compressed</th>
+                <th className="num">Saved</th>
+                <th className="num">%</th>
+                <th className="num">Duration</th>
+                <th>Status</th>
               </tr>
             </thead>
             <tbody>
               {(stats?.recent || []).slice(0, 50).map((ev, i) => (
                 <tr key={`${ev.ts}-${i}`} className="border-b border-border/50">
-                  <td className="py-1.5 pr-3 whitespace-nowrap text-text-muted">
+                  <td className="whitespace-nowrap text-text-muted">
                     {new Date(ev.ts).toLocaleString()}
                   </td>
-                  <td className="py-1.5 pr-3 font-mono text-xs">{ev.provider ? `${ev.provider}/${ev.model}` : ev.model || "—"}</td>
-                  <td className="py-1.5 pr-3 text-right font-mono text-xs">
+                  <td className="font-mono">{ev.provider ? `${ev.provider}/${ev.model}` : ev.model || "—"}</td>
+                  <td className="num font-mono">
                     {ev.applied ? fmtTokens(ev.tokensBeforeEst) : "—"}
                   </td>
-                  <td className="py-1.5 pr-3 text-right font-mono text-xs">
+                  <td className="num font-mono">
                     {ev.applied ? fmtTokens(ev.tokensAfterEst) : "—"}
                   </td>
-                  <td className="py-1.5 pr-3 text-right font-mono text-xs text-success">
+                  <td className="num font-mono text-success">
                     {ev.applied ? fmtTokens(ev.tokensSavedEst) : "—"}
                   </td>
-                  <td className="py-1.5 pr-3 text-right font-mono text-xs">
+                  <td className="num font-mono">
                     {ev.applied ? `${ev.savedPct}%` : "—"}
                   </td>
-                  <td className="py-1.5 pr-3 text-right font-mono text-xs">
+                  <td className="num font-mono">
                     {ev.durationMs != null ? `${ev.durationMs}ms` : "—"}
                   </td>
-                  <td className="py-1.5">
+                  <td>
                     <span
                       className={`text-xs px-2 py-0.5 rounded ${
                         ev.applied

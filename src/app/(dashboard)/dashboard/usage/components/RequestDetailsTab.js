@@ -237,16 +237,16 @@ export default function RequestDetailsTab() {
 
       <Card padding="none">
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[880px]">
+          <table className="data-table min-w-[880px]">
             <thead>
               <tr className="border-b border-black/5 dark:border-white/5">
-                <th className="text-left p-4 text-sm font-semibold text-text-main">Timestamp</th>
-                <th className="text-left p-4 text-sm font-semibold text-text-main">Model</th>
-                <th className="text-left p-4 text-sm font-semibold text-text-main">Provider</th>
-                <th className="text-right p-4 text-sm font-semibold text-text-main">Input Tokens</th>
-                <th className="text-right p-4 text-sm font-semibold text-text-main">Output Tokens</th>
-                <th className="text-left p-4 text-sm font-semibold text-text-main">Latency</th>
-                <th className="text-center p-4 text-sm font-semibold text-text-main">Action</th>
+                <th className="text-left font-semibold text-text-main">Timestamp</th>
+                <th className="text-left font-semibold text-text-main">Model</th>
+                <th className="text-left font-semibold text-text-main">Provider</th>
+                <th className="num font-semibold text-text-main">Input Tokens</th>
+                <th className="num font-semibold text-text-main">Output Tokens</th>
+                <th className="text-left font-semibold text-text-main">Latency</th>
+                <th className="text-center font-semibold text-text-main">Action</th>
               </tr>
             </thead>
             <tbody>
@@ -271,30 +271,30 @@ export default function RequestDetailsTab() {
                     key={`${detail.id}-${index}`}
                     className="border-b border-black/5 dark:border-white/5 last:border-b-0 hover:bg-black/[0.02] dark:hover:bg-white/[0.02] transition-colors"
                   >
-                    <td className="whitespace-nowrap p-4 text-sm text-text-main">
+                    <td className="whitespace-nowrap text-text-main">
                       {new Date(detail.timestamp).toLocaleString()}
                     </td>
-                    <td className="max-w-[260px] truncate p-4 font-mono text-sm text-text-main">
+                    <td className="max-w-[260px] truncate font-mono text-text-main">
                       {detail.model}
                     </td>
-                    <td className="max-w-[180px] truncate p-4 text-sm text-text-main">
+                    <td className="max-w-[180px] truncate text-text-main">
                        <span className="font-medium">
                          {getProviderName(detail.provider, providerNameCache)}
                        </span>
                      </td>
-                    <td className="p-4 text-sm text-text-main text-right font-mono">
+                    <td className="text-text-main num font-mono">
                       {getInputTokens(detail.tokens).toLocaleString()}
                     </td>
-                    <td className="p-4 text-sm text-text-main text-right font-mono">
+                    <td className="text-text-main num font-mono">
                       {detail.tokens?.completion_tokens?.toLocaleString() || 0}
                     </td>
-                    <td className="p-4 text-sm text-text-muted">
+                    <td className="text-text-muted">
                       <div className="flex flex-col gap-0.5">
                         <div>TTFT: <span className="font-mono">{detail.latency?.ttft || 0}ms</span></div>
                         <div>Total: <span className="font-mono">{detail.latency?.total || 0}ms</span></div>
                       </div>
                     </td>
-                    <td className="p-4 text-center">
+                    <td className="text-center">
                       <Button
                         variant="outline"
                         size="sm"
