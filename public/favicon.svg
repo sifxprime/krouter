@@ -1,6 +1,9 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400">
-  <g fill="none" stroke="#E56A4A" stroke-linecap="round" stroke-linejoin="round">
-    <polyline points="128,104 184,200 128,296" stroke-width="28" stroke-opacity="0.25"/>
-    <polyline points="172,100 260,200 172,300" stroke-width="52"/>
-  </g>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400" role="img" aria-label="kRouter">
+  <!-- Compact mark, not the full echo chevron. Below ~24px the echo stops
+       reading as a second shape and smears into the first, and a tab icon is
+       16px. The tile also gives the mark a ground: without it the glyph floats
+       on whatever colour the browser's tab strip happens to be. -->
+  <rect width="400" height="400" rx="88" fill="#1a1a1a"/>
+  <polyline points="162,110 256,200 162,290" fill="none" stroke="#E56A4A"
+            stroke-width="58" stroke-linecap="round" stroke-linejoin="round"/>
 </svg>
