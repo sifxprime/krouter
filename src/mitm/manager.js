@@ -310,6 +310,25 @@ async function saveMitmSettings(enabled, password) {
   }
 }
 
+/**
+ * Remember whether proxy capture is meant to be on.
+ *
+ * It used to record nothing but a pid file, so nothing could bring it back: the
+ * only reason a long-running proxy survived app restarts is that it is spawned
+ * detached and unref'd, so it outlives its parent and gets reparented to launchd.
+ * Kill it once — a reboot, a crash, an unlucky pkill — and it was gone until
+ * someone pressed the button again, with no record that it had ever been on.
+ * The :443 transport has had `mitmEnabled` for exactly this; this is its twin.
+ */
+async function saveProxyCaptureEnabled(enabled) {
+  if (!_updateSettings) return;
+  try {
+    await _updateSettings({ proxyCaptureEnabled: enabled });
+  } catch (e) {
+    err(`Failed to save proxy capture state: ${e.message}`);
+  }
+}
+
 async function clearEncryptedPassword() {
   if (!_updateSettings) return;
   try {
@@ -600,7 +619,12 @@ async function getProxyCaptureStatus() {
 /** Start the proxy. Never asks for a password -- that is the point of the mode. */
 async function startProxyCapture(apiKey) {
   const port = proxyPort();
-  if (await isPortAccepting(port)) return { ...(await getProxyCaptureStatus()), alreadyRunning: true };
+  if (await isPortAccepting(port)) {
+    // Already up is still "on", so record the intent — otherwise a second press
+    // of an already-enabled toggle leaves it unrecorded and unrestartable.
+    await saveProxyCaptureEnabled(true);
+    return { ...(await getProxyCaptureStatus()), alreadyRunning: true };
+  }
 
   const proxyPath = resolveBundledProxyPath();
   if (!fs.existsSync(proxyPath)) throw new Error(`Proxy not found at ${proxyPath}`);
@@ -651,8 +675,11 @@ async function startProxyCapture(apiKey) {
 
   const status = await getProxyCaptureStatus();
   if (!status.running) {
+    // Deliberately not recorded as enabled: a start that failed is not a state
+    // to restore on the next boot, it is a state to leave alone.
     throw new Error(`Proxy did not start on port ${port}: ${lastProxyLogLine() || "no output"}`);
   }
+  await saveProxyCaptureEnabled(true);
   return status;
 }
 
@@ -692,6 +719,9 @@ async function stopProxyCapture() {
   proxyProcess = null;
   proxyPid = null;
   try { fs.rmSync(PROXY_PID_FILE, { force: true }); } catch { /* ignore */ }
+  // Turning it off is as much a decision as turning it on, so it has to be
+  // recorded too — otherwise the next boot helpfully starts it again.
+  await saveProxyCaptureEnabled(false);
   return getProxyCaptureStatus();
 }
 

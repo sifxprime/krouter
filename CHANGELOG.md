@@ -1,3 +1,42 @@
+# v0.5.188 (2026-11-13) — proxy capture comes back after a restart too
+
+Carries v0.5.187, which npm accepted and has not served, so that version has
+never been installable.
+
+v0.5.187 made the :443 transport restart itself. The proxy transport still did
+not, and the reason it looked like it did is worth writing down: it is spawned
+detached and `unref()`ed, so it outlives the app and gets reparented to launchd.
+One found running on a real machine had been up since a session months earlier.
+Kill it once — a reboot, a crash, an unlucky pkill — and it stayed dead, because
+the only thing it ever recorded was a pid file. Nothing anywhere said it had been
+switched on.
+
+So it now has the twin of `mitmEnabled`: `proxyCaptureEnabled`, written when it
+starts, when a start finds it already running, and when it stops — but
+deliberately NOT when a start fails, because a start that did not work is not a
+state to restore on the next boot. `autoStartProxyCapture()` runs in the same
+bootstrap as the MITM one and is deliberately independent of it: no `mitmEnabled`
+gate and no sudo password, since this transport needs neither and touches no
+system state. A test asserts both absences rather than trusting the comment.
+
+The upgrade path is handled, because without it this change would have broken the
+people it is for. Anyone running proxy capture today has no `proxyCaptureEnabled`
+in settings; read as "off", their capture would quietly stop coming back. A proxy
+already accepting at boot with the setting unset is therefore adopted and
+recorded. Measured on a real install: setting null, restart, setting 1, proxy
+untouched.
+
+Verified from a cold slate — all three ports free, no krouter process, no pid or
+lock files — with launchd starting the service and nothing else touched:
+
+    20128 up at              +4s
+    443   (MITM)             +4s
+    20129 (proxy capture)    +4s
+
+Both answered a real request afterwards, DNS was restored for all three enabled
+tools, and both the proxy and the sudo/MITM chain were children of the service's
+own server process rather than anything started by hand.
+
 # v0.5.187 (2026-11-13) — the background bootstrap no longer waits for someone to log in
 
 This is the release that actually fixes MITM auto-start. v0.5.185 and v0.5.186

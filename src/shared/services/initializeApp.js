@@ -13,7 +13,7 @@ import {
   RESTART_COOLDOWN_MS, NETWORK_SETTLE_MS,
   WATCHDOG_INTERVAL_MS, NETWORK_CHECK_INTERVAL_MS, VIRTUAL_IFACE_REGEX,
 } from "@/lib/tunnel";
-import { getMitmStatus, startMitm, loadEncryptedPassword, initDbHooks, restoreToolDNS, removeAllDNSEntriesSync, removeAllDNSEntries } from "@/mitm/manager";
+import { getMitmStatus, startMitm, loadEncryptedPassword, initDbHooks, restoreToolDNS, removeAllDNSEntriesSync, removeAllDNSEntries, getProxyCaptureStatus, startProxyCapture } from "@/mitm/manager";
 import { TOOL_HOSTS } from "@/mitm/dns/dnsConfig";
 import { startQuotaAutoPing } from "@/shared/services/quotaAutoPing";
 import { consumeMitmRecoveryMarker } from "@/shared/services/mitmRecovery";
@@ -50,6 +50,7 @@ const g = global.__appSingleton ??= {
   lastWatchdogTick: Date.now(),
   lastOnline: null,
   mitmStartInProgress: false,
+  proxyStartInProgress: false,
   tunnelAutoResumed: false,
   tailscaleAutoResumed: false,
 };
@@ -98,6 +99,10 @@ export async function initializeApp() {
     startWatchdog();
     startNetworkMonitor();
     autoStartMitm();
+    // Separate from autoStartMitm on purpose: the two capture transports are
+    // independent. Proxy capture needs no password, touches no system state and
+    // is useful on its own, so it must not sit behind `mitmEnabled`.
+    autoStartProxyCapture();
     // 0.5.113 (upstream 27b37705) — don't spin up the auto-ping scheduler's
     // recurring interval unless a connection actually opted in. On a fresh
     // install (nothing enabled) this was a pure no-op timer every 60s.
@@ -164,6 +169,54 @@ async function autoBackfillTokensIfNeeded() {
     }
   })();
   if (updated > 0) console.log(`[InitApp] Token backfill: lifted real Gemini token counts into ${updated} historical rows`);
+}
+
+/**
+ * Bring proxy capture back if it was on.
+ *
+ * It had no auto-start at all. The only reason a long-lived proxy appeared to
+ * survive restarts is that it is spawned detached and unref'd, so it outlives
+ * the app and gets reparented to launchd — one still running here had been up
+ * since a session months earlier. Kill it once and it stayed dead, silently,
+ * because nothing recorded that it had been enabled.
+ *
+ * Nothing here is privileged: no sudo, no hosts file, no port 443. A failure is
+ * therefore a plain log line, not a state anything has to heal.
+ */
+async function autoStartProxyCapture() {
+  if (g.proxyStartInProgress) return;
+  g.proxyStartInProgress = true;
+  try {
+    const settings = await getSettings();
+    const status = await getProxyCaptureStatus();
+
+    // Upgrade path: a proxy running from before this setting existed is proof
+    // the user turned it on, so adopt it rather than making them press the
+    // button again to become restartable.
+    if (settings.proxyCaptureEnabled === undefined) {
+      if (!status.running) return;
+      // The port is already accepting, so this takes startProxyCapture's
+      // already-running path: it records the intent and spawns nothing, which
+      // is why passing no key here is safe.
+      await startProxyCapture("");
+      console.log("[InitApp] Proxy capture was already running — recorded so it restarts on the next boot");
+      return;
+    }
+
+    if (!settings.proxyCaptureEnabled) return;
+    if (status.running) return;
+
+    const keys = await getApiKeys();
+    const activeKey = keys.find((k) => k.isActive !== false);
+
+    console.log("[InitApp] Proxy capture was enabled, auto-starting...");
+    const started = await startProxyCapture(activeKey?.key || "sk_krouter");
+    console.log(`[InitApp] Proxy capture auto-started on ${started.proxyUrl}`);
+  } catch (e) {
+    console.log("[InitApp] Proxy capture auto-start failed:", e.message);
+  } finally {
+    g.proxyStartInProgress = false;
+  }
 }
 
 async function autoStartMitm() {
