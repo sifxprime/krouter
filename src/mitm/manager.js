@@ -181,7 +181,15 @@ function isProcessAlive(pid) {
     process.kill(pid, 0);
     return true;
   } catch (err) {
-    return err.code === "EACCES";
+    // EPERM means the process exists and belongs to someone else. The MITM
+    // runs as root, so this is the normal answer for a healthy capture seen
+    // from an unprivileged process -- reading it as dead would report "not
+    // running" AND unlink the pid file, taking the tray's capture indicator
+    // and the leftover-kill path down with it.
+    //
+    // The check used to be for EACCES, which Node's process.kill never throws:
+    // the branch could not fire, so the only thing it did was look handled.
+    return err.code === "EPERM" || err.code === "EACCES";
   }
 }
 

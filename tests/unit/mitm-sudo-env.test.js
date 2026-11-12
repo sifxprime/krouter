@@ -82,6 +82,25 @@ describe("sudo spawn shape", () => {
   });
 });
 
+describe("liveness of a root-owned MITM", () => {
+  it("treats EPERM as alive — the server runs as root", () => {
+    // pid 1 exists and is not ours, so process.kill(1, 0) throws EPERM. The
+    // check used to be for EACCES, which process.kill never throws: a root
+    // MITM read as dead from the dashboard process, which then reported "not
+    // running" AND unlinked the pid file the tray and the leftover-kill path
+    // both depend on.
+    const src = fs.readFileSync(path.join(process.cwd(), "src/mitm/manager.js"), "utf8");
+    const fn = src.slice(src.indexOf("function isProcessAlive"), src.indexOf("function killProcess"));
+    expect(fn, "EPERM is the code Node actually throws").toContain('err.code === "EPERM"');
+
+    let code = null;
+    try { process.kill(1, 0); } catch (e) { code = e.code; }
+    // Guards the premise: if Node ever threw EACCES here instead, the comment
+    // above and the check would both need revisiting.
+    expect(code).toBe("EPERM");
+  });
+});
+
 describe("the shell half of the handshake", () => {
   // buildSudoEnvStdin is only half the mechanism; the sh script in inlineCmd is
   // the other half and a unit test of the JS alone would pass with it broken.
