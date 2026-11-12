@@ -1,4 +1,11 @@
-# v0.5.183 (2026-11-12) — usage can finally tell you which IDE spent the money
+# v0.5.184 (2026-11-12) — usage can finally tell you which IDE spent the money
+
+There is no 0.5.183 on npm. Its publish was accepted, signed and logged, and
+then sat in npm staging without ever being served: the registry 404s the
+version, `npm install` reports ETARGET, and a retry gets `409 Cannot publish
+over previously staged version`. The version number is unusable, so the same
+changes ship here. The tag, Docker image and GitHub release for v0.5.183 exist
+and are the same code.
 
 Two accounting bugs. Both were silent, and both made the usage page actively
 misleading rather than merely incomplete.
