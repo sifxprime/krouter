@@ -1039,38 +1039,88 @@ function startServer(latestVersion) {
           }
 
           if (process.platform === "darwin") {
-            // macOS: keep current process alive — spawning a detached child puts
-            // it outside the login session so NSStatusItem silently fails.
+            // Hand the server to launchd so it outlives this terminal. Keeping
+            // the foreground process alive (what this used to do) meant closing
+            // the terminal killed kRouter, while the message said otherwise --
+            // and the autostart plist had already lost a port race against us.
+            const { handOffToLaunchd } = require("./src/cli/tray/handoff");
+            const handoff = startsOnLogin
+              ? await handOffToLaunchd({
+                port,
+                stopCurrent: async () => {
+                  try {
+                    const { killTray } = require("./src/cli/tray/tray");
+                    killTray();
+                  } catch (e) { /* tray may not be up */ }
+                  cleanup();
+                  await killAllAppProcesses(port);
+                  await killProcessOnPort(port);
+                },
+                isKrouterOnPort: portServesKrouter,
+                log: (m) => console.log(`\n⏳ ${m}`),
+              })
+              : { ok: false, reason: "autostart-not-enabled" };
+
+            if (handoff.ok) {
+              console.log(`🔔 kRouter now runs in the background, owned by launchd.`);
+              console.log(`   Server: http://${displayHost}:${port}`);
+              console.log(`   Agent:  ${handoff.label}`);
+              console.log(`\n💡 Closing this terminal will NOT stop it.`);
+              console.log(`   To stop: right-click the tray icon -> Quit, or`);
+              console.log(`   launchctl bootout gui/$(id -u)/${handoff.label}\n`);
+              process.exit(0);
+            }
+
+            // Fall back to the old behaviour, but say plainly what it costs --
+            // the previous message claimed the terminal was safe to close.
             process.removeAllListeners("SIGHUP");
             process.on("SIGHUP", () => {});
 
             console.log(`\n⏳ Switching to tray mode... (icon already visible in menu bar)`);
             console.log(`🔔 kRouter is running in tray (PID: ${process.pid})`);
             console.log(`   Server: http://${displayHost}:${port}`);
-            console.log(`\n💡 You can close this terminal. Right-click tray icon to quit.\n`);
+            console.log(`\n⚠️  Could not hand off to launchd (${handoff.reason}).`);
+            console.log(`   kRouter is tied to THIS terminal — closing it stops the server.`);
+            console.log(`   Right-click the tray icon to quit.\n`);
 
             // Tray already init'd at startup — just keep event loop alive.
             return;
           }
 
-          // Windows/Linux: spawn detached bgProcess (systray works fine in child)
-          console.log(`\n⏳ Starting background process... (tray icon will appear in ~3s)`);
-
-          const bgProcess = spawn(process.execPath, [__filename, "--tray", "--skip-update", "-p", port.toString()], {
-            detached: true,
-            stdio: "ignore",
-            windowsHide: true,
-            env: { ...process.env }
+          // Windows/Linux: spawn a detached child (systray works fine in a child
+          // there). Stop ours FIRST: the child starts binding immediately, and
+          // the old order spawned it while this process still held the port.
+          const { handOffToDetachedChild } = require("./src/cli/tray/handoff");
+          const bg = await handOffToDetachedChild({
+            port,
+            cliPath: __filename,
+            spawn,
+            stopCurrent: async () => {
+              try {
+                const { killTray } = require("./src/cli/tray/tray");
+                killTray();
+              } catch (e) { /* tray may not be up */ }
+              cleanup();
+              await killAllAppProcesses(port);
+              await killProcessOnPort(port);
+            },
+            isKrouterOnPort: portServesKrouter,
+            log: (m) => console.log(`\n⏳ ${m}`),
           });
-          bgProcess.unref();
 
-          console.log(`🔔 kRouter is now running in background (PID: ${bgProcess.pid})`);
-          console.log(`   Server: http://${displayHost}:${port}`);
-          console.log(`\n💡 You can close this terminal. Right-click tray icon to quit.\n`);
+          if (bg.ok) {
+            console.log(`🔔 kRouter is now running in background (PID: ${bg.pid})`);
+            console.log(`   Server: http://${displayHost}:${port}`);
+            console.log(`\n💡 Closing this terminal will NOT stop it.`);
+            console.log(`   Right-click the tray icon to quit.\n`);
+            process.exit(0);
+          }
 
-          // cleanup() kills server so bgProcess can claim the port fresh
-          cleanup();
-          process.exit(0);
+          // Never claim the terminal is safe to close when it is not.
+          console.error(`\n⚠️  Could not start the background process (${bg.reason}).`);
+          console.error(`   kRouter is NOT running in the background.`);
+          console.error(`   Run \`krouter\` again, or \`krouter --tray\` directly to see the error.\n`);
+          process.exit(1);
         } else if (choice === "exit") {
           isShuttingDown = true;
           console.log("\nExiting...");
