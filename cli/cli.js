@@ -951,6 +951,11 @@ function startServer(latestVersion) {
 
   // Suppress all errors during shutdown (systray lib throws JSON parse errors)
   let isShuttingDown = false;
+  // Set while the server is being handed to launchd / a detached child. The
+  // close handler must not treat that deliberate kill as a crash: it printed
+  // "Server exited (code=unknown). Restarting in 1s..." over a handoff that was
+  // working, and the respawn it scheduled raced the new owner for the port.
+  let isHandingOff = false;
   process.on("uncaughtException", (err) => {
     if (isShuttingDown) return;
     console.error("Error:", err.message);
@@ -1086,6 +1091,7 @@ function startServer(latestVersion) {
             // the foreground process alive (what this used to do) meant closing
             // the terminal killed kRouter, while the message said otherwise --
             // and the autostart plist had already lost a port race against us.
+            isHandingOff = true;
             const { handOffToLaunchd } = require("./src/cli/tray/handoff");
             const handoff = startsOnLogin
               ? await handOffToLaunchd({
@@ -1130,6 +1136,7 @@ function startServer(latestVersion) {
           // Windows/Linux: spawn a detached child (systray works fine in a child
           // there). Stop ours FIRST: the child starts binding immediately, and
           // the old order spawned it while this process still held the port.
+          isHandingOff = true;
           const { handOffToDetachedChild } = require("./src/cli/tray/handoff");
           const bg = await handOffToDetachedChild({
             port,
@@ -1171,12 +1178,16 @@ function startServer(latestVersion) {
 
   function attachServerEvents() {
     server.on("error", (err) => {
+      if (isHandingOff) return;
       console.error("Failed to start server:", err.message);
       if (!isShuttingDown) tryRestart();
       else { cleanup(); process.exit(1); }
     });
 
     server.on("close", (code) => {
+      // We killed it on purpose to free the port; the handoff reports the
+      // outcome itself.
+      if (isHandingOff) return;
       if (isShuttingDown || code === 0) {
         process.exit(code || 0);
         return;

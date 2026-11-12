@@ -130,3 +130,39 @@ describe("the handoff stops only its own server", () => {
     }
   });
 });
+
+// cleanup() kills the server on purpose during a handoff. The close handler
+// used to read that as a crash: it printed
+//   "Server exited (code=unknown). Restarting in 1s... (1/2)"
+// over a handoff that was in fact working, and scheduled a respawn that raced
+// the new owner for the port. The user saw a warning, no confirmation, and had
+// no way to tell whether it had worked -- it had.
+describe("a deliberate kill during handoff is not treated as a crash", () => {
+  it("both server handlers bail out while handing off", async () => {
+    const fs = await import("node:fs");
+    const src = fs.readFileSync("cli/cli.js", "utf8");
+
+    const i = src.indexOf("function attachServerEvents");
+    expect(i).toBeGreaterThan(-1);
+    const block = src.slice(i, i + 1200);
+
+    // error and close handlers
+    const handlers = [...block.matchAll(/server\.on\("(error|close)",[^]*?\}\);/g)].map((m) => m[0]);
+    expect(handlers.length, "both handlers must be present").toBe(2);
+    for (const h of handlers) {
+      expect(h, "must not restart or report a kill we performed ourselves").toMatch(/isHandingOff/);
+    }
+  });
+
+  it("the flag is set before each handoff starts", async () => {
+    const fs = await import("node:fs");
+    const src = fs.readFileSync("cli/cli.js", "utf8");
+    for (const fn of ["handOffToLaunchd", "handOffToDetachedChild"]) {
+      const i = src.indexOf(`const { ${fn} } = require`);
+      expect(i, fn).toBeGreaterThan(-1);
+      // the 200 chars before the require must contain the flag assignment
+      expect(src.slice(Math.max(0, i - 200), i), `${fn} must set isHandingOff first`)
+        .toMatch(/isHandingOff\s*=\s*true/);
+    }
+  });
+});
