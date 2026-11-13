@@ -12,26 +12,9 @@ const buildHomeDir = path.join(cliDir, ".build-home");
 const buildDistDirName = ".next-cli-build";
 const buildDistDir = path.join(appDir, buildDistDirName);
 
-// Exclude patterns for files/folders we don't want to copy
-const EXCLUDE_PATTERNS = [
-  "@img",           // Sharp image processing (not needed with unoptimized images)
-  "sharp",          // Sharp core lib (not needed with unoptimized images)
-  "detect-libc",    // Sharp dependency
-  "logs",           // Runtime logs
-  ".env",           // Environment files
-  ".env.local",
-  ".env.*.local",
-  "*.log",          // Log files
-  "tmp",            // Temp files
-  ".DS_Store",      // macOS files
-  // The Next build runs with HOME pointed at cli/.build-home so it cannot touch the
-  // real ~/.krouter. Because that directory sits inside the workspace, standalone
-  // tracing copied it into the bundle, and the package shipped a generated jwt-secret,
-  // a machine-id and five SQLite databases -- the jwt-secret identical for everyone
-  // who installed it. Never copy it.
-  ".build-home",
-  "*.nft.json",     // Next trace manifests: build metadata, ~2.7 MB, unused at runtime
-];
+// Exclude patterns live in exclude-patterns.js so they can be tested without
+// running the build, and so `logs` stops eating compiled API routes.
+const { shouldExclude } = require("./exclude-patterns");
 
 // Anything here in the built app means the package is about to ship build-machine
 // state or a secret. Shipping is worse than failing, so the build stops.
@@ -64,19 +47,9 @@ function assertNothingSensitiveShipped(root) {
   if (hits.length) {
     console.error("\n❌ Refusing to ship: build-machine state found in the package");
     for (const h of hits) console.error(`   ${h}`);
-    console.error("\nAdd it to EXCLUDE_PATTERNS in cli/scripts/build-cli.js.");
+    console.error("\nAdd it to EXCLUDE_ANYWHERE in cli/scripts/exclude-patterns.js.");
     process.exit(1);
   }
-}
-
-function shouldExclude(name) {
-  return EXCLUDE_PATTERNS.some(pattern => {
-    if (pattern.includes("*")) {
-      const regex = new RegExp("^" + pattern.replace(/[.+?^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*") + "$");
-      return regex.test(name);
-    }
-    return name === pattern;
-  });
 }
 
 function copyRecursive(src, dest) {
@@ -91,7 +64,7 @@ function copyRecursive(src, dest) {
 
   const entries = fs.readdirSync(src, { withFileTypes: true });
   for (const entry of entries) {
-    if (shouldExclude(entry.name)) {
+    if (shouldExclude(entry.name, src)) {
       continue;
     }
 
