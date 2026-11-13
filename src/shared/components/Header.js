@@ -13,7 +13,14 @@ import { useCaptureStatus, describeCapture } from "@/shared/hooks/useCaptureStat
 import { useHeaderSearchStore } from "@/store/headerSearchStore";
 import { OAUTH_PROVIDERS, APIKEY_PROVIDERS } from "@/shared/constants/config";
 import { MEDIA_PROVIDER_KINDS, AI_PROVIDERS } from "@/shared/constants/providers";
+import { CLI_TOOLS } from "@/shared/constants/cliTools";
+import { setHeaderActionsSlot } from "@/shared/components/headerActionsSlot";
 import { translate } from "@/i18n/runtime";
+import {
+  HEADER_ACTIONS_SLOT_ID,
+  SHELL_GUTTER_X_HEADER,
+  shellTrackClass,
+} from "@/shared/constants/pageShell";
 
 const getPageInfo = (pathname) => {
   if (!pathname) return { title: "", description: "", breadcrumbs: [] };
@@ -36,6 +43,20 @@ const getPageInfo = (pathname) => {
     };
   }
 
+  // /dashboard/media-providers/web is a combined page for the webSearch and
+  // webFetch kinds, not a kind of its own. The regex below matched it anyway,
+  // found no entry in MEDIA_PROVIDER_KINDS, and fell back to the raw path
+  // segment — so the bar read a lowercase "web" where every other title is a
+  // proper name. Same shape as the /providers/new case above: an exact route
+  // caught by a pattern meant for dynamic ids. Exact match, placed first.
+  if (pathname === "/dashboard/media-providers/web")
+    return {
+      title: "Web",
+      description: "Web search and fetch providers",
+      icon: "travel_explore",
+      breadcrumbs: [],
+    };
+
   // Media provider kind: /dashboard/media-providers/[kind]
   const mediaKindMatch = pathname.match(/\/media-providers\/([^/]+)$/);
   if (mediaKindMatch) {
@@ -48,6 +69,41 @@ const getPageInfo = (pathname) => {
       breadcrumbs: [],
     };
   }
+
+  // CLI tool detail: /dashboard/cli-tools/[toolId]
+  //
+  // Without this the bar said only "CLI Tools" on every tool, so the page had
+  // to paint the tool's name itself — the one detail route where removing the
+  // page's own <h1> would have lost which tool you were looking at. CLI_TOOLS
+  // is a keyed map, so the name resolves from the path exactly as the provider
+  // branches below do.
+  const toolMatch = pathname.match(/\/cli-tools\/([^/]+)$/);
+  if (toolMatch) {
+    const tool = CLI_TOOLS[toolMatch[1]];
+    if (tool) {
+      return {
+        title: tool.name,
+        description: "",
+        breadcrumbs: [
+          { label: "CLI Tools", href: "/dashboard/cli-tools" },
+          { label: tool.name, image: tool.image },
+        ],
+      };
+    }
+  }
+
+  // /dashboard/providers/new is a form, not a provider. The `/providers/([^/]+)$`
+  // match below picks up "new", fails to resolve it against OAUTH_PROVIDERS or
+  // APIKEY_PROVIDERS, and falls through to the generic "Providers" entry — so
+  // the bar read "Providers" while the page underneath read "Add New Provider".
+  // Exact match, and ahead of both, because the regex would otherwise win.
+  if (pathname === "/dashboard/providers/new")
+    return {
+      title: "Add New Provider",
+      description: "Configure a new AI provider to use with your applications",
+      icon: "add",
+      breadcrumbs: [],
+    };
 
   // Provider detail page: /dashboard/providers/[id]
   const providerMatch = pathname.match(/\/providers\/([^/]+)$/);
@@ -263,7 +319,15 @@ export default function Header({ onMenuClick, showMenuButton = true }) {
   };
 
   return (
-    <header className="shrink-0 flex items-center justify-between gap-3 px-4 lg:px-8 pt-3 pb-2 border-b border-border-subtle bg-surface/60 backdrop-blur-xl lg:bg-transparent lg:backdrop-blur-none z-20">
+    <header className={`shrink-0 ${SHELL_GUTTER_X_HEADER} border-b border-border-subtle bg-surface/60 backdrop-blur-xl lg:bg-transparent lg:backdrop-blur-none z-20`}>
+      {/* The inner track matches the content area's exactly, so the title and
+          the content it labels share a left edge. Both come from pageShell.js;
+          the border above still spans the full width.
+
+          The height is fixed rather than driven by the content: pages with a
+          description measured 79px and pages without (the breadcrumb routes)
+          61px, so the bar resized as you moved between them. */}
+      <div className={`flex min-h-[60px] items-center justify-between gap-3 py-2 lg:min-h-[80px] ${shellTrackClass(pathname)}`}>
       {/* Mobile menu button */}
       <div className="flex items-center gap-3 lg:hidden shrink-0">
         {showMenuButton && (
@@ -335,6 +399,14 @@ export default function Header({ onMenuClick, showMenuButton = true }) {
 
       {/* Right actions */}
       <div className="flex items-center gap-1 shrink-0">
+        {/* Where a page puts its primary action, via <HeaderActions>. Pages
+            used to paint a second title row to hold one. `empty:hidden` keeps
+            the gap from showing on the pages that have none. */}
+        <div
+          id={HEADER_ACTIONS_SLOT_ID}
+          ref={setHeaderActionsSlot}
+          className="hidden items-center gap-2 empty:hidden lg:flex mr-1"
+        />
         {/* Capture state on every page, not only the capture page. Enabling
             capture while a tool is already running looks identical to it
             working, so "is kRouter intercepting right now" has to be
@@ -353,6 +425,7 @@ export default function Header({ onMenuClick, showMenuButton = true }) {
         <ThemeToggle />
         <HeaderLanguage />
         <HeaderMenu onLogout={handleLogout} />
+      </div>
       </div>
     </header>
   );

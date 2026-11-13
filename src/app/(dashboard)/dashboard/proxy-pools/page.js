@@ -4,6 +4,8 @@ import { useCallback, useEffect, useMemo, useState, useRef } from "react";
 import { Badge, Button, Card, CardSkeleton, Input, Modal, Toggle, ConfirmModal } from "@/shared/components";
 import { useNotificationStore } from "@/store/notificationStore";
 import Icon from "../../../../shared/components/icons/Icon";
+import HeaderActions from "@/shared/components/HeaderActions";
+import EmptyState from "@/shared/components/EmptyState";
 
 function getStatusVariant(status) {
   if (status === "active") return "success";
@@ -566,7 +568,7 @@ export default function ProxyPoolsPage() {
 
   if (loading) {
     return (
-      <div className="mx-auto flex w-full max-w-5xl flex-col gap-4 px-1 sm:gap-6 sm:px-0">
+      <div className="flex min-w-0 flex-col gap-6">
         <CardSkeleton />
         <CardSkeleton />
       </div>
@@ -574,13 +576,10 @@ export default function ProxyPoolsPage() {
   }
 
   return (
-    <div className="mx-auto flex w-full max-w-5xl flex-col gap-4 px-1 sm:gap-6 sm:px-0">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-        <div className="min-w-0">
-          <h1 className="text-xl font-semibold sm:text-2xl">Proxy Pools</h1>
-        </div>
-
-        <div className="grid grid-cols-1 gap-2 sm:flex sm:items-center">
+    <div className="flex min-w-0 flex-col gap-6">
+      {/* The title is in the header bar, which already shows it with a
+          description. Only the actions move up there. */}
+      <HeaderActions>
           <div className="relative" ref={relayMenuRef}>
             <Button
               size="sm"
@@ -632,8 +631,7 @@ export default function ProxyPoolsPage() {
             Batch Import
           </Button>
           <Button size="sm" icon="add" onClick={openCreateModal}>Add Proxy Pool</Button>
-        </div>
-      </div>
+      </HeaderActions>
 
       <Card>
         <div className="mb-4 flex flex-wrap items-center gap-2">
@@ -688,13 +686,12 @@ export default function ProxyPoolsPage() {
         )}
 
         {proxyPools.length === 0 ? (
-          <div className="text-center py-10">
-            <p className="text-text-main font-medium mb-1">No proxy pool entries yet</p>
-            <p className="text-sm text-text-muted mb-4">
-              Create a proxy pool entry, then assign it to connections.
-            </p>
-            <Button icon="add" onClick={openCreateModal}>Add Proxy Pool</Button>
-          </div>
+          <EmptyState
+            icon="lan"
+            title="No proxy pool entries yet"
+            description="Create a proxy pool entry, then assign it to connections."
+            action={<Button icon="add" onClick={openCreateModal}>Add Proxy Pool</Button>}
+          />
         ) : (
           <div className="flex flex-col divide-y divide-black/[0.04] dark:divide-white/[0.05]">
             {proxyPools.map((pool) => (

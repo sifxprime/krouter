@@ -7,6 +7,7 @@ import { Card, Badge, Button, Toggle, AddCustomEmbeddingModal } from "@/shared/c
 import ProviderIcon from "@/shared/components/ProviderIcon";
 import { MEDIA_PROVIDER_KINDS, AI_PROVIDERS, getProvidersByKind } from "@/shared/constants/providers";
 import Icon from "../../../../../shared/components/icons/Icon";
+import EmptyState from "@/shared/components/EmptyState";
 
 // Kinds that support combos (currently disabled for image/tts — temporarily hidden).
 // webSearch/webFetch handled by /web page.
@@ -248,9 +249,10 @@ export default function MediaProviderKindPage() {
       )}
 
       {allProviders.length === 0 ? (
-        <div className="text-center py-12 border border-dashed border-border rounded-xl text-text-muted text-sm">
-          No providers support <strong>{kindConfig.label}</strong> yet.
-        </div>
+        <EmptyState
+          title={<>No providers support <strong>{kindConfig.label}</strong> yet.</>}
+          className="rounded-xl border border-dashed border-border"
+        />
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
           {providers.map((provider) => (

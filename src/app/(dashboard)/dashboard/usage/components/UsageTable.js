@@ -210,10 +210,8 @@ export default function UsageTable({
               </Fragment>
             ))}
             {groupedData.length === 0 && (
-              <tr>
-                <td colSpan={totalColSpan} className="px-6 py-8 text-center text-text-muted">
-                  {emptyMessage}
-                </td>
+              <tr className="data-table-empty">
+                <td colSpan={totalColSpan}>{emptyMessage}</td>
               </tr>
             )}
           </tbody>

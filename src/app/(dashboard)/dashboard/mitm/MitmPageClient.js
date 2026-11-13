@@ -121,7 +121,6 @@ export default function MitmPageClient() {
             cloudEnabled={cloudEnabled}
             onDnsChange={(data) => setMitmStatus(prev => ({ ...prev, dnsStatus: data.dnsStatus ?? prev.dnsStatus }))}
             proxyCapture={mitmStatus.proxyCapture}
-            onProxyChange={(proxyCapture) => setMitmStatus(prev => ({ ...prev, proxyCapture }))}
           />
         ))}
       </div>

@@ -6,6 +6,7 @@ import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
 import dynamic from "next/dynamic";
 import { MONACO_VS_PATH } from "@/shared/constants/monaco";
 import Icon from "../../../../shared/components/icons/Icon";
+import HeaderActions from "@/shared/components/HeaderActions";
 
 // Configure the loader inside the dynamic import so the editor stays lazy-loaded and the
 // browser fetches the pinned Monaco build instead of the loader's hardcoded 0.55.1.
@@ -221,15 +222,12 @@ export default function TranslatorPage() {
   };
 
   return (
-    <div className="p-8 space-y-3">
-      {/* Header */}
-      <div className="flex items-center justify-between mb-2">
-        <div>
-          <h1 className="text-2xl font-bold text-text-main">Translator Debug</h1>
-          <p className="text-sm text-text-muted mt-1">Replay request flow — matches log files</p>
-        </div>
+    <div className="space-y-3">
+      {/* Title and description come from the header bar. The meta badges are
+          page state, so they ride up into its actions slot. */}
+      <HeaderActions>
         {meta && (
-          <div className="flex items-center gap-2 flex-wrap justify-end">
+          <div className="hidden items-center gap-2 lg:flex">
             <MetaBadge label="src" value={meta.sourceFormat} color="blue" />
             <Icon name="arrow_forward" size={14} className="text-text-muted" />
             <MetaBadge label="dst" value={meta.targetFormat} color="orange" />
@@ -237,7 +235,7 @@ export default function TranslatorPage() {
             <MetaBadge label="model" value={meta.model} color="purple" />
           </div>
         )}
-      </div>
+      </HeaderActions>
 
       {STEPS.map((step) => {
         const action = getAction(step.id);

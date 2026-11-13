@@ -10,7 +10,6 @@
 // checks, no provider-shaped fields sprinkled through props.
 
 import Image from "next/image";
-import Link from "next/link";
 import { useState } from "react";
 import PropTypes from "prop-types";
 import { Badge } from "@/shared/components";
@@ -43,14 +42,7 @@ export default function ProviderHero({ capabilities, connectionCount = 0, header
 
   return (
     <div className="flex min-w-0 flex-col gap-4">
-      <Link
-        href="/dashboard/providers"
-        className="inline-flex items-center gap-1 text-sm text-text-muted hover:text-primary transition-colors"
-      >
-        <Icon name="arrow_back" size={18} />
-        Back to Providers
-      </Link>
-
+      {/* The trail back to Providers is the header bar's breadcrumb. */}
       {/* Hero card */}
       <div
         className="relative overflow-hidden rounded-2xl border p-5 sm:p-7"
@@ -86,9 +78,6 @@ export default function ProviderHero({ capabilities, connectionCount = 0, header
             </div>
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2">
-                <h1 className="truncate text-2xl font-semibold tracking-tight sm:text-3xl">
-                  {c.name}
-                </h1>
                 <Badge variant={tier.variant} size="sm">{tier.label}</Badge>
                 {c.deprecated && <Badge variant="warning" size="sm">deprecated</Badge>}
               </div>

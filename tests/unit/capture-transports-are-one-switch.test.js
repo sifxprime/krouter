@@ -92,3 +92,46 @@ describe("the proxy's health check", () => {
     expect(proxy).toMatch(/http\.createServer\(async \(req, res\) =>/);
   });
 });
+
+describe("the dashboard offers one control, not two", () => {
+  const CARD = "src/app/(dashboard)/dashboard/cli-tools/components/MitmToolCard.js";
+  const card = fs.readFileSync(path.join(process.cwd(), CARD), "utf8");
+
+  it("has no separate start/stop for proxy capture", () => {
+    // Coupling the lifecycle in manager.js was only half the fix: the card still
+    // rendered its own "Proxy capture · Start/Stop", so the two transports could
+    // be driven apart again from the UI, and they still looked like independent
+    // things. The MITM server owns both now.
+    const code = card.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+    expect(code, "the UI must not drive the proxy independently").not.toContain("proxy-start");
+    expect(code, "the UI must not drive the proxy independently").not.toContain("proxy-stop");
+    expect(code, "the toggle handler should be gone with it").not.toContain("toggleProxy");
+  });
+
+  it("still shows the state and the address, which are useful", () => {
+    // Removing the control should not remove the information: nothing can point
+    // an already-running app at the proxy, so the address has to be copyable.
+    expect(card).toContain("Proxy capture");
+    expect(card, "the HTTPS_PROXY line is the only way to use this transport").toContain("HTTPS_PROXY=");
+    expect(card, "and it should say what drives it").toMatch(/[Ff]ollows the MITM server/);
+  });
+
+  it("leaves no dead proxy-control props behind", () => {
+    // onProxyChange existed only to feed the removed button.
+    const refs = [];
+    const walk = (dir) => {
+      for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+        const full = path.join(dir, e.name);
+        if (e.isDirectory()) {
+          if (e.name !== "node_modules" && e.name !== ".next") walk(full);
+          continue;
+        }
+        if (/\.(js|jsx)$/.test(e.name) && fs.readFileSync(full, "utf8").includes("onProxyChange")) {
+          refs.push(path.relative(process.cwd(), full));
+        }
+      }
+    };
+    walk(path.join(process.cwd(), "src"));
+    expect(refs, `dead prop still referenced in: ${refs.join(", ")}`).toEqual([]);
+  });
+});

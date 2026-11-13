@@ -103,7 +103,7 @@ export default function PxpipeClient() {
           : "Stopped";
 
   return (
-    <div className="space-y-6 p-6">
+    <div className="flex flex-col gap-6">
       <div className="flex items-center justify-between flex-wrap gap-3">
         <h2 className="section-title flex items-center gap-2">
           <Icon name="image" size={24} className="text-primary" />
@@ -258,10 +258,8 @@ export default function PxpipeClient() {
                 </tr>
               ))}
               {(!stats?.recent || stats.recent.length === 0) && (
-                <tr>
-                  <td colSpan={8} className="py-6 text-center text-text-muted text-sm">
-                    No PXPIPE activity yet
-                  </td>
+                <tr className="data-table-empty">
+                  <td colSpan={8}>No PXPIPE activity yet</td>
                 </tr>
               )}
             </tbody>

@@ -45,8 +45,9 @@ export default function EnvironmentPage() {
 
   return (
     <div className="flex flex-col gap-6">
+      {/* Title is in the header bar; this paragraph stays because of the live
+          set/total count at the end of it. */}
       <div className="flex flex-col gap-2">
-        <h1 className="text-2xl font-semibold">Environment</h1>
         <p className="text-sm text-text-muted">
           Every environment variable kRouter recognizes, what it does, and whether it's currently set on this process.
           Secrets are masked — click the eye icon to reveal.{" "}

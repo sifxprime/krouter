@@ -74,7 +74,7 @@ export default function NewProviderPage() {
   const selectedProvider = AI_PROVIDERS[formData.provider];
 
   return (
-    <div className="max-w-2xl mx-auto">
+    <div>
       {/* Header */}
       <div className="mb-8">
         <Link
@@ -84,10 +84,6 @@ export default function NewProviderPage() {
           <Icon name="arrow_back" size={18} />
           Back to Providers
         </Link>
-        <h1 className="text-3xl font-semibold tracking-tight">Add New Provider</h1>
-        <p className="text-text-muted mt-2">
-          Configure a new AI provider to use with your applications.
-        </p>
       </div>
 
       {/* Form */}

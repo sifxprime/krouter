@@ -7,6 +7,7 @@ import Badge from "@/shared/components/Badge";
 import QuotaProgressBar from "./QuotaProgressBar";
 import { calculatePercentage } from "./utils";
 import Icon from "../../../../../../shared/components/icons/Icon";
+import EmptyState from "@/shared/components/EmptyState";
 
 const planVariants = {
   free: "default",
@@ -167,10 +168,7 @@ export default function ProviderLimitCard({
 
       {/* Empty State */}
       {!loading && !error && !message && quotas?.length === 0 && (
-        <div className="text-center py-8 text-text-muted">
-          <Icon name="data_usage" size={48} className="opacity-20" />
-          <p className="text-sm mt-2">No quota data available</p>
-        </div>
+        <EmptyState icon="data_usage" title="No quota data available" />
       )}
     </Card>
   );

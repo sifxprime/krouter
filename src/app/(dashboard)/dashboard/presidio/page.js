@@ -4,16 +4,9 @@ import PresidioSettingsCard from "./PresidioSettingsCard";
 
 export default function SettingsPage() {
   return (
-    <div className="max-w-4xl mx-auto p-6 space-y-6">
-      {/* Page Header */}
-      <div>
-        <h1 className="text-3xl font-bold text-text-main">Settings</h1>
-        <p className="text-text-muted mt-1">
-          Configure kRouter security and middleware settings
-        </p>
-      </div>
-
-      {/* Presidio Settings Card */}
+    <div className="flex flex-col gap-6">
+      {/* The title lives in the header bar. This page used to paint its own,
+          and called itself "Settings" while the bar called it "Presidio". */}
       <PresidioSettingsCard />
     </div>
   );

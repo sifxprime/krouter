@@ -29,6 +29,7 @@ import { useHeaderSearchStore } from "@/store/headerSearchStore";
 import ModelAvailabilityBadge from "./components/ModelAvailabilityBadge";
 import Icon from "../../../../shared/components/icons/Icon";
 import useDialog from "@/shared/hooks/useDialog";
+import EmptyState from "@/shared/components/EmptyState";
 
 function getStatusDisplay(connected, error, errorCode) {
   const parts = [];
@@ -323,7 +324,7 @@ export default function ProvidersPage() {
 
   if (loading) {
     return (
-      <div className="flex flex-col gap-8">
+      <div className="flex flex-col gap-6">
         <CardSkeleton />
         <CardSkeleton />
       </div>
@@ -339,14 +340,14 @@ export default function ProvidersPage() {
     anthropicCompatibleProviders.length > 0;
 
   return (
-    <div className="flex min-w-0 flex-col gap-6 px-1 sm:px-0">
+    <div className="flex min-w-0 flex-col gap-6">
       {/* 0.5.91 — Zenith Engine strip */}
       <ZenithStrip />
       {!hasAnyResult && (
-        <div className="text-center py-8 border border-dashed border-border rounded-xl">
-          <Icon name="search_off" size={32} className="text-text-muted mb-2" />
-          <p className="text-text-muted text-sm">No providers match your search</p>
-        </div>
+        <EmptyState
+          title="No providers match your search"
+          className="rounded-xl border border-dashed border-border"
+        />
       )}
 
       {/* Custom Providers (OpenAI/Anthropic Compatible) — dynamic */}

@@ -3,7 +3,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import Image from "next/image";
 import { Card, Button, Badge, Input, Modal, CardSkeleton, OAuthModal, KiroOAuthWrapper, CursorAuthModal, IFlowCookieModal, GitLabAuthModal, Toggle, Select, EditConnectionModal, NoAuthProxyCard, ConfirmModal } from "@/shared/components";
 import { OAUTH_PROVIDERS, APIKEY_PROVIDERS, FREE_PROVIDERS, FREE_TIER_PROVIDERS, WEB_COOKIE_PROVIDERS, getProviderAlias, isOpenAICompatibleProvider, isAnthropicCompatibleProvider, AI_PROVIDERS, THINKING_CONFIG } from "@/shared/constants/providers";
 import { getModelsByProviderId } from "@/shared/constants/models";
@@ -50,7 +49,6 @@ export default function ProviderDetailPage() {
   const [showBulkProxyModal, setShowBulkProxyModal] = useState(false);
   const [selectedConnection, setSelectedConnection] = useState(null);
   const [modelAliases, setModelAliases] = useState({});
-  const [headerImgError, setHeaderImgError] = useState(false);
   const [modelTestResults, setModelTestResults] = useState({});
   const [modelsTestError, setModelsTestError] = useState("");
   const [testingModelIds, setTestingModelIds] = useState(new Set());
@@ -1446,7 +1444,7 @@ export default function ProviderDetailPage() {
 
   if (loading) {
     return (
-      <div className="flex flex-col gap-8">
+      <div className="flex flex-col gap-6">
         <CardSkeleton />
         <CardSkeleton />
       </div>
@@ -1482,46 +1480,15 @@ export default function ProviderDetailPage() {
         <ProviderHero
           capabilities={capabilities}
           connectionCount={connections.length}
-          headerIconPath={headerImgError ? null : getHeaderIconPath()}
+          headerIconPath={getHeaderIconPath()}
         />
       ) : (
-        <div className="min-w-0">
-          <Link
-            href="/dashboard/providers"
-            className="inline-flex items-center gap-1 text-sm text-text-muted hover:text-primary transition-colors mb-4"
-          >
-            <Icon name="arrow_back" size={18} />
-            Back to Providers
-          </Link>
-          <div className="flex min-w-0 items-center gap-3 sm:gap-4">
-            <div
-              className="flex size-12 shrink-0 items-center justify-center rounded-lg"
-              style={{ backgroundColor: `${providerInfo.color}15` }}
-            >
-              {headerImgError ? (
-                <span className="text-sm font-bold" style={{ color: providerInfo.color }}>
-                  {providerInfo.textIcon || providerInfo.id.slice(0, 2).toUpperCase()}
-                </span>
-              ) : (
-                <Image
-                  src={getHeaderIconPath()}
-                  alt={providerInfo.name}
-                  width={48}
-                  height={48}
-                  className="max-h-12 max-w-12 rounded-lg object-contain"
-                  sizes="48px"
-                  onError={() => setHeaderImgError(true)}
-                />
-              )}
-            </div>
-            <div className="min-w-0">
-              <h1 className="truncate text-2xl font-semibold tracking-tight sm:text-3xl">{providerInfo.name}</h1>
-              <p className="text-text-muted">
-                {connections.length} connection{connections.length === 1 ? "" : "s"}
-              </p>
-            </div>
-          </div>
-        </div>
+        /* The header bar already carries this provider's icon and name as its
+           breadcrumb, and the trail back to Providers. All that is left for the
+           page to say is how many connections it has. */
+        <p className="text-sm text-text-muted">
+          {connections.length} connection{connections.length === 1 ? "" : "s"}
+        </p>
       )}
 
       {isCompatible && providerNode && (

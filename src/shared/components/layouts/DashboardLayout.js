@@ -6,6 +6,13 @@ import { useNotificationStore } from "@/store/notificationStore";
 import { Icon } from "../icons";
 import Sidebar from "../Sidebar";
 import Header from "../Header";
+import {
+  SHELL_GUTTER_X,
+  SHELL_PAD_Y,
+  SHELL_SCROLL,
+  isFullBleed,
+  shellTrackClass,
+} from "@/shared/constants/pageShell";
 
 function getToastStyle(type) {
   if (type === "success") {
@@ -37,6 +44,7 @@ export default function DashboardLayout({ children }) {
   const pathname = usePathname();
   const notifications = useNotificationStore((state) => state.notifications);
   const removeNotification = useNotificationStore((state) => state.removeNotification);
+  const fullBleed = isFullBleed(pathname);
 
   return (
     <div className="flex h-screen w-full overflow-hidden bg-bg">
@@ -96,8 +104,19 @@ export default function DashboardLayout({ children }) {
         {/* Faint grid background */}
         <div className="landing-grid absolute inset-0 pointer-events-none -z-10" aria-hidden="true" />
         <Header key={pathname} onMenuClick={() => setSidebarOpen(true)} />
-        <div className={`flex-1 overflow-y-auto custom-scrollbar ${pathname === "/dashboard/basic-chat" ? "" : "p-6 lg:p-10"} ${pathname === "/dashboard/basic-chat" ? "flex flex-col overflow-hidden" : ""}`}>
-          <div className={`${pathname === "/dashboard/basic-chat" ? "flex-1 w-full h-full flex flex-col" : "max-w-7xl mx-auto"}`}>{children}</div>
+        {/* The gutter and width come from pageShell.js so the header above
+            resolves to the same left edge. Pages must not set either; see
+            tests/unit/dashboard-shell-is-one-track.test.js. */}
+        <div
+          className={
+            fullBleed
+              ? "flex flex-1 flex-col overflow-hidden"
+              : `flex-1 ${SHELL_SCROLL} ${SHELL_GUTTER_X} ${SHELL_PAD_Y}`
+          }
+        >
+          <div className={fullBleed ? "flex h-full w-full flex-1 flex-col" : shellTrackClass(pathname)}>
+            {children}
+          </div>
         </div>
       </main>
     </div>

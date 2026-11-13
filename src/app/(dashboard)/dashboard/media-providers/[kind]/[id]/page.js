@@ -1,10 +1,8 @@
 "use client";
 
 import { useParams, notFound, useRouter } from "next/navigation";
-import Link from "next/link";
 import { useState, useEffect } from "react";
 import { Card, Badge, Button, AddCustomEmbeddingModal, NoAuthProxyCard, ProviderInfoCard } from "@/shared/components";
-import ProviderIcon from "@/shared/components/ProviderIcon";
 import { MEDIA_PROVIDER_KINDS, AI_PROVIDERS, getProviderAlias, isCustomEmbeddingProvider, resolveProviderId } from "@/shared/constants/providers";
 import { getModelsByProviderId } from "@/shared/constants/models";
 import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
@@ -1756,32 +1754,13 @@ export default function MediaProviderDetailPage() {
   if (!isCustom && !kinds.includes(kind)) return notFound();
 
   return (
-    <div className="flex flex-col gap-8">
-      {/* Back */}
+    <div className="flex flex-col gap-6">
+      {/* The name, icon and the trail back to this kind are all in the header
+          bar's breadcrumb. What is left is the provider's own metadata. */}
       <div>
-        <Link
-          href={`/dashboard/media-providers/${kind}`}
-          className="inline-flex items-center gap-1 text-sm text-text-muted hover:text-primary transition-colors mb-4"
-        >
-          <Icon name="arrow_back" size={18} />
-          {kindConfig.label}
-        </Link>
-
-        {/* Header */}
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
-          <div className="size-12 rounded-lg flex items-center justify-center shrink-0" style={{ backgroundColor: `${provider.color}15` }}>
-            <ProviderIcon
-              src={`/providers/${provider.id}.png`}
-              alt={provider.name}
-              size={48}
-              className="object-contain rounded-lg max-w-[48px] max-h-[48px]"
-              fallbackText={provider.textIcon || provider.id.slice(0, 2).toUpperCase()}
-              fallbackColor={provider.color}
-            />
-          </div>
           <div className="flex-1">
             <div className="flex flex-wrap items-center gap-2 sm:gap-3">
-              <h1 className="text-3xl font-semibold tracking-tight">{provider.name}</h1>
               {!isCustom && provider.notice?.apiKeyUrl && (
                 <a
                   href={provider.notice.apiKeyUrl}

@@ -7,6 +7,7 @@ import { Card, Badge, Button } from "@/shared/components";
 import ProviderIcon from "@/shared/components/ProviderIcon";
 import { AI_PROVIDERS, getProvidersByKind } from "@/shared/constants/providers";
 import Icon from "../../../../../shared/components/icons/Icon";
+import EmptyState from "@/shared/components/EmptyState";
 
 function getEffectiveStatus(conn) {
   const isCooldown = Object.entries(conn).some(
@@ -130,9 +131,10 @@ function Section({ title, icon, kind, providers, connections, combos, onCreateCo
 
       {/* Providers grid — bottom */}
       {providers.length === 0 ? (
-        <div className="text-center py-8 border border-dashed border-border rounded-xl text-text-muted text-sm">
-          No providers.
-        </div>
+        <EmptyState
+          title="No providers."
+          className="rounded-xl border border-dashed border-border"
+        />
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
           {providers.map((p) => (
@@ -190,7 +192,7 @@ export default function WebProvidersPage() {
   };
 
   return (
-    <div className="flex flex-col gap-8">
+    <div className="flex flex-col gap-6">
       <Section
         title="Web Search" icon="search" kind="webSearch"
         providers={searchProviders} connections={connections} combos={searchCombos}

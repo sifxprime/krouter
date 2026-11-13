@@ -9,6 +9,8 @@ import { Card, Button, Modal, Input, CardSkeleton, ModelSelectModal, Toggle, Con
 import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
 import { isOpenAICompatibleProvider, isAnthropicCompatibleProvider } from "@/shared/constants/providers";
 import Icon from "../../../../shared/components/icons/Icon";
+import HeaderActions from "@/shared/components/HeaderActions";
+import EmptyState from "@/shared/components/EmptyState";
 
 // Validate combo name: only a-z, A-Z, 0-9, -, _
 const VALID_NAME_REGEX = /^[a-zA-Z0-9_.\-]+$/;
@@ -195,33 +197,28 @@ export default function CombosPage() {
   }
 
   return (
-    <div className="flex min-w-0 flex-col gap-6 px-1 sm:px-0">
-      {/* Header */}
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="min-w-0">
-          <h1 className="text-2xl font-semibold">Combos</h1>
-          <p className="text-sm text-text-muted mt-1">
-            Create model combos with fallback support
-          </p>
-        </div>
-        <Button icon="add" onClick={() => setShowCreateModal(true)} className="w-full sm:w-auto">
+    <div className="flex min-w-0 flex-col gap-6">
+      {/* The title and description are in the header bar, which already shows
+          both. Only the action moves up there with them. */}
+      <HeaderActions>
+        <Button size="sm" icon="add" onClick={() => setShowCreateModal(true)}>
           Create Combo
         </Button>
-      </div>
+      </HeaderActions>
 
       {/* Combos List */}
       {combos.length === 0 ? (
         <Card>
-          <div className="text-center py-12">
-            <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-primary/10 text-primary mb-4">
-              <Icon name="layers" size={32} />
-            </div>
-            <p className="text-text-main font-medium mb-1">No combos yet</p>
-            <p className="text-sm text-text-muted mb-4">Create model combos with fallback support</p>
-            <Button icon="add" onClick={() => setShowCreateModal(true)} className="w-full sm:w-auto">
-              Create Combo
-            </Button>
-          </div>
+          <EmptyState
+            icon="layers"
+            title="No combos yet"
+            description="Create model combos with fallback support"
+            action={
+              <Button icon="add" onClick={() => setShowCreateModal(true)}>
+                Create Combo
+              </Button>
+            }
+          />
         </Card>
       ) : (
         <div className="flex flex-col gap-4">

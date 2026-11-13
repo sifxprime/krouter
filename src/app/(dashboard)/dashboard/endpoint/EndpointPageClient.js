@@ -8,6 +8,7 @@ import { getCurrentLocale, onLocaleChange } from "@/i18n/runtime";
 import Icon from "../../../../shared/components/icons/Icon";
 import TrafficStrip from "./components/TrafficStrip";
 import QuickConnect from "./components/QuickConnect";
+import EmptyState from "@/shared/components/EmptyState";
 
 // Locales that unlock wenyan (classical Chinese) caveman levels
 const WENYAN_LOCALES = ["zh-CN", "zh-TW"];
@@ -893,7 +894,7 @@ export default function APIPageClient({ machineId }) {
 
   if (loading) {
     return (
-      <div className="flex flex-col gap-8">
+      <div className="flex flex-col gap-6">
         <CardSkeleton />
         <CardSkeleton />
       </div>
@@ -903,7 +904,7 @@ export default function APIPageClient({ machineId }) {
   const currentEndpoint = baseUrl;
 
   return (
-    <div className="flex flex-col gap-8">
+    <div className="flex flex-col gap-6">
       {/* Today's traffic — the page's first question is whether anything is
           actually routing through the endpoint it is about to hand out. */}
       <TrafficStrip />
@@ -1389,16 +1390,16 @@ export default function APIPageClient({ machineId }) {
         )}
 
         {keys.length === 0 ? (
-          <div className="text-center py-12">
-            <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-primary/10 text-primary mb-4">
-              <Icon name="vpn_key" size={32} />
-            </div>
-            <p className="text-text-main font-medium mb-1">No API keys yet</p>
-            <p className="text-sm text-text-muted mb-4">Create your first API key to get started</p>
-            <Button icon="add" onClick={() => setShowAddModal(true)}>
-              Create Key
-            </Button>
-          </div>
+          <EmptyState
+            icon="vpn_key"
+            title="No API keys yet"
+            description="Create your first API key to get started"
+            action={
+              <Button icon="add" onClick={() => setShowAddModal(true)}>
+                Create Key
+              </Button>
+            }
+          />
         ) : (
           <div className="flex flex-col">
             {keys.map((key) => (

@@ -251,8 +251,8 @@ export default function RequestDetailsTab() {
             </thead>
             <tbody>
               {loading ? (
-                <tr>
-                  <td colSpan="7" className="p-8 text-center text-text-muted">
+                <tr className="data-table-empty">
+                  <td colSpan="7">
                     <div className="flex items-center justify-center gap-2">
                       <Icon name="progress_activity" size={20} className="animate-spin" />
                       Loading...
@@ -260,10 +260,8 @@ export default function RequestDetailsTab() {
                   </td>
                 </tr>
               ) : details.length === 0 ? (
-                <tr>
-                  <td colSpan="7" className="p-8 text-center text-text-muted">
-                    No request details found
-                  </td>
+                <tr className="data-table-empty">
+                  <td colSpan="7">No request details found</td>
                 </tr>
               ) : (
                 details.map((detail, index) => (

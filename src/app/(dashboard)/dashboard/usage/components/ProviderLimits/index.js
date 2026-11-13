@@ -9,6 +9,7 @@ import Card from "@/shared/components/Card";
 import { EditConnectionModal, Tooltip } from "@/shared/components";
 import { USAGE_SUPPORTED_PROVIDERS } from "@/shared/constants/providers";
 import Icon from "../../../../../../shared/components/icons/Icon";
+import EmptyState from "@/shared/components/EmptyState";
 
 function getConnectionLabel(connection) {
   const isEmail = (value) =>
@@ -764,16 +765,11 @@ export default function ProviderLimits() {
   if (!connectionsLoading && !hasEligibleConnections) {
     return (
       <Card padding="lg">
-        <div className="text-center py-12">
-          <Icon name="cloud_off" size={64} className="text-text-muted opacity-20" />
-          <h3 className="section-title mt-4">
-            No Providers Connected
-          </h3>
-          <p className="mt-2 text-sm text-text-muted max-w-md mx-auto">
-            Connect to providers with OAuth to track your API quota limits and
-            usage.
-          </p>
-        </div>
+        <EmptyState
+          icon="cloud_off"
+          title="No Providers Connected"
+          description="Connect to providers with OAuth to track your API quota limits and usage."
+        />
       </Card>
     );
   }
@@ -781,15 +777,11 @@ export default function ProviderLimits() {
   if (!connectionsLoading && !hasVisibleConnections) {
     return (
       <Card padding="lg">
-        <div className="text-center py-12">
-          <Icon name={emptyState.icon} size={64} className="text-text-muted opacity-20" />
-          <h3 className="section-title mt-4">
-            {emptyState.title}
-          </h3>
-          <p className="mt-2 text-sm text-text-muted max-w-md mx-auto">
-            {emptyState.description}
-          </p>
-        </div>
+        <EmptyState
+          icon={emptyState.icon}
+          title={emptyState.title}
+          description={emptyState.description}
+        />
       </Card>
     );
   }

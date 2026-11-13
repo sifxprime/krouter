@@ -229,9 +229,50 @@ input, textarea {
   accent-color: var(--color-primary);
 }
 
+/* ============================================================
+   Dashboard shell gutter
+   ============================================================
+   The header bar and the scrolling content area are siblings, and their inner
+   tracks have to resolve to the same left edge. Equal padding is not enough:
+   the content area is a scroll container whose styled scrollbar is 6px of real
+   layout width, so its usable box is 6px narrower than the header's. A centred
+   narrow track then lands 3px left of the header's — measured 459 against 462
+   on /dashboard/profile at 1440px.
+
+   So the content area reserves that 6px whether or not the scrollbar is
+   showing (`scrollbar-gutter: stable`, which also stops the page shifting as
+   content grows past one screen), and the header reserves the same by hand
+   since it never scrolls. Both end up 1102px wide at x=292.
+
+   Consumed through src/shared/constants/pageShell.js — nothing should spell
+   these values out again. */
+:root {
+  --shell-gutter: 1.5rem;
+  --shell-scrollbar: 6px;
+}
+@media (min-width: 1024px) {
+  :root {
+    --shell-gutter: 2.5rem;
+  }
+}
+
+.shell-gutter-x {
+  padding-inline: var(--shell-gutter);
+}
+
+.shell-gutter-x-header {
+  padding-inline-start: var(--shell-gutter);
+  padding-inline-end: calc(var(--shell-gutter) + var(--shell-scrollbar));
+}
+
+.shell-scroll {
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+}
+
 /* Scrollbar (custom-scrollbar utility kept for compat) */
 .custom-scrollbar::-webkit-scrollbar {
-  width: 6px;
+  width: var(--shell-scrollbar, 6px);
 }
 .custom-scrollbar::-webkit-scrollbar-track {
   background: transparent;
