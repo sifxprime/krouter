@@ -29,6 +29,12 @@ export const NAV_SECTIONS = Object.freeze([
       // MEDIA_PROVIDER_KINDS at render time. basePath records where it leads,
       // so the nav-coverage guard can still see that the section is reachable.
       { id: "media", label: "Media Providers", icon: "perm_media", accordion: true, basePath: "/dashboard/media-providers" },
+      // Last in Route because it is how you check the route you just set up
+      // actually answers. It had no nav entry at all until 0.5.193 — the page
+      // shipped in the initial release and was reachable only by typing the
+      // URL, which is the exact failure sidebar-nav-coverage.test.js exists to
+      // catch; it was passing only because of a stale exemption.
+      { href: "/dashboard/basic-chat", label: "Chat", icon: "chat" },
     ],
   },
   {

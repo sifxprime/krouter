@@ -21,14 +21,18 @@ import path from "node:path";
 const NAV_DATA = "src/shared/components/nav/navSections.js";
 const DASHBOARD_DIR = "src/app/(dashboard)/dashboard";
 
-/** Pages deliberately absent from the sidebar, each with the reason. */
-const NOT_IN_SIDEBAR = {
-  // Commented out of the nav list and left that way. The old version of this
-  // guard scanned the component source with a regex that matched the
-  // commented-out line, so this counted as covered while being unreachable --
-  // the exact failure mode the guard exists to catch.
-  "basic-chat": "deliberately hidden; the entry is commented out in navSections",
-};
+/**
+ * Pages deliberately absent from the sidebar, each with the reason.
+ *
+ * Empty, and that is the point. The last entry was basic-chat, exempted
+ * because the nav "had the entry commented out" — and by the time anyone
+ * looked, navSections.js contained no mention of basic-chat in any form,
+ * commented or otherwise. The page had shipped in the initial release and was
+ * reachable only by typing the URL. An exemption whose reason has gone stale
+ * is indistinguishable from the orphaned page this guard was written to catch,
+ * so a new one needs a reason that can be checked against the code.
+ */
+const NOT_IN_SIDEBAR = {};
 // `profile` was an exception while Settings was a hardcoded <Link> outside the
 // nav array, invisible to the scan. It is a normal System entry now.
 // `media-providers` is the accordion, which records a basePath instead of an
