@@ -1,3 +1,38 @@
+# v0.5.190 (2026-11-13) — first release through a configured trusted publisher
+
+No code change. Cut to exercise the npm Trusted Publisher that has just been
+configured for this package, and to find out whether a trusted publish still
+spends 55 minutes in npm's staging.
+
+Until now every release fell back to the NPM_TOKEN secret, because the OIDC
+exchange was refused:
+
+    npm refused trusted publishing for @sifxprime/krouter
+    (HTTP 404 OIDC token exchange error - package not found)
+
+The claims the workflow sends were correct all along — repository
+`sifxprime/krouter`, workflow `npm-publish.yml`, environment null, with
+`id-token: write` present — so there was nothing in this repository to change.
+npm simply had no trusted-publisher record to match them against.
+
+What this release answers, from its own log:
+
+  - `Check npm trusted publishing` printing HTTP 200 rather than 404 means npm
+    now accepts this workflow, and the token fallback is no longer in the path.
+  - How long the serve gate waits. `npm trust github` exposes `--allow-publish`
+    and `--allow-stage-publish` as separate permissions, so staging is something
+    a publisher is or is not allowed to skip — which makes the 55 minutes a
+    permissions question rather than registry load. v0.5.187 and v0.5.188 each
+    took 3301 seconds; v0.5.189 took 3299. Three releases within two seconds of
+    each other is a fixed window, not congestion.
+
+For the record, v0.5.189 was the first release where the gate added in that
+version did its job: published at 21:25:00, served at 22:20:39 after 166 polls,
+with `dist-tags.latest` moving to 0.5.189 in the same moment. A 25-minute ceiling
+would have failed a release that was fine. Nothing is wrong with the dist-tag; it
+follows the version write, and earlier reports of it lagging were registry reads
+taken inside the staging window.
+
 # v0.5.189 (2026-11-13) — a green release now means the version is installable
 
 No product change. This is the release pipeline learning the difference between
