@@ -1,3 +1,35 @@
+# v0.5.193 (2026-11-14) — the Chat page is reachable
+
+`/dashboard/basic-chat` has existed since the initial release and nothing ever
+linked to it. Not the sidebar, not any other page — the only way to open it was
+to type the URL.
+
+`tests/unit/sidebar-nav-coverage.test.js` exists for exactly this. It was
+written after v0.5.111 added the Token Saver page by overwriting the MITM line
+in the sidebar instead of inserting beside it, which left MITM serving 200 and
+unreachable until a user noticed. The guard turns an orphaned page into a test
+failure.
+
+It was passing here because of an exemption:
+
+    "basic-chat": "deliberately hidden; the entry is commented out in navSections"
+
+navSections.js contains no mention of basic-chat in any form, commented or
+otherwise. The line that reason referred to was removed at some point and the
+exemption outlived it, so the guard was asserting nothing about the one page it
+excused — and an exemption whose reason has gone stale is indistinguishable
+from the orphan it is meant to excuse. That is the same failure mode the
+guard's own comment records: an older version of it scanned the component with
+a regex that matched a commented-out line, counting a route as covered while it
+was unreachable.
+
+Chat is now the last item under Route, because it is how you check the route
+you just configured actually answers. `NOT_IN_SIDEBAR` is empty, and the
+comment in its place requires any future entry to carry a reason that can be
+checked against the code.
+
+Nothing else changed. If you are coming from 0.5.191, 0.5.192 is where the
+dashboard layout work and the single capture switch landed.
 # v0.5.192 (2026-11-14) — one shell, one title, one empty state
 
 A pass over every dashboard page for layout, reported as gaps between a page's
