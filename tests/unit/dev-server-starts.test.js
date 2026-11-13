@@ -63,33 +63,53 @@ describe("dev scripts", () => {
 });
 
 describe("the preview server", () => {
-  it("does not sit on the MITM proxy's port", () => {
-    // DEFAULT_PROXY_PORT in src/mitm/proxy.js is 20129. The preview config
-    // pointed there, so it could never start while proxy capture was running —
-    // and capture is on by default once the MITM server is started.
-    const proxySrc = fs.readFileSync(path.join(process.cwd(), "src/mitm/proxy.js"), "utf8");
-    const proxyPort = Number(proxySrc.match(/DEFAULT_PROXY_PORT\s*=\s*(\d+)/)[1]);
-    expect(Number.isFinite(proxyPort)).toBe(true);
+  // `.claude/launch.json` is local editor config and is gitignored (.gitignore
+  // line 82), so it does not exist on CI. The first version of these checks
+  // read it unconditionally and went red the moment it ran anywhere but this
+  // machine. Everything that actually matters is assertable from package.json
+  // and src/, which are committed; the launch config is cross-checked only
+  // when it happens to be present.
+  const proxyPort = Number(
+    fs
+      .readFileSync(path.join(process.cwd(), "src/mitm/proxy.js"), "utf8")
+      .match(/DEFAULT_PROXY_PORT\s*=\s*(\d+)/)[1]
+  );
 
-    const launch = JSON.parse(
-      fs.readFileSync(path.join(process.cwd(), ".claude/launch.json"), "utf8")
-    );
+  const portOf = (script) => {
+    const m = (scripts[script] || "").match(/--port\s+(\d+)/);
+    return m ? Number(m[1]) : null;
+  };
+
+  it("reads a real proxy port to compare against", () => {
+    expect(Number.isFinite(proxyPort)).toBe(true);
+  });
+
+  it("does not sit on the MITM proxy's port", () => {
+    // It pointed at 20129, which is DEFAULT_PROXY_PORT, so it could never
+    // start while proxy capture was running — and capture is on by default
+    // once the MITM server is started.
+    expect(portOf("dev:preview"), "preview must not bind the proxy's port").not.toBe(proxyPort);
+    expect(portOf("dev"), "nor must the main dev server").not.toBe(proxyPort);
+  });
+
+  it("does not fight the main dev server for a port", () => {
+    const main = portOf("dev");
+    const preview = portOf("dev:preview");
+    expect(main, "dev must declare a port").toBeTruthy();
+    expect(preview, "dev:preview must declare a port").toBeTruthy();
+    expect(preview, "the two dev servers cannot share a port").not.toBe(main);
+  });
+
+  it("agrees with the local launch config when there is one", () => {
+    const file = path.join(process.cwd(), ".claude/launch.json");
+    if (!fs.existsSync(file)) return; // gitignored: absent on CI, and that is fine
+    const launch = JSON.parse(fs.readFileSync(file, "utf8"));
     for (const cfg of launch.configurations) {
       expect(cfg.port, `${cfg.name} must not bind the proxy's port`).not.toBe(proxyPort);
     }
-    expect(scripts["dev:preview"], "the script must agree with launch.json").toContain(
-      `--port ${launch.configurations[0].port}`
-    );
-  });
-
-  it("matches the port its launch config declares", () => {
-    const launch = JSON.parse(
-      fs.readFileSync(path.join(process.cwd(), ".claude/launch.json"), "utf8")
-    );
     const cfg = launch.configurations.find((c) => c.name === "krouter-dev");
-    expect(cfg, "krouter-dev config is gone").toBeTruthy();
-    expect(scripts[cfg.runtimeArgs.at(-1)] ?? scripts["dev:preview"]).toContain(
-      `--port ${cfg.port}`
-    );
+    if (cfg) {
+      expect(portOf("dev:preview"), "launch.json and dev:preview disagree").toBe(cfg.port);
+    }
   });
 });
