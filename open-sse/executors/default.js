@@ -122,7 +122,18 @@ export class DefaultExecutor extends BaseExecutor {
         // CLI fingerprint (config.headers = CLAUDE_CLI_SPOOF_HEADERS) and compute
         // anthropic-beta per-request from the model so heavy-agent flags only ship
         // for opus/sonnet.
-        if (model) headers["Anthropic-Beta"] = selectAnthropicBeta(model, body);
+        // The client's own Anthropic-Beta is merged in, not discarded. It is
+        // already collected into credentials.rawHeaders by
+        // pickForwardableClientHeaders, and until now nothing on this path read
+        // it — so a newer client's feature flags were thrown away and Anthropic
+        // 400'd the body fields that needed them. See selectAnthropicBeta.
+        if (model) {
+          headers["Anthropic-Beta"] = selectAnthropicBeta(
+            model,
+            body,
+            credentials?.rawHeaders?.["anthropic-beta"]
+          );
+        }
         credentials.apiKey
           ? (headers["x-api-key"] = credentials.apiKey)
           : (headers["Authorization"] = `Bearer ${credentials.accessToken}`);
@@ -163,8 +174,18 @@ export class DefaultExecutor extends BaseExecutor {
           // ids and never matches, so gateways that would choke on unknown beta flags
           // are untouched. The strip block below still trims claude-code-20250219 for
           // a non-official upstream.
+          // The client's flags are merged here for the same reason they are on
+          // the `claude` branch: this node fronts Anthropic, so the body's newer
+          // fields need the client's betas as much as they need ours. The
+          // context_management case in the comment above is one instance of that
+          // general problem, patched by adding a single flag to the static list;
+          // forwarding what the client sent stops the next one recurring.
           if (typeof model === "string" && /^claude-/.test(model)) {
-            headers["Anthropic-Beta"] = selectAnthropicBeta(model, body);
+            headers["Anthropic-Beta"] = selectAnthropicBeta(
+              model,
+              body,
+              credentials?.rawHeaders?.["anthropic-beta"]
+            );
           }
         } else if (this.provider === "gitlab") {
           // GitLab Duo uses Bearer token (PAT with ai_features scope, or OAuth access token)

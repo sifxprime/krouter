@@ -149,10 +149,39 @@ function createDecryptedServer() {
 function startProxy({ port = DEFAULT_PROXY_PORT, host = "127.0.0.1" } = {}) {
   const decrypted = createDecryptedServer();
 
-  const proxy = http.createServer((req, res) => {
+  // async because the health check probes the upstream router rather than
+  // reporting on its own open socket.
+  const proxy = http.createServer(async (req, res) => {
     if (req.url === HEALTH_PATH || req.url === `http://${host}:${port}${HEALTH_PATH}`) {
-      res.writeHead(200, { "Content-Type": "application/json" });
-      return res.end(JSON.stringify({ ok: true, pid: process.pid, mode: "proxy", port }));
+      // `ok` means "can serve an intercepted request", not "the port is open".
+      //
+      // This answered {"ok":true} on a listening socket whose upstream was gone.
+      // The proxy is spawned detached, so it outlives the app; after a hard kill
+      // it kept accepting while every intercepted request died with
+      // `500 {"error":{"message":"fetch failed"}}`. A health check that cannot
+      // tell those apart sends you looking for a network fault.
+      const router = process.env.MITM_ROUTER_BASE || "";
+      let routerReachable = false;
+      try {
+        const probe = await fetch(new URL("/api/health", router), {
+          signal: AbortSignal.timeout(2000),
+        });
+        routerReachable = probe.ok;
+      } catch {
+        routerReachable = false;
+      }
+      res.writeHead(routerReachable ? 200 : 503, { "Content-Type": "application/json" });
+      return res.end(JSON.stringify({
+        ok: routerReachable,
+        pid: process.pid,
+        mode: "proxy",
+        port,
+        router,
+        routerReachable,
+        ...(routerReachable ? {} : {
+          detail: "listening, but the kRouter server it forwards to is unreachable — intercepted requests will fail",
+        }),
+      }));
     }
     res.writeHead(200, { "Content-Type": "text/plain" });
     res.end("kRouter proxy capture mode. Point HTTPS_PROXY at this address.\n");

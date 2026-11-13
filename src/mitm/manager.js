@@ -725,6 +725,41 @@ async function stopProxyCapture() {
   return getProxyCaptureStatus();
 }
 
+/**
+ * The two capture transports are one switch.
+ *
+ * They used to start and stop independently, and the states that produced were
+ * worse than either transport being off. The proxy is spawned detached and
+ * unref'd so it outlives the app: stop MITM, or kill the app, and the proxy kept
+ * listening on 20129 with nothing behind it. Measured in that state — the port
+ * accepts, `/_krouter_proxy_health` answers `{"ok":true}`, and every intercepted
+ * request dies with `500 {"error":{"message":"fetch failed"}}` because the
+ * router it forwards to is gone. Anything pointed at HTTPS_PROXY then breaks for
+ * reasons that look like a network fault, which is exactly how it was reported.
+ *
+ * Best effort on purpose: the :443 transport is useful on its own, so a proxy
+ * that will not come up must not fail a MITM start that already succeeded.
+ */
+async function startProxyWithMitm(apiKey) {
+  try {
+    const status = await startProxyCapture(apiKey);
+    log(`🔀 Proxy capture ${status.alreadyRunning ? "already listening" : "started"} on ${status.proxyUrl}`);
+  } catch (e) {
+    err(`Proxy capture did not start alongside MITM: ${e.message}`);
+  }
+}
+
+/** The other half of the switch. Never throws, for the same reason. */
+async function stopProxyWithMitm() {
+  try {
+    const status = await stopProxyCapture();
+    if (status.running) err(`Proxy capture is still listening on port ${status.port} after a stop`);
+    else log("🔀 Proxy capture stopped");
+  } catch (e) {
+    err(`Proxy capture did not stop alongside MITM: ${e.message}`);
+  }
+}
+
 async function getMitmStatus() {
   let running = serverProcess !== null && !serverProcess.killed;
   let pid = serverPid;
@@ -863,6 +898,9 @@ async function startServer(apiKey, sudoPassword, forceKillPort443 = false) {
           log(`♻️ Reusing existing process (PID: ${savedPid})`);
           await saveMitmSettings(true, sudoPassword);
           if (sudoPassword) setCachedPassword(sudoPassword);
+          // Also on this path: a MITM that was already up can still have been
+          // left without its proxy, and the toggle has to converge both.
+          await startProxyWithMitm(apiKey);
           return { running: true, pid: savedPid };
         } else {
           fs.unlinkSync(PID_FILE);
@@ -1222,6 +1260,10 @@ async function startServer(apiKey, sudoPassword, forceKillPort443 = false) {
   // Server is healthy — remove lock file (PID file persists as the marker)
   try { fs.unlinkSync(LOCK_FILE); } catch { /* ignore */ }
 
+  // One switch: the proxy transport comes up with the DNS one. Started after
+  // :443 is healthy so a failure here cannot be mistaken for a failed MITM.
+  await startProxyWithMitm(apiKey);
+
   return { running: true, pid: serverPid };
   } catch (e) {
     // Clean up lock on any failure
@@ -1238,6 +1280,11 @@ async function stopServer(sudoPassword) {
   mitmIsRestarting = true;
   mitmRestartCount = 0;
   log("⏹ Stopping server...");
+
+  // One switch: the proxy goes down with the DNS transport. First, so that the
+  // window where a proxy is listening without the rest of capture behind it is
+  // as short as possible rather than permanent.
+  await stopProxyWithMitm();
 
   // Kill server process
   const proc = serverProcess;

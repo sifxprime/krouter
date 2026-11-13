@@ -1,3 +1,67 @@
+# v0.5.191 (2026-11-13) — captured Claude turns stop getting rejected, and capture is one switch
+
+Two bugs found from a real session's logs. Both presented as network faults and
+neither was one.
+
+**The client's Anthropic-Beta flags were being thrown away.** A beta flag
+authorises the request-body fields that depend on it, so dropping one does not
+make Anthropic ignore the field — it makes Anthropic reject the request. One
+captured Claude Code turn, four 400s in a row:
+
+    safeguards: Extra inputs are not permitted
+    thread: Extra inputs are not permitted
+    tools.50: Input tag 'advisor_20260301' ... does not match any of the expected tags
+    thinking.adaptive.display: Input should be 'summarized', 'omitted'
+
+then a fifth attempt succeeded. The body reached Anthropic untouched — the router
+logged `PASSTHROUGH claude -> claude | native lossless` — but the header
+permitting those fields did not. `anthropic-beta` was already whitelisted into
+`credentials.rawHeaders`, and nothing on the Claude path ever read it: the only
+consumers were kiro, opencode, opencode-go and cursor. The executor meanwhile
+assigned `selectAnthropicBeta(model, body)` from a hardcoded list, unconditionally.
+
+The client then degraded its feature set on each retry until a shape fit the
+flags being sent, which is why some turns worked at the cost of several rejected
+upstream calls, and why anything it could not degrade failed outright. The flags
+are now merged: ours still ship, because the OAuth flag, the Claude Code identity
+the upstream gates on, caching and the heavy-agent pair are ours to require. The
+`redact-thinking` rule is applied to the merged set, so a client sending it
+alongside `thinking.display: "summarized"` still gets its summaries.
+
+Two call sites needed this, not one. The second serves a node fronting Anthropic,
+and its own comment records this same "Extra inputs are not permitted" 400 being
+hit once before and patched by adding a single flag to the static list —
+forwarding what the client sent is what stops the next one recurring.
+
+**The two capture transports are now one switch.** They started and stopped
+independently, and the states that produced were worse than either being off.
+The proxy is spawned detached and unref'd so it outlives the app: stop MITM, or
+hard-kill the app, and the proxy kept listening on 20129 with nothing behind it.
+Measured in that state:
+
+    router on 20128: DOWN | proxy on 20129: UP
+    /_krouter_proxy_health -> {"ok":true,...}
+    intercepted request    -> HTTP 500 {"error":{"message":"fetch failed"}}
+
+So anything pointed at HTTPS_PROXY failed while the health check said everything
+was fine. Starting MITM now starts the proxy on both success paths, including the
+one that reuses an already-running server, since that case can still be missing
+its proxy. Stopping MITM stops it first, so the bad window is short rather than
+permanent. A proxy failure cannot fail a MITM start: the :443 transport is useful
+on its own.
+
+**And that health check no longer lies.** `ok` means "can serve an intercepted
+request", not "the port is open": it probes the router it forwards to, with a
+two-second timeout, and answers 503 with the reason when that is unreachable.
+Verified by recreating the orphan — hard-killing the supervisor so its cleanup
+never ran — where it previously said `{"ok":true}` and now says
+`503 {"ok":false,"routerReachable":false,"detail":"listening, but the kRouter
+server it forwards to is unreachable — intercepted requests will fail"}`.
+
+Verified live on a real install: one call up, one call down, both ports following
+together, auto-start bringing both back after a restart, and a plain curl to
+api.anthropic.com captured and answered.
+
 # v0.5.190 (2026-11-13) — first release through a configured trusted publisher
 
 No code change. Cut to exercise the npm Trusted Publisher that has just been

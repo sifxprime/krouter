@@ -38,11 +38,47 @@ const ANTHROPIC_BETA_HEAVY_AGENT = ["advanced-tool-use-2025-11-20", "effort-2025
 // request asked for with thinking.display "summarized" (upstream f4f06f29).
 const ANTHROPIC_BETA_REDACT_THINKING = "redact-thinking-2026-02-12";
 
-export function selectAnthropicBeta(model = "", body = null) {
-  const wantsSummaries = body?.thinking?.display === "summarized";
-  const flags = ANTHROPIC_BETA_BASE.filter(flag => !(wantsSummaries && flag === ANTHROPIC_BETA_REDACT_THINKING));
+/**
+ * The Anthropic-Beta header to send upstream.
+ *
+ * `clientBeta` is the header the calling client sent, and it has to be kept.
+ * This used to return the hardcoded list alone, overwriting whatever arrived —
+ * and a beta flag is what authorises the body fields that depend on it, so
+ * dropping one makes Anthropic reject the field rather than ignore it. Observed
+ * against a current Claude Code through MITM capture, four 400s in a row on one
+ * turn:
+ *
+ *   safeguards: Extra inputs are not permitted
+ *   thread: Extra inputs are not permitted
+ *   tools.50: Input tag 'advisor_20260301' ... does not match any of the expected tags
+ *   thinking.adaptive.display: Input should be 'summarized', 'omitted'
+ *
+ * The body reached Anthropic untouched — the log even says "native lossless" —
+ * but the header that permits those four fields did not. The client retried with
+ * progressively fewer features until a shape fit the flags we were sending, so
+ * every turn cost several rejected upstream calls before one succeeded, and
+ * anything the client could not degrade simply failed.
+ *
+ * The flags here are still added, because they are ours to require: the OAuth
+ * flag, the Claude Code spoof, caching and the heavy-agent pair for opus/sonnet.
+ * The client's are added to them rather than replaced by them. A flag we know is
+ * wrong for this request is still removed last, so our rules win on conflict.
+ */
+export function selectAnthropicBeta(model = "", body = null, clientBeta = "") {
+  const flags = [...ANTHROPIC_BETA_BASE];
   if (/claude-(opus|sonnet)/i.test(model)) flags.push(...ANTHROPIC_BETA_HEAVY_AGENT);
-  return flags.join(",");
+
+  // Whatever the client asked for, in its own order, minus what we already have.
+  for (const flag of String(clientBeta || "").split(",").map((s) => s.trim())) {
+    if (flag && !flags.includes(flag)) flags.push(flag);
+  }
+
+  // Applied to the merged set, not just ours: redact-thinking makes Anthropic
+  // return signature-only thinking blocks, which blanks the summaries this very
+  // request asked for. A client that sends both is contradicting itself, and the
+  // body is the better evidence of intent.
+  const wantsSummaries = body?.thinking?.display === "summarized";
+  return flags.filter((flag) => !(wantsSummaries && flag === ANTHROPIC_BETA_REDACT_THINKING)).join(",");
 }
 
 // 0.5.166 — one source for the spoofed Claude Code version: the User-Agent below and
