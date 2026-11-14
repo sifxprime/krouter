@@ -1,3 +1,51 @@
+# v0.5.194 (2026-11-14) — two API routes that never shipped
+
+Reported from a real install of 0.5.192:
+
+    Error: Cannot find module
+    '/opt/homebrew/lib/node_modules/@sifxprime/krouter/app/.next-cli-build/
+     server/app/api/pxpipe/logs/route.js'
+    at Module._resolveFilename (node:internal/modules/cjs/loader:1475:15)
+
+`cli/scripts/build-cli.js` copies the Next build into the published package
+through a filter that matched on basename alone:
+
+    function shouldExclude(name) { ... return name === pattern; }
+
+One of its patterns is `logs`, meaning a runtime log directory. Next compiles
+`src/app/api/<x>/logs/route.js` to `server/app/api/<x>/logs/route.js` — a
+directory named `logs`. The copy deleted it, every check stayed green, and the
+published server threw on the first request to the endpoint.
+
+Diffing a local build against the installed package found exactly two
+casualties out of 188 routes:
+
+    /api/pxpipe/logs   added in v0.5.111, broken ever since
+    /api/usage/logs    present since the initial release, so it has never
+                       shipped once, in any version
+
+Confirmed against the published 0.5.191 tarball: zero of them present, against
+304 other API files. Not a regression — a filter and a route that had simply
+never been compared.
+
+The patterns move to `cli/scripts/exclude-patterns.js`, split by where they are
+safe to apply. A generic word like `logs` or `tmp` is a runtime artefact at the
+top of a package and a legitimate URL segment inside compiled route output, so
+it cannot be matched in both places by one rule; `shouldExclude` now takes the
+directory being copied and spares `server/app`. Everything that is never a
+route segment — sharp, `.env*`, `*.nft.json`, and `.build-home`, which once
+leaked a jwt-secret identical for every installer — is still dropped
+everywhere.
+
+Nothing compared the routes that exist against the routes that ship, which is
+how a whole endpoint stayed missing for the life of the project.
+`tests/unit/cli-bundle-keeps-every-route.test.js` does that now; re-introducing
+the single-list filter makes it name both lost routes.
+
+Verified by running the real CLI build: both routes present in the bundle,
+route count 156 to 156 with nothing dropped, and zero jwt-secret, machine-id,
+`.build-home` or `*.sqlite*` files in the output.
+
 # v0.5.193 (2026-11-14) — the Chat page is reachable
 
 `/dashboard/basic-chat` has existed since the initial release and nothing ever
