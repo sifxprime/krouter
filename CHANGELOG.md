@@ -1,3 +1,133 @@
+# v0.5.195 (2026-11-15) — trust that gets cleaned up, and one name for the data directory
+
+`unsetLinuxNodeExtraCaCerts()` was defined, exported, and called from nowhere.
+
+Starting MITM on Linux writes a krouter-managed `NODE_EXTRA_CA_CERTS` block into
+five places:
+
+    ~/.profile
+    ~/.bashrc
+    ~/.zshrc
+    ~/.config/environment.d/95-krouter.conf
+    ~/.pam_environment
+
+Cert uninstall already stripped the `SSL_CERT_FILE` block and the per-IDE CA
+settings, so the function to remove those five had been written. It simply had
+no call site, in `src/` or in `cli/` — so every uninstall since the Linux writer
+shipped left all five behind.
+
+Uninstall now clears it on all three platforms: the rc, systemd and PAM blocks
+on Linux, `launchctl unsetenv` on macOS, and the `HKCU\Environment` value on
+Windows. macOS and Windows had these unsets until v0.5.169, which dropped them
+from the *stop* path rather than moving them to uninstall; they are restored
+here, on uninstall, where removing trust belongs. Windows uses `reg delete`
+rather than `setx NODE_EXTRA_CA_CERTS ""`, which would leave an empty value that
+Node still reads.
+
+A leftover value cannot break trust — Node ignores a path with no file behind
+it, measured on v26 with all 145 roots intact and a handshake returning 200.
+What it does is print
+
+    Warning: Ignoring extra certs from /Users/you/.krouter/mitm/rootCA.crt
+
+on every secure context, in every Node and Electron process on the machine,
+indefinitely. That is the cost of not cleaning up, and it is the reason to.
+
+Two things stood in the way of the fix working at all.
+
+`src/app/api/mitm/cert/route.js` — the only user-facing uninstall trigger —
+returned early when the certificate file was already gone. That is precisely the
+case where the orphaned blocks are all that remains, so the one path that needed
+teardown skipped it. It now clears what it wrote and says so in the response.
+
+`IS_DEFAULT_DATA_DIR` gated three machine-wide writes and missed two:
+`SSL_CERT_FILE`, which **replaces** the root pool rather than adding to it, and
+the Linux rc-file writer. The test that claimed to cover them read
+
+    const chain = manager.slice(manager.indexOf("NODE_EXTRA_CA_CERTS is left alone"));
+    expect(chain).toContain("setLinuxNodeExtraCaCerts(");
+
+which asserts only that the call appears somewhere after the gate in the file —
+true whether it is gated or not. Its comment said the three platforms shared one
+if/else chain; Linux had been a separate `if` the whole time. The assertions now
+walk braces, and the brace reader's own ability to tell gated from ungated is
+asserted before it is pointed at real source.
+
+Widening that gate then broke MITM for a legitimate install, because gating on
+`IS_DEFAULT_DATA_DIR` alone cannot tell a scratch second instance from a single
+permanent install that simply keeps its data in `/var/lib/krouter` — which is
+the pattern the deployment docs recommend. A path cannot distinguish them, so
+the operator declares it: `KROUTER_ALLOW_MACHINE_TRUST=1` means this install
+owns the machine's trust configuration. It governs teardown on the same flag, so
+an install allowed to write trust can always remove it; it is refused when
+`DATA_DIR` sits inside the temp directory whatever it says, that being the exact
+shape of the v0.5.169 incident; and every skipped write now logs which surface
+it skipped and why.
+
+That gate also exposed the state of `DATA_DIR` itself, which eight separate
+functions resolved, each carrying a "kept in sync with…" comment and none of
+them in sync.
+
+`cli/src/cli/tray/trayState.js` read `KROUTER_DATA_DIR` — a name in no README,
+no `.env.example`, absent from the dashboard's own environment catalog, and read
+by no other file in the project. It also had no Windows branch. So the menu bar
+looked for the capture pid file in a directory that did not exist, found
+nothing, and reported capture off during a live capture:
+
+    DATA_DIR=<moved dir>, capture running
+      before   "Running — capture off"
+      after    "Capturing (system-wide) — IDE traffic routes through kRouter"
+
+`KROUTER_DATA_DIR` is deleted, including from the MITM's sudo forwarding list,
+where it had sat for releases while nothing read it. `cli/hooks/sqliteRuntime.js`
+(which also resolved the Windows default to the home directory rather than
+`AppData\Roaming`, installing the native sqlite binding where its own loader
+would not look), `src/lib/mitmAliasCache.js` and `src/lib/appUpdater.js` now
+delegate to a canonical resolver.
+
+`src/mitm/paths.js` adopts the Unix-path-on-Windows guard it was missing. On
+Windows with a Linux-targeted `DATA_DIR` the app used `%APPDATA%\krouter` while
+the MITM resolved the Unix path against the current drive root — and with the
+app on the default data dir, `IS_DEFAULT_DATA_DIR` was false, machine-wide trust
+was skipped, and the new log explained that "DATA_DIR is not the default
+install" about an install that was.
+
+Five resolutions remain, and `tests/unit/cli-data-dir.test.js` proves they
+agree. Two are canonical; three provably cannot import one — `paths.js` is CJS
+against an ESM resolver, `updater.js` is copied into `DATA_DIR` and executed
+from there, and `reset-password.js` must not create the directory it is hunting
+for. Those three run against the canonical resolver in child processes,
+including with `process.platform` faked to `win32`, which is the branch every
+copy had got wrong. A sixth copy anywhere under `src/`, `cli/` or `scripts/`
+fails the suite.
+
+Finally, `src/mitm/goCaCerts.js` said Go reads `SSL_CERT_FILE` "instead" of
+`NODE_EXTRA_CA_CERTS`. From Node 26 that is wrong. Measured across four
+runtimes, junk bundle in `SSL_CERT_FILE`, `NODE_OPTIONS` empty:
+
+               default    --use-system-ca   --use-openssl-ca   --use-bundled-ca
+      22.11    ignored    no such flag      HONOURED           ignored
+      22.21    ignored    ignored           HONOURED           ignored
+      24.14    ignored    ignored           HONOURED           ignored
+      26.0     HONOURED   HONOURED          rejected           ignored
+
+Both obvious explanations are wrong. OpenSSL's verify paths have always read the
+variable, but that path was never the default; and it is not simply that
+`--use-system-ca` became the default, because 24.14 with that flag set
+explicitly still ignores it. The system-CA path learned to honour `SSL_CERT_FILE`
+and became the default between 24 and 26, together. So Node 22 and 24 are
+untouched by a hostile value while Node 26 is exposed exactly as Go always was,
+which makes this module's superset-bundle rule load-bearing for both runtimes
+now rather than a courtesy to Go.
+
+Nothing reports the narrowed pool, either. With every handshake failing,
+`getCACertificates("default")` still says 148, `"system"` 3, and
+`tls.rootCertificates` 145 — identical to a clean run. Those APIs describe the
+lists Node assembled, not what OpenSSL verifies against, which is why this half
+went unnoticed while the Go half cost months.
+
+3966 tests pass.
+
 # v0.5.194 (2026-11-14) — two API routes that never shipped
 
 Reported from a real install of 0.5.192:
