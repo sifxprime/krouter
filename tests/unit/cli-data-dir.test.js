@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import { execFileSync } from "node:child_process";
 import { readFileSync, mkdtempSync, existsSync, rmSync } from "node:fs";
 import { blankLiterals } from "../helpers/enclosing-guard.js";
+import { trackedSourceFiles } from "../helpers/tracked-sources.js";
 import os from "node:os";
 import path from "node:path";
 
@@ -125,55 +126,6 @@ function trayDefaultWith(overrides = {}) {
   ).trim();
 }
 
-/**
- * Every source file under the given roots, where "source" is what git says it
- * is: tracked files, plus new ones that are not ignored.
- *
- * This used to walk the filesystem past a list of directory names to skip, and
- * the list could not be complete. It missed `cli/app` -- the staging copy of
- * the whole app that the CLI build assembles, with its compiled Next output
- * under `.next-cli-build` -- so both checks below failed on any machine that
- * had run the CLI build once, naming twenty bundles and staged duplicates of
- * `src/` and telling the reader their source had drifted.
- *
- * Excluding that one path fixed the symptom and kept the shape: `cli/.build-home`
- * is also generated, also gitignored, also inside the walker's reach, and is
- * harmless today only because it happens to hold no `.js`. A list that has to
- * be kept in sync with `.gitignore` is the same "kept in sync with" pattern
- * this release deleted eight copies of.
- *
- * So ask git, which already answers this question and cannot drift from it.
- * On a clean checkout the two agree exactly -- 547 files either way, nothing
- * tracked that the walk missed -- and on a built machine this returns 547
- * where the walk returned 1247, every one of the extra 700 under `cli/app`.
- *
- * `--others --exclude-standard` rather than tracked alone, so a new file that
- * has not been staged yet is still checked. Tracked-only would let a violation
- * sit green locally until it was committed, and would quietly make these two
- * checks unverifiable by planting one.
- */
-function sourceFiles(roots) {
-  let listing;
-  try {
-    listing = execFileSync(
-      "git",
-      ["ls-files", "-z", "--cached", "--others", "--exclude-standard", "--", ...roots],
-      { encoding: "utf8" },
-    );
-  } catch (cause) {
-    // Deliberately not falling back to the filesystem walk: the walk is the bug
-    // being removed, and a fallback that carries it would fire exactly where
-    // nobody is looking.
-    throw new Error(
-      `these checks define "source" as what git tracks, and git could not be run here: ${cause.message}`,
-    );
-  }
-  return listing
-    .split("\0")
-    .filter((f) => /\.(js|mjs|cjs|jsx|ts|tsx)$/.test(f))
-    .map((f) => path.resolve(f));
-}
-
 describe("the data directory has one setting name", () => {
   it("the tray reads DATA_DIR, like everything else", () => {
     const tmp = mkdtempSync(path.join(os.tmpdir(), "krouter-tray-datadir-"));
@@ -207,7 +159,7 @@ describe("the data directory has one setting name", () => {
     // name in a list something iterates. A bare mention is left alone on purpose
     // -- trayState.js and this file both have to be able to explain the bug.
     const READS = [/process\.env\.KROUTER_DATA_DIR/, /["'`]KROUTER_DATA_DIR["'`]/];
-    const guilty = sourceFiles(["src", "cli", "scripts"]).filter((f) => {
+    const guilty = trackedSourceFiles(["src", "cli", "scripts"]).filter((f) => {
       const src = readFileSync(f, "utf8");
       return READS.some((re) => re.test(src));
     });
@@ -396,7 +348,7 @@ describe("the data dir is resolved in four places, and they agree", () => {
     // Any new private copy fails here. The two forms are the two that existed:
     // process.env.DATA_DIR, and env.DATA_DIR where env is a parameter.
     const allowed = new Set([...CANONICAL.keys(), ...HAND_WRITTEN.map((c) => c.file)]);
-    const extra = sourceFiles(["src", "cli", "scripts"])
+    const extra = trackedSourceFiles(["src", "cli", "scripts"])
       .map((f) => path.relative(process.cwd(), f))
       .filter((rel) => !allowed.has(rel))
       .filter((rel) => /(?:process\.)?\benv\.DATA_DIR\b/.test(readFileSync(path.resolve(rel), "utf8")));
