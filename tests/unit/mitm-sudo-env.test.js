@@ -80,6 +80,49 @@ describe("sudo spawn shape", () => {
     const missing = [...read].filter((k) => !always.has(k) && !forwarded.has(k));
     expect(missing, `src/mitm reads these but they are never forwarded: ${missing}`).toEqual([]);
   });
+
+  it("forwards nothing the child has no use for", () => {
+    // The mirror of the test above, and the direction that was missing.
+    //
+    // KROUTER_DATA_DIR sat in this list across several releases while nothing in
+    // kRouter read it -- a second name for DATA_DIR, honoured by one line in the
+    // tray and nowhere else. A dead entry costs no runtime behaviour, which is
+    // precisely why it survives: it just tells the next reader, wrongly, that
+    // the variable means something. This is the assertion that finds it.
+    //
+    // Two entries are consumed by the child's RUNTIME rather than by our code,
+    // so they can never appear in a process.env scan:
+    const RUNTIME_CONSUMED = new Map([
+      // Node and Electron read this themselves; it ADDS the kRouter CA to the
+      // child's own trust store so its outbound calls verify.
+      ["NODE_EXTRA_CA_CERTS", "read by the child's Node runtime"],
+      // OpenSSL's default verify paths, inside the same Node runtime, plus any
+      // Go process the child spawns. Measured on Node 26: a bundle here changes
+      // what a handshake accepts even though tls.rootCertificates does not move,
+      // so this is load-bearing, not decoration.
+      ["SSL_CERT_FILE", "read by OpenSSL in the child, and by Go children"],
+    ]);
+
+    // Everything under src/mitm, not just the five files the scan above reads:
+    // the question here is whether ANY code in the child could want the value.
+    const walk = (dir, out = []) => {
+      for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+        const p = path.join(dir, e.name);
+        if (e.isDirectory()) walk(p, out);
+        else if (p.endsWith(".js")) out.push(p);
+      }
+      return out;
+    };
+    const mitmSrc = walk(path.join(process.cwd(), "src/mitm")).map((f) => fs.readFileSync(f, "utf8")).join("\n");
+
+    const dead = mgr.SUDO_FORWARDED_ENV.filter(
+      (k) => !RUNTIME_CONSUMED.has(k) && !new RegExp(`process\\.env\\.${k}\\b`).test(mitmSrc),
+    );
+    expect(
+      dead,
+      `forwarded but read by nothing -- delete them, or add a RUNTIME_CONSUMED reason: ${dead}`,
+    ).toEqual([]);
+  });
 });
 
 describe("liveness of a root-owned MITM", () => {

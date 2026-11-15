@@ -3,17 +3,18 @@
 // and after every UI write.
 import fs from "fs";
 import path from "path";
-import os from "os";
-
-// Resolves to ~/.krouter (or %APPDATA%\krouter on Windows). Kept in sync with paths.js.
-function _resolveDataDir() {
-  if (process.env.DATA_DIR) return process.env.DATA_DIR;
-  if (process.platform === "win32") {
-    return path.join(process.env.APPDATA || path.join(os.homedir(), "AppData", "Roaming"), "krouter");
-  }
-  return path.join(os.homedir(), ".krouter");
-}
-const DATA_DIR = _resolveDataDir();
+// Not a local copy. This file WRITES the cache and src/mitm/dbReader.js READS
+// it, each resolving $DATA_DIR/mitm/aliases.json for itself -- and until 0.5.195
+// both did so without the Windows guard. They therefore agreed with each other
+// while disagreeing with the database, which is the shape that hides: the whole
+// flow worked, and fixing either side alone would have been what broke it, by
+// pointing the reader at a file the writer no longer writes. A MITM that reads
+// an empty alias map does not fail; it passes every request through, so the
+// IDE's own subscription pays and kRouter logs nothing.
+//
+// Both sides now resolve through a resolver in tests/unit/cli-data-dir.test.js's
+// list, which is pinned to agree with this one.
+import { DATA_DIR } from "@/lib/dataDir.js";
 
 const CACHE_FILE = path.join(DATA_DIR, "mitm", "aliases.json");
 

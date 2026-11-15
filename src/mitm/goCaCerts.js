@@ -6,22 +6,51 @@
 //
 // Node and Electron read NODE_EXTRA_CA_CERTS, which ADDS a certificate to the
 // platform store. kRouter already writes that, which is why Claude Desktop and
-// Kiro work. Go reads SSL_CERT_FILE instead, and SSL_CERT_FILE **replaces** the
-// system trust store rather than adding to it.
+// Kiro work. Go reads SSL_CERT_FILE, and SSL_CERT_FILE **replaces** the system
+// trust store rather than adding to it.
 //
-// That difference is the whole bug. Antigravity's agent (`agy`) is a Go binary.
-// On a machine where anything had already exported SSL_CERT_FILE -- a Python
-// certifi bundle from ~/.zshrc is the common case -- agy trusted only that
-// bundle, which has no kRouter CA, and rejected the MITM certificate on every
-// call. The System keychain DID trust kRouter the whole time; the variable hid
-// it. It looked exactly like certificate pinning, and was recorded in this
-// codebase as such for months.
+// "Go reads SSL_CERT_FILE" undersold it, and this comment said "instead" for
+// months. Node reads it too from v26 on, and replaces just as completely.
+// Measured here with a direct TLS handshake to example.com and a junk bundle in
+// SSL_CERT_FILE, NODE_OPTIONS empty:
+//
+//            default    --use-system-ca   --use-openssl-ca   --use-bundled-ca
+//   22.11    ignored    no such flag      HONOURED           ignored
+//   22.21    ignored    ignored           HONOURED           ignored
+//   24.14    ignored    ignored           HONOURED           ignored
+//   26.0     HONOURED   HONOURED          rejected*          ignored
+//
+//   * on 26 the flag is refused as mutually exclusive with --use-system-ca,
+//     which is that release's default.
+//
+// Two tempting explanations are both wrong. OpenSSL's verify paths have always
+// read the variable -- --use-openssl-ca honours it as far back as 22.11 -- but
+// that path was never the default, so OpenSSL is not why anyone is affected.
+// Nor is it simply "--use-system-ca became the default": 24.14 with that flag
+// set EXPLICITLY still ignores the variable. Two things changed between 24 and
+// 26 together -- the system-CA path learned to honour SSL_CERT_FILE, and became
+// the default.
+//
+// The practical shape: SSL_CERT_FILE sets the pool and NODE_EXTRA_CA_CERTS
+// layers onto whatever it left (junk bundle + a full EXTRA bundle verifies
+// fine), so a bad NODE_EXTRA is inert while a bad SSL_CERT_FILE is not. Node
+// 22 and 24 users are untouched by a hostile value; Node 26 users are exposed
+// exactly as Go always was.
+//
+// And nothing reports it. With the junk bundle in place and every handshake
+// failing, Node 26 still says getCACertificates("default") = 148,
+// "bundled" = 145, "system" = 3, tls.rootCertificates = 145 -- identical to a
+// clean run. Those APIs describe the lists Node assembled, not what OpenSSL
+// verifies against, so the obvious probe reports nothing wrong. That is why
+// this half went unnoticed while the Go half cost months.
 //
 // Two consequences shape this module:
 //
 //   1. What we point SSL_CERT_FILE at must be a SUPERSET of the system roots,
 //      never the kRouter CA alone. Writing just the CA would make every Go tool
-//      on the machine distrust the rest of the internet.
+//      on the machine -- and, from Node 26, Node's own outbound TLS -- distrust
+//      the rest of the internet. This rule is load-bearing for both runtimes
+//      now, not a Go courtesy.
 //   2. If something else already set SSL_CERT_FILE, we must merge that bundle
 //      rather than replace it, or we silently narrow trust the user chose.
 //

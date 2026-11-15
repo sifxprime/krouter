@@ -94,12 +94,18 @@ export async function POST(request) {
     }
 
     if (action === "uninstall") {
-      if (!fs.existsSync(KROUTER_CERT_PATH)) {
-        return NextResponse.json({ success: true, action, note: "No kRouter cert file to uninstall" });
-      }
+      // A missing cert file used to end this here, which made Uninstall a no-op on
+      // exactly the machine that needed it: the certificate gone, and every block
+      // kRouter wrote around it still in place. uninstallCert skips the trust-store
+      // step by itself when there is nothing to remove, so let it run the teardown.
+      const hadCertFile = fs.existsSync(KROUTER_CERT_PATH);
       await uninstallCert(password, KROUTER_CERT_PATH);
       if (password) setCachedPassword(password);
-      return NextResponse.json({ success: true, action });
+      return NextResponse.json({
+        success: true,
+        action,
+        ...(hadCertFile ? {} : { note: "No kRouter cert file; cleared the trust it had written" }),
+      });
     }
 
     if (action === "cleanupLegacy") {

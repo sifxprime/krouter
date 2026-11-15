@@ -3,8 +3,14 @@
 // sql.js is bundled in bin/app already; node:sqlite / bun:sqlite are built-in.
 const { execSync, spawnSync } = require("child_process");
 const fs = require("fs");
-const os = require("os");
 const path = require("path");
+// The CLI's one definition of where data lives. The copy that used to sit in
+// this file had drifted twice: it honoured a Unix DATA_DIR on Windows, which
+// the app ignores, and its Windows default fell back to os.homedir() instead of
+// os.homedir()/AppData/Roaming -- so with APPDATA unset the native sqlite
+// binding was installed under C:\\Users\\x\\krouter while the loader that needs it
+// looked under AppData\\Roaming\\krouter, and sqlite silently fell back a tier.
+const { getDataDir } = require("../src/lib/dataDir");
 
 // 13.x ships per-platform N-API prebuilds inside the package, so it needs no
 // ABI-specific download and no build tools -- but its addons declare Node-API
@@ -18,15 +24,6 @@ const path = require("path");
 const NODE_NAPI = Number(process.versions.napi) || 0;
 const USE_NAPI_BUILD = NODE_NAPI >= 10;
 const BETTER_SQLITE3_VERSION = USE_NAPI_BUILD ? "13.0.3" : "12.6.2";
-
-// Kept in sync with src/mitm/paths.js / src/lib/dataDir.js
-function getDataDir() {
-  if (process.env.DATA_DIR) return process.env.DATA_DIR;
-  if (process.platform === "win32") {
-    return path.join(process.env.APPDATA || os.homedir(), "krouter");
-  }
-  return path.join(os.homedir(), ".krouter");
-}
 
 function getRuntimeDir() {
   return path.join(getDataDir(), "runtime");

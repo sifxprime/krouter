@@ -177,21 +177,96 @@ async function installCertWindows(certPath) {
 }
 
 /**
+ * Run a command, resolving with its error instead of throwing.
+ *
+ * Both callers below are allowed to fail benignly: `launchctl unsetenv` on a
+ * variable that was never set is a no-op, and `reg delete` reports an absent
+ * value as an error. Awaiting matters even so -- MITM start uninstalls an
+ * expired CA and then reinstalls it a few hundred lines later, so a
+ * fire-and-forget unset could land AFTER the re-set and leave the machine with
+ * no trust at all.
+ */
+function execTolerant(command) {
+  return new Promise((resolve) => {
+    exec(command, { windowsHide: true }, (error) => resolve(error || null));
+  });
+}
+
+/**
+ * Clear NODE_EXTRA_CA_CERTS, the third machine-wide trust surface.
+ *
+ * Until 0.5.169 all three platforms unset this when MITM *stopped*, which was
+ * the wrong moment: trust has to survive a stop or every IDE needs restarting,
+ * so that release removed the unsets. It relocated the SSL_CERT_FILE block and
+ * the per-IDE settings to this uninstall path -- but not these. macOS and
+ * Windows lost their teardown outright, and unsetLinuxNodeExtraCaCerts() was
+ * left exported with no call site anywhere in src/ or cli/. This is the
+ * relocation that was missed.
+ *
+ * It is worth doing even though a dangling value cannot break trust. Node
+ * ignores a NODE_EXTRA_CA_CERTS naming a missing file and falls back to its
+ * bundled roots -- measured on Node 26: the handshake still succeeds and
+ * tls.rootCertificates is intact -- but it prints
+ *   Warning: Ignoring extra certs from `<path>`, load failed: ... No such file
+ * on every secure context it creates. That is every Node and Electron process
+ * on the machine, on every TLS call, for as long as the value survives: until
+ * the next reboot on macOS, where `launchctl setenv` is session-scoped, and
+ * indefinitely on Windows and Linux, which write HKCU\Environment and the shell
+ * rc files respectively.
+ *
+ * Its caller gates this on MACHINE_TRUST_ALLOWED, along with the rest of teardown.
+ * Unsetting a machine-wide value a second instance never wrote is the
+ * destructive direction: it would strip the real installation's trust.
+ */
+async function clearNodeExtraCaCerts() {
+  if (!IS_WIN && !IS_MAC) {
+    const { unsetLinuxNodeExtraCaCerts } = require("../linuxNodeCaCerts");
+    return unsetLinuxNodeExtraCaCerts();
+  }
+
+  // `reg delete`, not `setx NODE_EXTRA_CA_CERTS ""`: setx would leave an empty
+  // value behind, which Node still reads. Neither command distinguishes "was
+  // not set" from a real failure, so the caller logs and nothing fails.
+  const [command, surface] = IS_MAC
+    ? ["launchctl unsetenv NODE_EXTRA_CA_CERTS", "the launchd session"]
+    : ["reg delete HKCU\\Environment /F /V NODE_EXTRA_CA_CERTS", "HKCU\\Environment"];
+
+  const error = await execTolerant(command);
+  if (error) {
+    log(`🔐 Cert: NODE_EXTRA_CA_CERTS not cleared from ${surface} (it may never have been set): ${error.message.split("\n")[0]}`);
+    return [];
+  }
+  return [surface];
+}
+
+/**
  * Uninstall SSL certificate from system store
  */
 async function uninstallCert(sudoPassword, certPath) {
+  // Only the trust-store removal needs the certificate to still be in the store.
+  // Teardown of the environment and per-IDE surfaces used to sit behind this same
+  // early return, so a machine whose certificate had gone by any other route --
+  // uninstalled by hand, keychain cleaned, the file deleted -- kept every block
+  // kRouter had written, with the one button that removes them refusing to run.
   const isInstalled = await checkCertInstalled(certPath);
   if (!isInstalled) {
-    log("🔐 Cert: not found in system store");
-    return;
-  }
-
-  if (IS_WIN) {
+    log("🔐 Cert: not found in system store - clearing the trust it wrote anyway");
+  } else if (IS_WIN) {
     await uninstallCertWindows();
   } else if (IS_MAC) {
     await uninstallCertMac(sudoPassword, certPath);
   } else {
     await uninstallCertLinux(sudoPassword);
+  }
+
+  // The same gate covers teardown, and more sharply than the write side: every
+  // surface below is machine-wide, and removing one a second instance never wrote
+  // takes the REAL installation's trust with it. One gate for the lot -- and it is
+  // the same flag, so an install that opted in to writing can also clean up.
+  const { MACHINE_TRUST_ALLOWED, MACHINE_TRUST_REASON } = require("../paths.js");
+  if (!MACHINE_TRUST_ALLOWED) {
+    log(`🔐 Cert: machine-wide trust left alone - ${MACHINE_TRUST_REASON}`);
+    return;
   }
 
   // The SSL_CERT_FILE block points Go tools at a bundle built around a cert that
@@ -204,6 +279,17 @@ async function uninstallCert(sudoPassword, certPath) {
     for (const f of written) log(`🔐 Cert: removed SSL_CERT_FILE block from ${f}`);
   } catch (e) {
     log(`🔐 Cert: could not remove SSL_CERT_FILE block: ${e.message}`);
+  }
+
+  // NODE_EXTRA_CA_CERTS names that same deleted certificate. Unlike SSL_CERT_FILE
+  // it cannot narrow trust -- Node falls back to its bundled roots -- but every
+  // Node and Electron process on the machine warns on every TLS call until it is
+  // gone, and on Windows the value sits in the registry indefinitely.
+  try {
+    const cleared = await clearNodeExtraCaCerts();
+    for (const c of cleared) log(`🔐 Cert: cleared NODE_EXTRA_CA_CERTS from ${c}`);
+  } catch (e) {
+    log(`🔐 Cert: could not clear NODE_EXTRA_CA_CERTS: ${e.message}`);
   }
 
   // 0.5.169 — the per-IDE trust settings point at a cert that no longer exists, so

@@ -36,6 +36,7 @@ export const ENV_VAR_CATALOG = [
 
   // --- MITM / Tunnel ---
   { name: "DEBUG_MITM", category: "mitm", desc: "Enable verbose MITM logging", default: "false", secret: false },
+  { name: "KROUTER_ALLOW_MACHINE_TRUST", category: "mitm", desc: "Let an install on a non-default DATA_DIR write (and remove) machine-wide CA trust. Without it those writes are skipped and MITM capture cannot work. Ignored when DATA_DIR is inside the temp directory.", default: "false", secret: false },
   { name: "MITM_ROUTER_BASE", category: "mitm", desc: "Override base URL the MITM forwards to (for split deployments)", default: "http://localhost:$PORT", secret: false },
   { name: "MITM_SERVER_PATH", category: "mitm", desc: "Absolute path to the MITM server module", default: "(auto-resolved)", secret: false },
   { name: "TUNNEL_TRANSPORT_PROTOCOL", category: "mitm", desc: "cloudflared --protocol value (auto/http2/quic)", default: "auto", secret: false },

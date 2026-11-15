@@ -14,7 +14,7 @@ const IS_MAC = process.platform === "darwin";
 const { generateCert } = require("./cert/generate");
 const { installCert, uninstallCert } = require("./cert/install");
 const { isCertExpired } = require("./cert/rootCA");
-const { DATA_DIR, MITM_DIR, IS_DEFAULT_DATA_DIR } = require("./paths");
+const { DATA_DIR, MITM_DIR, IS_DEFAULT_DATA_DIR, MACHINE_TRUST_ALLOWED, MACHINE_TRUST_REASON } = require("./paths");
 const { log, err } = require("./logger");
 const { LSOF_BIN } = require("./config");
 const { setLinuxNodeExtraCaCerts } = require("./linuxNodeCaCerts");
@@ -41,7 +41,9 @@ const SUDO_FORWARDED_ENV = Object.freeze([
   "MITM_MAX_DUMP_FILES",
   "DEBUG_MITM",
   "DATA_DIR",
-  "KROUTER_DATA_DIR",
+  // Read by paths.js to decide MACHINE_TRUST_ALLOWED. Without it the child
+  // computes a different answer from the parent that spawned it.
+  "KROUTER_ALLOW_MACHINE_TRUST",
   "NODE_EXTRA_CA_CERTS",
   "SSL_CERT_FILE",
 ]);
@@ -1126,9 +1128,18 @@ async function startServer(apiKey, sudoPassword, forceKillPort443 = false) {
   // server is Go: it reads neither the OS store nor that variable, and fails sign-in
   // with "x509: certificate signed by unknown authority" the moment DNS points at us.
   // Write its own setting too, on every platform.
-  // 0.5.170 — only the real installation writes machine-wide trust. See IS_DEFAULT_DATA_DIR.
-  if (!IS_DEFAULT_DATA_DIR) {
-    log(`[ide-ca] Skipped: DATA_DIR is not the default install, so machine-wide CA trust is left alone`);
+  // 0.5.170 — only an installation that owns the machine's trust writes it. That is
+  // the default data dir, or a custom one where KROUTER_ALLOW_MACHINE_TRUST says so.
+  // See MACHINE_TRUST_ALLOWED in paths.js.
+  if (!IS_DEFAULT_DATA_DIR && MACHINE_TRUST_ALLOWED) {
+    // Loud on purpose: this is the one path on which a non-default install
+    // reconfigures the whole machine, and the original incident was so hard to
+    // find precisely because nothing said it had happened.
+    log(`[trust] ⚠ Writing machine-wide trust for a non-default DATA_DIR (${DATA_DIR}) — KROUTER_ALLOW_MACHINE_TRUST is set`);
+  }
+
+  if (!MACHINE_TRUST_ALLOWED) {
+    log(`[ide-ca] Skipped (per-IDE CA settings): ${MACHINE_TRUST_REASON}`);
   } else {
     try {
       const caPath = path.join(MITM_DIR, "rootCA.crt");
@@ -1141,9 +1152,9 @@ async function startServer(apiKey, sudoPassword, forceKillPort443 = false) {
   // 0.5.170 — same gate as the per-IDE settings above: NODE_EXTRA_CA_CERTS is set for
   // the whole login session and points at an absolute path inside DATA_DIR, so a second
   // instance run against a scratch DATA_DIR would repoint every Electron app on the
-  // machine at a certificate under /tmp. See IS_DEFAULT_DATA_DIR in paths.js.
-  if (!IS_DEFAULT_DATA_DIR) {
-    log(`[node-ca] Skipped: DATA_DIR is not the default install, so NODE_EXTRA_CA_CERTS is left alone`);
+  // machine at a certificate under /tmp. See MACHINE_TRUST_ALLOWED in paths.js.
+  if (!MACHINE_TRUST_ALLOWED) {
+    log(`[node-ca] Skipped (NODE_EXTRA_CA_CERTS): ${MACHINE_TRUST_REASON}`);
   } else if (IS_MAC) {
     const rootCAPath = path.join(MITM_DIR, "rootCA.crt");
     if (fs.existsSync(rootCAPath)) {
@@ -1167,7 +1178,13 @@ async function startServer(apiKey, sudoPassword, forceKillPort443 = false) {
   // rejects the MITM cert on a machine where anything already exported that
   // variable -- which is how "Antigravity pins its CA" got into this codebase as
   // a fact. Unix only: on Windows Go uses the cert store certutil already filled.
-  if (!IS_WIN) {
+  // Behind the same 0.5.170 gate as the write above, and for a sharper reason:
+  // SSL_CERT_FILE REPLACES the system store. A second instance pointing it at a
+  // scratch bundle does not merely add a useless root, it hides every good one
+  // from every Go program on the machine.
+  if (!IS_WIN && !MACHINE_TRUST_ALLOWED) {
+    log(`[go-ca] Skipped (SSL_CERT_FILE): ${MACHINE_TRUST_REASON}`);
+  } else if (!IS_WIN) {
     const rootCAPath = path.join(MITM_DIR, "rootCA.crt");
     if (fs.existsSync(rootCAPath)) {
       try {
@@ -1186,7 +1203,13 @@ async function startServer(apiKey, sudoPassword, forceKillPort443 = false) {
     }
   }
 
-  if (IS_LINUX) {
+  // Same gate again. The chain above logs its skip for every platform, but it
+  // does not reach this block: the Linux write lands in the user's shell rc files,
+  // ~/.config/environment.d and ~/.pam_environment, which outlive any scratch
+  // DATA_DIR and are the surface a second instance has least business touching.
+  if (IS_LINUX && !MACHINE_TRUST_ALLOWED) {
+    log(`[linux-node-ca] Skipped (shell rc / systemd / PAM): ${MACHINE_TRUST_REASON}`);
+  } else if (IS_LINUX) {
     const rootCAPath = path.join(MITM_DIR, "rootCA.crt");
     if (fs.existsSync(rootCAPath)) {
       try {

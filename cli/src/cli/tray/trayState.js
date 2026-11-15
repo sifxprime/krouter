@@ -21,13 +21,31 @@
 // the lie this is here to prevent.
 
 const fs = require("fs");
-const os = require("os");
 const path = require("path");
+const { getDataDir } = require("../../lib/dataDir");
 
 // Fallback when a caller forgets to pass one. path.join(undefined, ...) throws,
 // and the throw lands in a catch that reports "not capturing" — so a missing
 // argument would quietly disable the whole feature rather than fail loudly.
-const DEFAULT_DATA_DIR = process.env.KROUTER_DATA_DIR || path.join(os.homedir(), ".krouter");
+//
+// It has to be the directory the APP chose, so it goes through the shared
+// resolver instead of re-deriving it. The hand-rolled line here got that wrong
+// twice over:
+//
+//   - it read KROUTER_DATA_DIR, a name nothing else in kRouter reads and no
+//     document mentions. DATA_DIR — the documented setting, honoured by the
+//     app, the CLI and the MITM — left this line pointing at ~/.krouter, and
+//     setting KROUTER_DATA_DIR moved this line and nothing else;
+//   - it had no Windows branch at all, so the fallback named ~/.krouter while
+//     the app used %APPDATA%\krouter.
+//
+// Either way the pid file is looked for in a directory that does not exist,
+// existsSync is false, and this module reports "capture off" with a live
+// capture running — the exact lie the icon exists to prevent.
+//
+// Resolved once at load, as before. getDataDir() only touches the filesystem
+// when DATA_DIR is set, and the CLI has already resolved it by then.
+const DEFAULT_DATA_DIR = getDataDir();
 
 const STATES = Object.freeze({
   RUNNING: "running",    // server up, nothing being intercepted

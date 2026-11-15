@@ -20,13 +20,33 @@ const waitMaxMs = parseInt(process.env.UPDATER_WAIT_MAX_MS || "15000", 10);
 const waitCheckMs = parseInt(process.env.UPDATER_WAIT_CHECK_MS || "500", 10);
 const appPort = parseInt(process.env.UPDATER_APP_PORT || "20128", 10);
 
-// Data directory (kept in sync with src/mitm/paths.js)
+// Deliberately a COPY of src/lib/dataDir.js, not an import. This file is copied
+// into DATA_DIR and executed from there, so `npm i -g` can replace
+// node_modules underneath a running update; from that location there is no
+// package left to import from.
+//
+// So keep the logic identical, both fallbacks included. The dashboard polls
+// ${DATA_DIR}/update/status.json as the app resolves it: writing that file
+// anywhere else leaves the UI watching a path nothing updates, which reads as
+// an update that hung rather than one that is running fine somewhere else.
 function getDataDir() {
-  if (process.env.DATA_DIR) return process.env.DATA_DIR;
-  if (process.platform === "win32") {
-    return path.join(process.env.APPDATA || path.join(os.homedir(), "AppData", "Roaming"), "krouter");
+  const appDir = () =>
+    process.platform === "win32"
+      ? path.join(process.env.APPDATA || path.join(os.homedir(), "AppData", "Roaming"), "krouter")
+      : path.join(os.homedir(), ".krouter");
+
+  const configured = process.env.DATA_DIR;
+  if (!configured) return appDir();
+  // A Unix path on Windows is a Linux-targeted .env that leaked into a Windows
+  // run; the app ignores it, so this must too.
+  if (process.platform === "win32" && /^\//.test(configured)) return appDir();
+  try {
+    fs.mkdirSync(configured, { recursive: true });
+    return configured;
+  } catch (e) {
+    if (e && (e.code === "EACCES" || e.code === "EPERM")) return appDir();
+    throw e;
   }
-  return path.join(os.homedir(), ".krouter");
 }
 const updateDir = path.join(getDataDir(), "update");
 try { fs.mkdirSync(updateDir, { recursive: true }); } catch { /* best effort */ }
