@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { execFileSync } from "node:child_process";
-import { readFileSync, readdirSync, mkdtempSync, existsSync, rmSync } from "node:fs";
+import { readFileSync, mkdtempSync, existsSync, rmSync } from "node:fs";
+import { execFileSync } from "node:child_process";
 import { blankLiterals } from "../helpers/enclosing-guard.js";
 import os from "node:os";
 import path from "node:path";
@@ -125,33 +126,53 @@ function trayDefaultWith(overrides = {}) {
   ).trim();
 }
 
-// cli/app is the staging copy of the whole app that the CLI build assembles,
-// plus its compiled Next output under .next-cli-build. All of it is generated
-// and `cli/.gitignore` ignores the directory outright, so every file in it is
-// either a duplicate of src/ or a bundle containing one. Scanning it made both
-// checks below fail on any machine that had run the CLI build once, naming 20
-// files under it and telling the reader their source had drifted.
-//
-// Matched by path, not by directory name. "app" as a name would also skip
-// src/app -- the real App Router tree -- and the checks would pass by scanning
-// nothing, which is the failure mode worth avoiding here.
-const GENERATED_TREES = new Set([path.resolve("cli/app")]);
-
-/** Every .js file under the given roots, skipping dependencies and build output. */
+/**
+ * Every source file under the given roots, where "source" is what git says it
+ * is: tracked files, plus new ones that are not ignored.
+ *
+ * This used to walk the filesystem past a list of directory names to skip, and
+ * the list could not be complete. It missed `cli/app` -- the staging copy of
+ * the whole app that the CLI build assembles, with its compiled Next output
+ * under `.next-cli-build` -- so both checks below failed on any machine that
+ * had run the CLI build once, naming twenty bundles and staged duplicates of
+ * `src/` and telling the reader their source had drifted.
+ *
+ * Excluding that one path fixed the symptom and kept the shape: `cli/.build-home`
+ * is also generated, also gitignored, also inside the walker's reach, and is
+ * harmless today only because it happens to hold no `.js`. A list that has to
+ * be kept in sync with `.gitignore` is the same "kept in sync with" pattern
+ * this release deleted eight copies of.
+ *
+ * So ask git, which already answers this question and cannot drift from it.
+ * On a clean checkout the two agree exactly -- 547 files either way, nothing
+ * tracked that the walk missed -- and on a built machine this returns 547
+ * where the walk returned 1247, every one of the extra 700 under `cli/app`.
+ *
+ * `--others --exclude-standard` rather than tracked alone, so a new file that
+ * has not been staged yet is still checked. Tracked-only would let a violation
+ * sit green locally until it was committed, and would quietly make these two
+ * checks unverifiable by planting one.
+ */
 function sourceFiles(roots) {
-  const skip = new Set(["node_modules", ".next", ".git", "dist", "out", "coverage"]);
-  const found = [];
-  const walk = (dir) => {
-    for (const e of readdirSync(dir, { withFileTypes: true })) {
-      if (skip.has(e.name)) continue;
-      const p = path.join(dir, e.name);
-      if (GENERATED_TREES.has(p)) continue;
-      if (e.isDirectory()) walk(p);
-      else if (/\.(js|mjs|cjs|jsx|ts|tsx)$/.test(e.name)) found.push(p);
-    }
-  };
-  for (const r of roots) walk(path.resolve(r));
-  return found;
+  let listing;
+  try {
+    listing = execFileSync(
+      "git",
+      ["ls-files", "-z", "--cached", "--others", "--exclude-standard", "--", ...roots],
+      { encoding: "utf8" },
+    );
+  } catch (cause) {
+    // Deliberately not falling back to the filesystem walk: the walk is the bug
+    // being removed, and a fallback that carries it would fire exactly where
+    // nobody is looking.
+    throw new Error(
+      `these checks define "source" as what git tracks, and git could not be run here: ${cause.message}`,
+    );
+  }
+  return listing
+    .split("\0")
+    .filter((f) => /\.(js|mjs|cjs|jsx|ts|tsx)$/.test(f))
+    .map((f) => path.resolve(f));
 }
 
 describe("the data directory has one setting name", () => {
