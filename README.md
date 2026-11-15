@@ -128,7 +128,7 @@ Stop wasting money, tokens, and hitting limits:
 - **Multi-account rotation** — round-robin across accounts, with quota tracking for providers that report it
 - **Auto token refresh** — OAuth tokens refresh transparently
 - **Universal client support** — works with OpenAI, Anthropic, Responses, Gemini and Ollama-format clients
-- **MITM interception** — routes Antigravity, GitHub Copilot, Kiro IDE and Claude Desktop through kRouter (not inside Docker)
+- **Capture for apps with no base-URL setting** — routes Antigravity, GitHub Copilot, Kiro IDE and Claude Desktop through kRouter (not inside Docker). Two transports: DNS capture, or proxy capture on port 20129 which needs no sudo, affects one app instead of the whole machine, and leaves nothing behind if it stops
 
 ---
 
@@ -414,6 +414,10 @@ rm -rf ~/.krouter   # optional: wipe database + certs
 **Rate limited** — kRouter cools the account down and moves to the next one. To speed it up, add more accounts or configure a combo.
 
 **MITM cert errors** — Install or reinstall the root CA from the **MITM** page in the dashboard sidebar (**Install Certificate** / **Reinstall Certificate**).
+
+**Antigravity fails TLS while other captured apps work** — check `echo $SSL_CERT_FILE`. Its agent is a Go binary, and Go treats that variable as its *entire* root pool rather than adding to the system store, so a bundle set by something else (a Python `certifi` line in your shell profile is the usual one) hides the kRouter CA. kRouter writes a merged bundle for this; open a new shell and fully quit and reopen the IDE so it is inherited — a window reload keeps the old environment.
+
+**Capture is on but nothing is routed** — the app's model is probably not mapped, so the request passes through and the app's own subscription pays for it. Check the logs for the model id the app actually sent.
 
 **Dashboard on wrong port** — the `krouter` command ignores `PORT`; pass the port as a flag: `krouter -t --port 20128`. If another program holds the port, kRouter will not stop it and suggests another one.
 
