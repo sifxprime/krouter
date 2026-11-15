@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="https://raw.githubusercontent.com/sifxprime/krouter/main/images/kodelyth-router.png" alt="kRouter — Kodelyth AI Infrastructure" width="320"/>
+  <img src="https://raw.githubusercontent.com/sifxprime/krouter/main/images/krouter.png" alt="kRouter — Kodelyth AI Infrastructure" width="320"/>
 
   # kRouter — Kodelyth AI Infrastructure
 

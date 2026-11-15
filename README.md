@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="./images/kodelyth-router.png" alt="kRouter — Kodelyth AI Infrastructure" width="320"/>
+  <img src="./images/krouter.png" alt="kRouter — Kodelyth AI Infrastructure" width="320"/>
 
   # kRouter — Kodelyth AI Infrastructure
 

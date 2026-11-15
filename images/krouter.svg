@@ -1,0 +1,30 @@
+<!-- kRouter README lockup. Source of truth for images/krouter.png.
+
+     The mark is the dashboard's echo chevron (src/shared/components/Sidebar.js)
+     and the wordmark is Space Grotesk Bold with the site's -0.025em tracking,
+     converted to outlines so this renders identically on any machine - the font
+     is not installed system-wide and a text element would silently fall back.
+
+     One deliberate difference from the UI: the echo stroke is 0.5 here, not
+     0.35. At 0.35 the clay sits close enough to #0a0a0a to read as a smudge
+     rather than a second chevron; on the dashboard's light ground the same
+     value reads as a pale ghost. Same geometry, different background.
+
+     Regenerate:  rsvg-convert -w 1814 images/krouter.svg -o images/krouter.png
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 907 360" width="907" height="360">
+  <rect width="907" height="360" fill="#0a0a0a"/>
+  <!-- Echo chevron: the dashboard's geometry, scaled from its 400-unit box. -->
+  <g transform="translate(77,80) scale(0.5)" fill="none" stroke="#E56A4A" stroke-linecap="round" stroke-linejoin="round">
+    <polyline points="97.8,118 170,200 97.8,282" stroke-width="24" stroke-opacity="0.5"/>
+    <polyline points="174,100 262,200 174,300" stroke-width="54"/>
+  </g>
+  <!-- Wordmark as outlines; the leading k carries the brand colour. -->
+  <path fill="#E56A4A" transform="translate(302.00,228) scale(0.132000,-0.132000)" d="M70 0V700H196V313H214L378 496H542L313 256L550 0H388L214 197H196V0Z"/>
+  <path fill="#ffffff" transform="translate(373.15,228) scale(0.132000,-0.132000)" d="M66 0V700H370Q436 700 485.0 677.0Q534 654 561.0 612.0Q588 570 588 513V501Q588 438 558.0 399.0Q528 360 484 342V324Q524 322 546.0 296.5Q568 271 568 229V0H436V210Q436 234 423.5 249.0Q411 264 382 264H198V0ZM198 384H356Q403 384 429.5 409.5Q456 435 456 477V487Q456 529 430.0 554.5Q404 580 356 580H198Z"/>
+  <path fill="#ffffff" transform="translate(453.27,228) scale(0.132000,-0.132000)" d="M306 -14Q232 -14 173.0 16.0Q114 46 80.0 103.0Q46 160 46 240V256Q46 336 80.0 393.0Q114 450 173.0 480.0Q232 510 306 510Q380 510 439.0 480.0Q498 450 532.0 393.0Q566 336 566 256V240Q566 160 532.0 103.0Q498 46 439.0 16.0Q380 -14 306 -14ZM306 98Q364 98 402.0 135.5Q440 173 440 243V253Q440 323 402.5 360.5Q365 398 306 398Q248 398 210.0 360.5Q172 323 172 253V243Q172 173 210.0 135.5Q248 98 306 98Z"/>
+  <path fill="#ffffff" transform="translate(530.76,228) scale(0.132000,-0.132000)" d="M259 -8Q201 -8 157.5 18.5Q114 45 90.0 92.0Q66 139 66 200V496H192V210Q192 154 219.5 126.0Q247 98 298 98Q356 98 388.0 136.5Q420 175 420 244V496H546V0H422V65H404Q392 40 359.0 16.0Q326 -8 259 -8Z"/>
+  <path fill="#ffffff" transform="translate(608.77,228) scale(0.132000,-0.132000)" d="M260 0Q211 0 180.5 30.5Q150 61 150 112V392H26V496H150V650H276V496H412V392H276V134Q276 104 304 104H400V0Z"/>
+  <path fill="#ffffff" transform="translate(665.66,228) scale(0.132000,-0.132000)" d="M296 -14Q222 -14 165.5 17.5Q109 49 77.5 106.5Q46 164 46 242V254Q46 332 77.0 389.5Q108 447 164.0 478.5Q220 510 294 510Q367 510 421.0 477.5Q475 445 505.0 387.5Q535 330 535 254V211H174Q176 160 212.0 128.0Q248 96 300 96Q353 96 378.0 119.0Q403 142 416 170L519 116Q505 90 478.5 59.5Q452 29 408.0 7.5Q364 -14 296 -14ZM175 305H407Q403 348 372.5 374.0Q342 400 293 400Q242 400 212.0 374.0Q182 348 175 305Z"/>
+  <path fill="#ffffff" transform="translate(738.52,228) scale(0.132000,-0.132000)" d="M70 0V496H194V440H212Q223 470 248.5 484.0Q274 498 308 498H368V386H306Q258 386 227.0 360.5Q196 335 196 282V0Z"/>
+</svg>
