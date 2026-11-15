@@ -69,5 +69,11 @@
   "devDependencies": {
     "esbuild": "^0.25.12",
     "nodemon": "^3.1.14"
+  },
+  "comment_overrides_minimatch": "minimatch >= 11.0.1 for the DoS fix (GHSA-g3hv-75wg-m249). Here it is nodemon, not typescript-eslint, that pulls the vulnerable minimatch; nodemon is already at its latest and still pins minimatch ^10, so it is forced rather than bumped. Dev-only; the published package ships no node_modules.",
+  "overrides": {
+    "nodemon": {
+      "minimatch": "^11.0.1"
+    }
   }
 }

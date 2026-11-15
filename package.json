@@ -59,5 +59,11 @@
     "postcss": "^8.5.6",
     "tailwindcss": "^4",
     "vitest": "^4.1.12"
+  },
+  "comment_overrides_minimatch": "minimatch >= 11.0.1 for the DoS fix (GHSA-g3hv-75wg-m249). No typescript-eslint release uses minimatch 11 yet, so it is forced under typescript-estree rather than reached by a version bump. Scoped so the minimatch@3.x copies under eslint core and its plugins are left alone. Dev-only; not in any shipped artifact.",
+  "overrides": {
+    "@typescript-eslint/typescript-estree": {
+      "minimatch": "^11.0.1"
+    }
   }
 }
