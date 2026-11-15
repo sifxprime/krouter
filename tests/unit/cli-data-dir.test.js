@@ -125,6 +125,18 @@ function trayDefaultWith(overrides = {}) {
   ).trim();
 }
 
+// cli/app is the staging copy of the whole app that the CLI build assembles,
+// plus its compiled Next output under .next-cli-build. All of it is generated
+// and `cli/.gitignore` ignores the directory outright, so every file in it is
+// either a duplicate of src/ or a bundle containing one. Scanning it made both
+// checks below fail on any machine that had run the CLI build once, naming 20
+// files under it and telling the reader their source had drifted.
+//
+// Matched by path, not by directory name. "app" as a name would also skip
+// src/app -- the real App Router tree -- and the checks would pass by scanning
+// nothing, which is the failure mode worth avoiding here.
+const GENERATED_TREES = new Set([path.resolve("cli/app")]);
+
 /** Every .js file under the given roots, skipping dependencies and build output. */
 function sourceFiles(roots) {
   const skip = new Set(["node_modules", ".next", ".git", "dist", "out", "coverage"]);
@@ -133,6 +145,7 @@ function sourceFiles(roots) {
     for (const e of readdirSync(dir, { withFileTypes: true })) {
       if (skip.has(e.name)) continue;
       const p = path.join(dir, e.name);
+      if (GENERATED_TREES.has(p)) continue;
       if (e.isDirectory()) walk(p);
       else if (/\.(js|mjs|cjs|jsx|ts|tsx)$/.test(e.name)) found.push(p);
     }
