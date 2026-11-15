@@ -1,7 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { execFileSync } from "node:child_process";
 import { readFileSync, mkdtempSync, existsSync, rmSync } from "node:fs";
-import { execFileSync } from "node:child_process";
 import { blankLiterals } from "../helpers/enclosing-guard.js";
 import os from "node:os";
 import path from "node:path";
