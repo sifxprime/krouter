@@ -35,7 +35,21 @@ import { trackedSourceFiles } from "../helpers/tracked-sources.js";
 
 const run = promisify(execFile);
 
-// node --check parses JavaScript. TypeScript and JSX are someone else's job.
+// node --check parses JavaScript, so this filter is here for .ts/.tsx/.jsx.
+// Today it narrows the set by nothing: all 941 tracked source files under
+// these roots are .js/.mjs/.cjs, and the project has no TypeScript anywhere --
+// no tsc, no typecheck script, nothing in CI.
+//
+// Which means the first .ts anyone adds leaves this guard silently, and what
+// catches it then depends on where it lands. `next build` runs in CI and would
+// parse a .tsx under src/. A .ts under scripts/ or tests/ would be handled by
+// esbuild, which is precisely the transform that hid the defect this test was
+// written for.
+//
+// Left as a known gap rather than a tripwire: guarding a file type the project
+// does not use is speculative. It is written down here instead, because the
+// previous version of this comment said TypeScript was someone else's job and
+// implied that someone was doing it.
 const PARSEABLE = /\.(js|mjs|cjs)$/;
 const ROOTS = ["src", "cli", "scripts", "tests"];
 
