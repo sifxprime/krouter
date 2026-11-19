@@ -22,6 +22,11 @@ export default function MitmServerCard({ apiKeys, cloudEnabled, onStatusChange }
   const [actionError, setActionError] = useState(null);
   const [mitmRouterBaseUrl, setMitmRouterBaseUrl] = useState(DEFAULT_MITM_ROUTER_BASE);
   const [port443Conflict, setPort443Conflict] = useState(null);
+  // 403 from the status route means this dashboard is being viewed from off the
+  // machine. The route spawns sudo, binds :443 and edits the hosts file, so it is
+  // local-only by design (dashboardGuard.js) — a remote session cannot drive it.
+  // Without this the card just showed "Stopped" with dead controls and no reason.
+  const [forbidden, setForbidden] = useState(false);
 
   const sudoDialog = useDialog({
     isOpen: showPasswordModal,
@@ -41,6 +46,13 @@ export default function MitmServerCard({ apiKeys, cloudEnabled, onStatusChange }
   const fetchStatus = useCallback(async () => {
     try {
       const res = await fetch("/api/cli-tools/antigravity-mitm");
+      if (res.status === 403) {
+        // Local-only route, reached from off the machine. Not an error to retry
+        // or a server that is down — a boundary. Say so instead of a dead panel.
+        setForbidden(true);
+        return;
+      }
+      setForbidden(false);
       if (res.ok) {
         const data = await res.json();
         setStatus(data);
@@ -177,6 +189,23 @@ export default function MitmServerCard({ apiKeys, cloudEnabled, onStatusChange }
             </div>
           </div>
 
+          {/* Local-only, viewed remotely — explain the boundary instead of
+              leaving the controls below looking merely broken. */}
+          {forbidden && (
+            <div className="px-3 py-2.5 rounded-lg bg-surface/50 border border-border/50 flex flex-col gap-1">
+              <p className="text-[11px] font-medium text-text-main">
+                MITM controls are available on the local machine only
+              </p>
+              <p className="text-[11px] text-text-muted leading-relaxed">
+                Starting interception spawns a privileged process, binds port 443 and edits the
+                operating system&apos;s hosts file — all on the machine running kRouter. You are
+                viewing this dashboard from another device, so those controls are disabled here.
+                Open the dashboard on the kRouter machine itself, or drive MITM from the kRouter CLI
+                there.
+              </p>
+            </div>
+          )}
+
           {/* Purpose & How it works */}
           <div className="px-2 py-2 rounded-lg bg-surface/50 border border-border/50 flex flex-col gap-2">
             <p className="text-[11px] text-text-muted leading-relaxed">
@@ -197,7 +226,7 @@ export default function MitmServerCard({ apiKeys, cloudEnabled, onStatusChange }
                 value={mitmRouterBaseUrl}
                 onChange={(e) => setMitmRouterBaseUrl(e.target.value)}
                 placeholder={DEFAULT_MITM_ROUTER_BASE}
-                disabled={isRunning}
+                disabled={isRunning || forbidden}
                 className="flex-1 min-w-0 px-2 py-1.5 bg-surface rounded border border-border text-xs text-text-main focus:outline-none focus:ring-1 focus:ring-primary/50 disabled:opacity-50"
               />
             </div>
@@ -262,8 +291,8 @@ export default function MitmServerCard({ apiKeys, cloudEnabled, onStatusChange }
             ) : (
               <button
                 onClick={() => handleAction("start")}
-                disabled={loading || !status || (serverIsWindows && !isAdmin)}
-                title={serverIsWindows && !isAdmin ? "Administrator required" : undefined}
+                disabled={loading || !status || forbidden || (serverIsWindows && !isAdmin)}
+                title={forbidden ? "Available on the local machine only" : serverIsWindows && !isAdmin ? "Administrator required" : undefined}
                 className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-primary/30 bg-primary/10 px-4 py-2 text-xs font-medium text-primary transition-colors hover:bg-primary/20 disabled:opacity-50 sm:w-auto sm:py-1.5"
               >
                 <Icon name="play_circle" size={16} />
